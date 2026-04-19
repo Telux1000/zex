@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #0c111d;
+  --background: #f6f8fc;
+  --muted: #64748b;
+  --card: #ffffff;
+  --card-border: #e2e8f0;
+  --sidebar: #ffffff;
+  --sidebar-border: #e8ecf1;
+  --accent: #635bff;
+  --accent-muted: rgba(99, 91, 255, 0.12);
+  --ring: rgba(99, 91, 255, 0.35);
+}
+
+.dark {
+  --foreground: #f1f5f9;
+  --background: #0c111d;
+  --muted: #94a3b8;
+  --card: #141b2d;
+  --card-border: #1e293b;
+  --sidebar: #0f1629;
+  --sidebar-border: #1e293b;
+  --accent: #818cf8;
+  --accent-muted: rgba(129, 140, 248, 0.15);
+  --ring: rgba(129, 140, 248, 0.4);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Shared marketing / auth surfaces — align with dashboard tokens (--background, --card, --accent, etc.) */
+@layer components {
+  .app-page-bg {
+    @apply min-h-screen bg-[var(--background)] text-[var(--foreground)];
+  }
+
+  .app-marketing-header {
+    @apply border-b border-[var(--sidebar-border)] bg-[var(--sidebar)] backdrop-blur-md;
+  }
+
+  .app-card-surface {
+    @apply rounded-xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm shadow-slate-900/[0.03] transition-shadow dark:shadow-black/20;
+  }
+
+  .app-card-surface-hover {
+    @apply hover:shadow-md hover:shadow-indigo-950/[0.04] dark:hover:shadow-black/40;
+  }
+
+  .app-btn-primary {
+    @apply rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500;
+  }
+
+  .app-btn-primary-lg {
+    @apply rounded-xl bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] dark:bg-indigo-600 dark:hover:bg-indigo-500;
+  }
+
+  .app-btn-secondary {
+    @apply rounded-lg border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] dark:text-slate-200 dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/[0.06];
+  }
+
+  .app-btn-secondary-lg {
+    @apply rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-6 py-3 text-base font-medium text-slate-700 shadow-sm transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] dark:text-slate-200 dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/[0.06];
+  }
+
+  .app-btn-destructive {
+    @apply rounded-lg border border-rose-300 bg-[var(--card)] px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition-colors hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500/50 disabled:opacity-50 dark:border-rose-500/45 dark:text-rose-300 dark:hover:bg-rose-950/35;
+  }
+
+  /* Native date input: input surface + dashboard indigo focus (matches app-btn-primary / app-input) */
+  .app-date-field {
+    @apply rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-[color,box-shadow,border-color] duration-150 [color-scheme:light] hover:border-slate-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] dark:border-slate-600 dark:bg-gray-900 dark:text-slate-100 dark:[color-scheme:dark] dark:hover:border-slate-500 dark:focus:border-indigo-400;
+  }
+
+  .app-input {
+    @apply mt-1 block w-full rounded-lg border border-[var(--card-border)] bg-[var(--card)] px-3 py-2 text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] dark:text-white dark:placeholder:text-slate-500;
+  }
+
+  .app-link-accent {
+    @apply font-medium text-indigo-600 transition-colors hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300;
+  }
+
+  .app-logo-text {
+    @apply font-semibold tracking-tight text-[#1a1a1a] dark:text-indigo-400;
+  }
+
+  .app-table-shell {
+    @apply overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .app-table-scroll {
+    @apply overflow-x-auto;
+  }
+
+  .app-table {
+    @apply min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800;
+  }
+
+  .app-table thead tr {
+    @apply bg-slate-50/90 dark:bg-slate-800/50;
+  }
+
+  .app-th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
+
+  .app-th-num {
+    @apply app-th text-right;
+  }
+
+  .app-th-actions {
+    @apply app-th w-[1%] whitespace-nowrap text-right;
+  }
+
+  .app-td {
+    @apply px-4 py-3 align-middle text-sm text-slate-700 dark:text-slate-300;
+  }
+
+  .app-td-primary {
+    @apply app-td font-medium text-slate-900 dark:text-white;
+  }
+
+  .app-td-secondary {
+    @apply app-td text-slate-600 dark:text-slate-400;
+  }
+
+  .app-td-num {
+    @apply app-td text-right tabular-nums;
+  }
+
+  .app-td-actions {
+    @apply app-td whitespace-nowrap text-right;
+  }
+
+  .app-tbody {
+    @apply divide-y divide-slate-100 dark:divide-slate-800;
+  }
+
+  .app-tr-hover {
+    @apply hover:bg-slate-50/80 dark:hover:bg-slate-800/45;
+  }
+
+  .app-table-empty {
+    @apply px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400;
+  }
+}
+
+/* Invoice download/print: show only the invoice document, hide app UI */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .invoice-print-container,
+  .invoice-print-container * {
+    visibility: visible;
+  }
+  .invoice-print-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+  .invoice-print-container .rounded-xl {
+    box-shadow: none !important;
+  }
+  .invoice-print-container,
+  .invoice-print-container .bg-white,
+  .invoice-print-container .dark\:bg-slate-900 {
+    background: #fff !important;
+  }
+  .invoice-print-container .text-slate-900,
+  .invoice-print-container .dark\:text-white {
+    color: #111 !important;
+  }
+  .invoice-print-container .text-slate-700,
+  .invoice-print-container .dark\:text-slate-300,
+  .invoice-print-container .text-slate-600,
+  .invoice-print-container .dark\:text-slate-400 {
+    color: #374151 !important;
+  }
+  .invoice-print-container .text-slate-500,
+  .invoice-print-container .dark\:text-slate-400 {
+    color: #6b7280 !important;
+  }
+  .invoice-print-container .border-slate-200,
+  .invoice-print-container .dark\:border-slate-800 {
+    border-color: #e5e7eb !important;
+  }
+  .invoice-print-container .bg-slate-50,
+  .invoice-print-container .dark\:bg-slate-800\/50 {
+    background-color: #f9fafb !important;
+  }
+}

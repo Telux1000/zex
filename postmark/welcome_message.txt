@@ -1,0 +1,15 @@
+Hi {{first_name}},
+
+You're all set — your setup for {{business_name}} is complete. Your {{app_name}} workspace is ready.
+
+Go to your dashboard:
+{{dashboard_url}}
+
+What's next:
+· Create your first customer
+· Create your first invoice
+· Explore your dashboard (same link as above)
+
+Questions? Email us at {{support_email}}
+
+© {{year}} {{app_name}}
