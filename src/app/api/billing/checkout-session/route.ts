@@ -1,19 +1,24 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
-import { getPricingPlan, normalizeBillingPlan, type BillingPlan } from '@/lib/billing/plans';
-import { getStripe } from '@/lib/stripe';
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+import {
+  getPricingPlan,
+  normalizeBillingPlan,
+  normalizePlanBillingInterval,
+  type BillingPlan,
+} from '@/lib/billing/plans';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
+import { getPaddleBillingClient } from '@/lib/billing/paddle-client';
 
 /**
- * Creates a Stripe Checkout Session (subscription) for workspace SaaS billing.
- * Only the workspace owner can start checkout. Plan tier is stored in session metadata
- * and applied when checkout.session.completed fires on /api/stripe/webhook.
+ * Starts Paddle Checkout for workspace SaaS subscription (Merchant of Record billing).
+ * Only the workspace owner can start checkout. Plan + owner are carried in transaction custom data
+ * and reconciled via `/api/webhooks/paddle` subscription events.
  */
 export async function POST(req: Request) {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json({ error: 'Stripe is not configured.' }, { status: 503 });
+  const paddle = getPaddleBillingClient();
+  if (!paddle) {
+    return NextResponse.json({ error: 'Subscription billing is not configured.' }, { status: 503 });
   }
 
   const supabase = await createClient();
@@ -30,6 +35,10 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!user.email?.trim()) {
+    return NextResponse.json({ error: 'Your account needs an email address to check out.' }, { status: 400 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -41,7 +50,10 @@ export async function POST(req: Request) {
   const pricing = getPricingPlan(plan);
   if (pricing.isFree) {
     return NextResponse.json(
-      { error: 'The Starter plan is free and does not use Stripe Checkout. Switch plans from Billing or choose a paid tier.' },
+      {
+        error:
+          'The Starter plan is free and does not use checkout. Switch plans from Billing or choose a paid tier.',
+      },
       { status: 400 }
     );
   }
@@ -56,53 +68,76 @@ export async function POST(req: Request) {
     selected_stripe_price_id?: string | null;
     billing_interval?: string | null;
   } | null;
+
   const lockedPrice =
     prof && normalizeBillingPlan(prof.billing_plan) === plan && prof.selected_stripe_price_id?.trim()
       ? prof.selected_stripe_price_id.trim()
       : '';
 
-  const priceId = lockedPrice || (pricing.stripePriceId?.trim() ?? '');
+  const interval = normalizePlanBillingInterval(prof?.billing_interval) ?? 'monthly';
+  const priceId =
+    lockedPrice || catalogPriceIdForPlanInterval(plan, interval) || pricing.catalogPriceId?.trim() || '';
+
   if (!priceId) {
     return NextResponse.json(
-      { error: 'Stripe price is not configured for this plan. Set NEXT_PUBLIC_STRIPE_PRICE_* env vars.' },
+      {
+        error:
+          'Catalog price is not configured for this plan. Set NEXT_PUBLIC_PADDLE_PRICE_* env vars in Paddle.',
+      },
       { status: 400 }
     );
   }
 
-  const successUrl = `${APP_URL.replace(/\/$/, '')}/dashboard/billing?checkout=success`;
-  const cancelUrl = `${APP_URL.replace(/\/$/, '')}/dashboard/billing?checkout=cancelled`;
+  const billingInterval = normalizePlanBillingInterval(prof?.billing_interval);
 
-  let session: { url: string | null };
+  let customerId: string;
   try {
-    session = await getStripe().checkout.sessions.create({
-      mode: 'subscription',
-      client_reference_id: user.id,
-      customer_email: user.email ?? undefined,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        saas_owner_user_id: user.id,
-        saas_billing_plan: plan,
-        saas_billing_interval: prof?.billing_interval?.trim() ?? '',
-      },
-      subscription_data: {
-        metadata: {
-          saas_owner_user_id: user.id,
-          saas_billing_plan: plan,
-          saas_billing_interval: prof?.billing_interval?.trim() ?? '',
-        },
-      },
-      allow_promotion_codes: true,
-    });
+    customerId = await getOrCreatePaddleCustomer(paddle, user.email.trim(), user.id);
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Stripe checkout failed';
+    const message = e instanceof Error ? e.message : 'Could not create billing customer';
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  if (!session.url) {
-    return NextResponse.json({ error: 'Stripe did not return a checkout URL.' }, { status: 502 });
+  let checkoutUrl: string | null = null;
+  try {
+    const transaction = await paddle.transactions.create({
+      items: [{ priceId, quantity: 1 }],
+      customerId,
+      customData: {
+        saas_owner_user_id: user.id,
+        saas_billing_plan: plan,
+        saas_billing_interval: billingInterval ?? '',
+      },
+    });
+    checkoutUrl = transaction.checkout?.url ?? null;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Checkout creation failed';
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  return NextResponse.json({ url: session.url });
+  if (!checkoutUrl) {
+    return NextResponse.json(
+      { error: 'Paddle did not return a checkout URL. Check transaction/custom_data and Paddle dashboard settings.' },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({ url: checkoutUrl });
+}
+
+async function getOrCreatePaddleCustomer(
+  paddle: NonNullable<ReturnType<typeof getPaddleBillingClient>>,
+  email: string,
+  userId: string
+): Promise<string> {
+  const collection = paddle.customers.list({ email: [email] });
+  const page = await collection.next();
+  if (page.length > 0) {
+    return page[0].id;
+  }
+  const created = await paddle.customers.create({
+    email,
+    customData: { saas_owner_user_id: userId },
+  });
+  return created.id;
 }

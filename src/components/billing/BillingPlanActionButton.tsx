@@ -35,7 +35,7 @@ export function BillingPlanActionButton({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const pricing = getPricingPlan(targetPlan);
-  const priceConfigured = pricing.isFree || Boolean(pricing.stripePriceId?.trim());
+  const priceConfigured = pricing.isFree || Boolean(pricing.catalogPriceId?.trim());
   const payBlocked = requiresPayment && !priceConfigured;
 
   async function onClick() {

@@ -9,7 +9,6 @@ import { evaluateStripeConnectAccount } from '@/lib/stripe-connect';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { paymentAmountInBase } from '@/lib/invoices/fx-snapshot';
 import { fetchExchangeMultiplier } from '@/lib/currency/exchange-frankfurter';
-import { normalizeBillingPlan } from '@/lib/billing/plans';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 
 const supabaseAdmin = createClient(
@@ -40,17 +39,8 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    if (session.mode === 'subscription') {
-      const ownerUserId = String(session.metadata?.saas_owner_user_id ?? session.client_reference_id ?? '').trim();
-      const planMeta = session.metadata?.saas_billing_plan;
-      if (ownerUserId && planMeta != null && String(planMeta).trim() !== '') {
-        const billingPlan = normalizeBillingPlan(planMeta);
-        await supabaseAdmin
-          .from('profiles')
-          .update({ subscription_status: 'active', billing_plan: billingPlan })
-          .eq('id', ownerUserId);
-      }
-    } else {
+    // Platform SaaS subscriptions use Paddle (`/api/webhooks/paddle`). This handler is Stripe Connect + invoice card payments only.
+    if (session.mode !== 'subscription') {
     const invoiceId = session.metadata?.invoice_id;
     const businessId = session.metadata?.business_id;
     if (!invoiceId || !businessId) {

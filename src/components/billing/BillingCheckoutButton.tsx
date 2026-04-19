@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { getPricingPlan, type BillingPlan } from '@/lib/billing/plans';
 import { cn } from '@/lib/utils/cn';
 
-/** Opens Stripe Checkout for the given plan (subscription). Owner-only; parent should gate visibility. */
+/** Opens Paddle Checkout for the given plan (subscription). Owner-only; parent should gate visibility. */
 export function BillingCheckoutButton({
   plan,
   className,
@@ -16,7 +16,7 @@ export function BillingCheckoutButton({
 }) {
   const [loading, setLoading] = useState(false);
   const pricing = getPricingPlan(plan);
-  const priceConfigured = !pricing.isFree && Boolean(pricing.stripePriceId?.trim());
+  const priceConfigured = !pricing.isFree && Boolean(pricing.catalogPriceId?.trim());
 
   async function onClick() {
     if (loading || !priceConfigured) return;
@@ -52,7 +52,7 @@ export function BillingCheckoutButton({
       disabled={loading || !priceConfigured}
       title={
         !priceConfigured
-          ? 'Set NEXT_PUBLIC_STRIPE_PRICE_* for this plan to enable checkout.'
+          ? 'Set NEXT_PUBLIC_PADDLE_PRICE_* for this plan to enable checkout.'
           : undefined
       }
       onClick={onClick}

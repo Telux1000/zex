@@ -7,13 +7,12 @@ export type PricingPlan = {
   /** List price per month before interval discount; 0 for free Starter. */
   priceMonthlyCents: number;
   /**
-   * Monthly Stripe Price ID from env (legacy field; mirrors stripe-price-map monthly).
-   * Null for free Starter — no Checkout subscription for this tier.
+   * Default Paddle catalog price ID (`pri_*`) for this plan (monthly display).
+   * Null for free Starter. Overridden per env via `catalog-price-map` / NEXT_PUBLIC_PADDLE_PRICE_*.
    */
-  stripePriceId: string | null;
-  /** Optional explicit IDs; when unset, stripe-price-map uses NEXT_PUBLIC_STRIPE_PRICE_* envs. */
-  stripePriceIdMonthly?: string | null;
-  stripePriceIdYearly?: string | null;
+  catalogPriceId: string | null;
+  catalogPriceIdMonthly?: string | null;
+  catalogPriceIdYearly?: string | null;
   /** True = no paid subscription / no Stripe trial for this tier (e.g. Starter). */
   isFree: boolean;
   /** Whether to show the secondary “Start N-day trial” action on pricing cards. */
@@ -39,7 +38,7 @@ const PLAN_RANK: Record<BillingPlan, number> = {
   enterprise: 3,
 };
 
-/** Shared trial policy for marketing and billing copy (keep in sync with checkout / Stripe trial if used). */
+/** Shared trial policy for marketing and billing copy (keep in sync with checkout / Paddle trial if used). */
 export const PRICING_TRIAL_DAYS = 14;
 
 export const pricingTrialMessaging = {
@@ -88,9 +87,9 @@ export const pricingPlans: PricingPlan[] = [
     id: 'starter',
     name: 'Starter',
     priceMonthlyCents: 0,
-    stripePriceId: null,
-    stripePriceIdMonthly: null,
-    stripePriceIdYearly: null,
+    catalogPriceId: null,
+    catalogPriceIdMonthly: null,
+    catalogPriceIdYearly: null,
     isFree: true,
     showTrialCTA: false,
     priceDisplay: '$0',
@@ -102,7 +101,7 @@ export const pricingPlans: PricingPlan[] = [
     id: 'growth',
     name: 'Growth',
     priceMonthlyCents: 5900,
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GROWTH ?? null,
+    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
@@ -117,7 +116,7 @@ export const pricingPlans: PricingPlan[] = [
     id: 'professional',
     name: 'Professional',
     priceMonthlyCents: 7900,
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PROFESSIONAL ?? null,
+    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
@@ -135,7 +134,7 @@ export const pricingPlans: PricingPlan[] = [
     id: 'enterprise',
     name: 'Enterprise',
     priceMonthlyCents: 9900,
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE ?? null,
+    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [

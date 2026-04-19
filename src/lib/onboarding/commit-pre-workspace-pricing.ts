@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchAdminPlatformSettings } from '@/lib/admin/admin-platform-settings';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
-import { stripePriceIdForPlanInterval } from '@/lib/billing/stripe-price-map';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
 import {
   getPricingPlan,
   normalizeBillingPlan,
@@ -39,14 +39,14 @@ export async function commitPreWorkspacePricingSelection(
   }
 
   const pricing = getPricingPlan(plan);
-  const stripePriceId = stripePriceIdForPlanInterval(plan, billing_interval);
+  const catalogPriceId = catalogPriceIdForPlanInterval(plan, billing_interval);
 
-  if (!pricing.isFree && !stripePriceId) {
+  if (!pricing.isFree && !catalogPriceId) {
     return {
       ok: false,
       status: 400,
       error:
-        'Stripe price is not configured for this plan and billing cycle. Set NEXT_PUBLIC_STRIPE_PRICE_* (and optional NEXT_PUBLIC_STRIPE_PRICE_*_YEARLY for yearly).',
+        'Catalog price is not configured for this plan and billing cycle. Set NEXT_PUBLIC_PADDLE_PRICE_* (and optional NEXT_PUBLIC_PADDLE_PRICE_*_YEARLY for yearly).',
     };
   }
 
@@ -60,7 +60,7 @@ export async function commitPreWorkspacePricingSelection(
     .update({
       billing_plan: plan,
       billing_interval,
-      selected_stripe_price_id: pricing.isFree ? null : stripePriceId,
+      selected_stripe_price_id: pricing.isFree ? null : catalogPriceId,
       onboarding_pricing_completed_at: new Date().toISOString(),
       trial_started_at: trial ? trial.trial_started_at : null,
       trial_ends_at: trial ? trial.trial_ends_at : null,

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 /**
- * Called by payment webhooks (e.g. Stripe) after a successful subscription charge.
+ * Optional internal endpoint to force `subscription_status: active` (e.g. manual ops).
+ * Primary SaaS entitlements come from Paddle (`/api/webhooks/paddle`).
  * Header: x-billing-webhook-secret must match BILLING_WEBHOOK_SECRET.
  * Body: { owner_user_id: string } (auth.users id of the paying workspace owner).
  */

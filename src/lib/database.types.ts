@@ -62,9 +62,9 @@ export interface Profile {
   theme?: 'light' | 'dark' | 'system' | null;
   /** Self-serve billing tier for feature gating. */
   billing_plan?: 'starter' | 'growth' | 'professional' | 'enterprise' | null;
-  /** monthly | yearly — set at signup pricing step with selected Stripe price. */
+  /** monthly | yearly — set at signup pricing step with locked catalog price. */
   billing_interval?: 'monthly' | 'yearly' | null;
-  /** Stripe Price ID locked at plan selection (before Checkout). */
+  /** Locked Paddle catalog price ID (`pri_*`) at plan selection; column name is legacy. */
   selected_stripe_price_id?: string | null;
   /** Set when guided onboarding is finished; unlocks full Settings. */
   onboarding_completed_at?: string | null;
