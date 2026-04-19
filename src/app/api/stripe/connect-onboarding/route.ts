@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 const CONNECT_RETURN_URL =
@@ -41,7 +41,7 @@ export async function POST() {
 
     if (!accountId) {
       try {
-        const account = await stripe.accounts.create({
+        const account = await getStripe().accounts.create({
           type: 'standard',
           email: user.email ?? undefined,
           metadata: {
@@ -101,7 +101,7 @@ export async function POST() {
       })
       .eq('id', business.id);
 
-    const accountLink = await stripe.accountLinks.create({
+    const accountLink = await getStripe().accountLinks.create({
       account: accountId,
       type: 'account_onboarding',
       refresh_url: toAbsoluteUrl(CONNECT_REFRESH_URL),

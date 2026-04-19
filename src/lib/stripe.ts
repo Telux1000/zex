@@ -1,8 +1,18 @@
 import Stripe from 'stripe';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  typescript: true,
-});
+let stripeSingleton: Stripe | null = null;
+
+/** Lazily construct Stripe so `next build` does not require STRIPE_SECRET_KEY at import time. */
+export function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error('STRIPE_SECRET_KEY is not configured');
+  }
+  if (!stripeSingleton) {
+    stripeSingleton = new Stripe(key, { typescript: true });
+  }
+  return stripeSingleton;
+}
 
 export async function createPaymentLink(params: {
   invoiceId: string;
@@ -14,7 +24,7 @@ export async function createPaymentLink(params: {
   successUrl: string;
   cancelUrl: string;
 }) {
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: 'payment',
     payment_method_types: ['card'],
     line_items: [

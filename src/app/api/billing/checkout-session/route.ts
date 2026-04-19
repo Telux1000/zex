@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
 import { getPricingPlan, normalizeBillingPlan, type BillingPlan } from '@/lib/billing/plans';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
   let session: { url: string | null };
   try {
-    session = await stripe.checkout.sessions.create({
+    session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       client_reference_id: user.id,
       customer_email: user.email ?? undefined,

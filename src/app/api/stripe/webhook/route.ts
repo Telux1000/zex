@@ -4,14 +4,13 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { logActivity } from '@/lib/activity';
 import { logAuditEvent } from '@/lib/audit-log';
+import { getStripe } from '@/lib/stripe';
 import { evaluateStripeConnectAccount } from '@/lib/stripe-connect';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { paymentAmountInBase } from '@/lib/invoices/fx-snapshot';
 import { fetchExchangeMultiplier } from '@/lib/currency/exchange-frankfurter';
 import { normalizeBillingPlan } from '@/lib/billing/plans';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { typescript: true });
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,7 +27,7 @@ export async function POST(req: Request) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
+    event = getStripe().webhooks.constructEvent(
       body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET

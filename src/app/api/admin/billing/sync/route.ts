@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 import { evaluateStripeConnectAccount } from '@/lib/stripe-connect';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, stripe_onboarding_status: 'not_connected' });
   }
 
-  const account = await stripe.accounts.retrieve(String(business.stripe_account_id));
+  const account = await getStripe().accounts.retrieve(String(business.stripe_account_id));
   const evaluation = evaluateStripeConnectAccount(account);
   await admin
     .from('businesses')
