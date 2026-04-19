@@ -1,4 +1,4 @@
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
 
 export type StripeOnboardingStatus =
   | 'not_connected'

@@ -1,22 +1,22 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import Stripe from 'stripe';
-import { createClient } from '@supabase/supabase-js';
 import { logActivity } from '@/lib/activity';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getStripe } from '@/lib/stripe';
 import { evaluateStripeConnectAccount } from '@/lib/stripe-connect';
+import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { paymentAmountInBase } from '@/lib/invoices/fx-snapshot';
 import { fetchExchangeMultiplier } from '@/lib/currency/exchange-frankfurter';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(req: Request) {
+  const supabaseAdmin = getSupabaseServiceAdmin();
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
+  }
+
   const body = await req.text();
   const headersList = await headers();
   const sig = headersList.get('stripe-signature');

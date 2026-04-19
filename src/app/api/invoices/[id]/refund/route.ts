@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
+import { getStripeOrNull } from '@/lib/stripe';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { assertBusinessPermission } from '@/lib/rbac/server';
 import { createActivity } from '@/lib/activity';
@@ -18,9 +18,6 @@ import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 
 export const dynamic = 'force-dynamic';
-
-const stripeSecret = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeSecret ? new Stripe(stripeSecret, { typescript: true }) : null;
 
 const REFUND_REASONS = new Set([
   'duplicate_payment',
@@ -407,6 +404,7 @@ export async function POST(
   });
 
   try {
+    const stripe = getStripeOrNull();
     const admin = getSupabaseServiceAdmin();
     const ledgerDb = admin ?? supabase;
     const paymentRows = await loadSucceededPaymentsForRefund(

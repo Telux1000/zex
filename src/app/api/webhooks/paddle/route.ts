@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
 import type { SubscriptionNotification } from '@paddle/paddle-node-sdk';
 import { getPaddleBillingClient } from '@/lib/billing/paddle-client';
 import { applyPaddleSubscriptionNotification } from '@/lib/billing/apply-paddle-subscription';
+import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * Paddle Billing notification webhook (platform SaaS subscriptions).
@@ -21,6 +16,11 @@ const supabaseAdmin = createClient(
  * - Configure subscribed events to include `subscription.*` used below.
  */
 export async function POST(req: Request) {
+  const supabaseAdmin = getSupabaseServiceAdmin();
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
+  }
+
   const secret = process.env.PADDLE_BILLING_WEBHOOK_SECRET?.trim();
   const paddle = getPaddleBillingClient();
   if (!secret || !paddle) {
