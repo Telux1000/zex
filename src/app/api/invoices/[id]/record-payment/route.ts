@@ -114,8 +114,6 @@ export async function POST(
       total,
       amount_paid: prevPaid,
       total_refunded: totalRefunded,
-      balance_due:
-        (invoice as any).balance_due != null ? Number((invoice as any).balance_due) : null,
     });
     if (amount - prevBalance > 0.0001) {
       return NextResponse.json({ error: 'Amount cannot exceed remaining balance' }, { status: 400 });

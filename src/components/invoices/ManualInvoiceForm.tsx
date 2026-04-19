@@ -3985,15 +3985,20 @@ export default function ManualInvoiceForm({
                     {/* Mobile cards (swipe actions) */}
                     <div className="md:hidden space-y-3 p-4">
                       {paymentScheduleOrdered.map((r, idx) => {
-                        const statusValue = (r.status ?? 'pending') as 'pending' | 'paid';
+                        const statusValue = (r.status ?? 'pending') as 'pending' | 'paid' | 'refund';
                         const rowKey = String(r.id ?? `idx-${idx}`);
                         const x = scheduleSwipeX[rowKey] ?? 0;
                         const swipeEnabled = true;
                         const canMarkPaid =
-                          !disableSchedulePaymentActions && !!invoiceId && !!r.id && statusValue !== 'paid';
+                          !disableSchedulePaymentActions &&
+                          !!invoiceId &&
+                          !!r.id &&
+                          statusValue !== 'paid' &&
+                          statusValue !== 'refund';
 
                         const isOverdue =
                           statusValue !== 'paid' &&
+                          statusValue !== 'refund' &&
                           Boolean(r.due_date) &&
                           new Date(String(r.due_date)) <
                             new Date(new Date().toISOString().slice(0, 10));
@@ -4214,9 +4219,9 @@ export default function ManualInvoiceForm({
                       createPortal((() => {
                         const r = paymentScheduleOrdered[openScheduleSheet.index];
                         if (!r) return null;
-                        const statusValue = (r.status ?? 'pending') as 'pending' | 'paid';
-                        // If the row is already paid, do not show the mobile action sheet at all.
-                        if (statusValue === 'paid') return null;
+                        const statusValue = (r.status ?? 'pending') as 'pending' | 'paid' | 'refund';
+                        // If the row is already paid or a refund line, do not show the mobile action sheet at all.
+                        if (statusValue === 'paid' || statusValue === 'refund') return null;
                         const canMarkPaid = !disableSchedulePaymentActions && !!invoiceId && !!r.id;
 
                         return (

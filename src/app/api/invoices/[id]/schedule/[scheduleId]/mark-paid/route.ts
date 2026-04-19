@@ -55,8 +55,6 @@ export async function POST(
     total,
     amount_paid: amountPaid,
     total_refunded: totalRefunded,
-    balance_due:
-      invoice.balance_due != null ? Number(invoice.balance_due) : null,
   });
   if (rowAmount <= 0) return NextResponse.json({ error: 'Invalid schedule amount.' }, { status: 400 });
   if (rowAmount - balanceDue > 0.02) {

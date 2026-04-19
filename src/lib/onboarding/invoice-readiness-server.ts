@@ -85,7 +85,7 @@ export async function assertInvoiceCreationReadiness(
     };
   }
 
-  if (probe.missing === 'business_profile') {
+  if ('missing' in probe && probe.missing === 'business_profile') {
     return {
       ok: false,
       response: NextResponse.json(
@@ -99,7 +99,7 @@ export async function assertInvoiceCreationReadiness(
     };
   }
 
-  if (probe.missing === 'currency') {
+  if ('missing' in probe && probe.missing === 'currency') {
     return {
       ok: false,
       response: NextResponse.json(

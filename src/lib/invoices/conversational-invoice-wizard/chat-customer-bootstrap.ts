@@ -28,13 +28,8 @@ export function resolveCustomerBootstrapWhenNoCustomers(params: {
   pendingCustomerContext: PendingAssistantCustomer | null;
 }): CustomerChatBootstrapResult | null {
   const pending = params.pendingCustomerContext;
-  if (pending?.kind === 'awaiting_create_customer_name') {
-    return null;
-  }
-  if (
-    pending &&
-    pending.kind !== 'awaiting_create_customer_name'
-  ) {
+  // Any in-flight customer flow (including name collection) should not re-run bootstrap.
+  if (pending) {
     return null;
   }
 
