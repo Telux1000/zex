@@ -122,7 +122,6 @@ function matchesRenewalFilter(renewalDate: string | null, renewal: FilterModel['
 export function AdminBillingPanel() {
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterModel>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<BillingData['accounts'][number] | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -152,20 +151,6 @@ export function AdminBillingPanel() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function syncBillingAck(accountId: string) {
-    setSyncing(accountId);
-    try {
-      await fetch('/api/admin/billing/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_id: accountId }),
-      });
-      await load();
-    } finally {
-      setSyncing(null);
-    }
-  }
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -404,12 +389,10 @@ export function AdminBillingPanel() {
                             setActionMsg(`Cancellation is restricted here; complete cancellation in Paddle or via support for ${a.account_name}.`),
                         },
                         {
-                          label: syncing === a.account_id ? 'Syncing…' : 'Ack billing sync',
-                          onClick: () => void syncBillingAck(a.account_id),
-                          disabled: syncing === a.account_id,
+                          label: 'Refresh billing list',
+                          onClick: () => void load(),
                         },
                       ]}
-                      disabled={syncing === a.account_id}
                     />
                   </AdminTd>
                 </AdminTr>
