@@ -91,7 +91,8 @@ export async function GET() {
   const environment = {
     node_env: process.env.NODE_ENV ?? 'development',
     postmark_configured: Boolean(process.env.POSTMARK_SERVER_TOKEN?.trim()),
-    stripe_publishable_configured: Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()),
+    paddle_billing_api_configured: Boolean(process.env.PADDLE_BILLING_API_KEY?.trim()),
+    paddle_billing_webhook_configured: Boolean(process.env.PADDLE_BILLING_WEBHOOK_SECRET?.trim()),
     app_url_configured: Boolean(process.env.NEXT_PUBLIC_APP_URL?.trim()),
   };
 

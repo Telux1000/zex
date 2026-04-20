@@ -42,7 +42,7 @@ type SubscriptionProbeResult = {
 async function loadSubscriptionRows(
   admin: NonNullable<ReturnType<typeof getSupabaseServiceAdmin>>
 ): Promise<SubscriptionProbeResult> {
-  const candidates = ['subscriptions', 'billing_subscriptions', 'stripe_subscriptions'];
+  const candidates = ['subscriptions', 'billing_subscriptions'];
   for (const table of candidates) {
     const res = await admin.from(table).select('*').limit(5000);
     if (res.error) {
@@ -69,9 +69,7 @@ export async function GET() {
       .limit(2500),
     supabase
       .from('businesses')
-      .select(
-        'id, name, owner_id, stripe_account_id, stripe_onboarding_status, stripe_charges_enabled, stripe_payouts_enabled, created_at, admin_suspended_at, admin_deactivated_at'
-      )
+      .select('id, name, owner_id, created_at, admin_suspended_at, admin_deactivated_at')
       .order('created_at', { ascending: false })
       .limit(250),
     admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
@@ -145,15 +143,16 @@ export async function GET() {
       subscriptionStatus = 'past_due';
     } else if (normalizedSubStatus === 'active') {
       subscriptionStatus = 'active';
-    } else if (!b.stripe_account_id || !b.stripe_charges_enabled) {
-      subscriptionStatus = 'past_due';
     }
 
-    const paymentStatus: 'paid' | 'failed' | 'pending' | 'refunded' = !b.stripe_account_id
-      ? 'pending'
-      : b.stripe_charges_enabled
-        ? 'paid'
-        : 'failed';
+    const paymentStatus: 'paid' | 'failed' | 'pending' | 'refunded' =
+      normalizedSubStatus === 'past_due' || normalizedSubStatus === 'unpaid'
+        ? 'failed'
+        : normalizedSubStatus === 'active'
+          ? 'paid'
+          : normalizedSubStatus === 'trialing'
+            ? 'pending'
+            : 'pending';
 
     return {
       account_id: b.id,
@@ -168,11 +167,6 @@ export async function GET() {
       subscription_status: subscriptionStatus,
       payment_status: paymentStatus,
       failed_payments: null,
-      stripe_onboarding_status: b.stripe_onboarding_status ?? 'not_connected',
-      stripe_connected: Boolean(b.stripe_account_id),
-      stripe_account_id: b.stripe_account_id ? String(b.stripe_account_id) : null,
-      stripe_charges_enabled: Boolean(b.stripe_charges_enabled),
-      stripe_payouts_enabled: Boolean(b.stripe_payouts_enabled),
       started_at: startedAt,
       trial_end: effectiveTrialEndsAt,
       trial_debug: {
@@ -199,6 +193,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
+    platform_billing: 'paddle',
     source_of_truth: subscriptionsProbe.table ?? 'no_subscription_table_found',
     accounts,
   });

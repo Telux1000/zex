@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AdminBadge } from '@/components/admin/AdminBadge';
@@ -9,6 +9,8 @@ import { AdminRowActions } from '@/components/admin/AdminRowActions';
 import { AdminTable, AdminTableHead, AdminTd, AdminTh, AdminTr } from '@/components/admin/AdminTable';
 
 type BillingData = {
+  platform_billing?: 'paddle';
+  source_of_truth?: string;
   accounts: Array<{
     account_id: string;
     account_name: string;
@@ -22,11 +24,6 @@ type BillingData = {
     subscription_status: 'active' | 'trialing' | 'past_due' | 'cancelled' | 'suspended';
     payment_status: 'paid' | 'failed' | 'pending' | 'refunded';
     failed_payments: number | null;
-    stripe_onboarding_status: string;
-    stripe_connected: boolean;
-    stripe_account_id: string | null;
-    stripe_charges_enabled: boolean;
-    stripe_payouts_enabled: boolean;
     started_at: string;
     cancelled_at: string | null;
   }>;
@@ -468,9 +465,7 @@ export function AdminBillingPanel() {
               <AdminBadge tone={paymentTone(selected.payment_status, selected.failed_payments)}>
                 Payment: {toTitle(selected.payment_status)}
               </AdminBadge>
-              <AdminBadge tone="neutral">
-                Stripe: {selected.stripe_connected ? selected.stripe_onboarding_status : 'Not connected'}
-              </AdminBadge>
+              <AdminBadge tone="neutral">Platform SaaS: Paddle</AdminBadge>
             </div>
 
             <section className="mt-6">
@@ -498,16 +493,11 @@ export function AdminBillingPanel() {
               </div>
             </section>
 
-            {selected.stripe_account_id ? (
-              <a
-                href={`https://dashboard.stripe.com/connect/accounts/${selected.stripe_account_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                Open in Stripe <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            ) : null}
+            <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
+              Workspace plans and renewals follow Paddle (webhooks + subscription table:{' '}
+              {data?.source_of_truth ?? '—'}). Merchant card payouts use Stripe Connect in the product app, not
+              here.
+            </p>
           </aside>
         </div>
       ) : null}

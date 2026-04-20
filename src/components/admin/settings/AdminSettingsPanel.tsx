@@ -17,7 +17,8 @@ type SettingsPayload = {
   environment: {
     node_env: string;
     postmark_configured: boolean;
-    stripe_publishable_configured: boolean;
+    paddle_billing_api_configured: boolean;
+    paddle_billing_webhook_configured: boolean;
     app_url_configured: boolean;
   };
   can_edit: boolean;
@@ -284,7 +285,7 @@ function PlatformTab({
       </Field>
       <Field
         label="Default plan for new accounts"
-        description="Billing plan stored on new subscriber profiles at signup (Stripe price IDs still come from environment)."
+        description="Billing plan stored on new subscriber profiles at signup (Paddle catalog price IDs come from environment / admin defaults)."
       >
         <select
           className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
@@ -659,7 +660,7 @@ function BillingTab({
       </Field>
       <p className="mt-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
         Display prices (cents / month){' '}
-        <span className="font-normal text-zinc-500">— leave empty to use built-in defaults. Stripe checkout still uses env price IDs.</span>
+        <span className="font-normal text-zinc-500">— leave empty to use built-in defaults. Paddle checkout uses NEXT_PUBLIC_PADDLE_PRICE_* env vars.</span>
       </p>
       <Field label="Starter (cents)" description="Shown on subscriber billing page when set.">
         <input
@@ -828,8 +829,12 @@ function EnvironmentTab({
         {environment.postmark_configured ? 'Server token present' : 'Not configured'}
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">Stripe publishable key</span>:{' '}
-        {environment.stripe_publishable_configured ? 'Set' : 'Missing'}
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">Paddle Billing API key</span>:{' '}
+        {environment.paddle_billing_api_configured ? 'Set' : 'Missing'}
+      </p>
+      <p className="text-zinc-600 dark:text-zinc-400">
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">Paddle Billing webhook secret</span>:{' '}
+        {environment.paddle_billing_webhook_configured ? 'Set' : 'Missing'}
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
         <span className="font-medium text-zinc-800 dark:text-zinc-200">App URL</span>:{' '}

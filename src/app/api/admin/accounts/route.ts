@@ -17,7 +17,7 @@ const ACCOUNTS_LIMIT = 250;
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 async function loadSubscriptionRows(admin: NonNullable<ReturnType<typeof getSupabaseServiceAdmin>>) {
-  const candidates = ['subscriptions', 'billing_subscriptions', 'stripe_subscriptions'];
+  const candidates = ['subscriptions', 'billing_subscriptions'];
   for (const table of candidates) {
     const res = await admin.from(table).select('*').limit(5000);
     if (res.error) {
