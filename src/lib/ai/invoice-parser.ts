@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { parsedInvoiceSchema, type ParsedInvoice } from '@/lib/validations/invoice';
 import {
   INVOICE_PARSER_SYSTEM,
@@ -19,8 +19,6 @@ import { extractDueDateIsoFromInvoiceUserMessage } from '@/lib/invoices/extract-
 import { filterWizardExtractAgainstUserText } from '@/lib/invoices/conversational-invoice-wizard/wizard-extract-guardrails';
 import { tryParseDeterministicWizardLineItems } from '@/lib/invoices/conversational-invoice-wizard/wizard-line-items-deterministic';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
 /**
  * Fetches and normalizes invoice-shaped JSON from the model (shared by strict parse and wizard extract).
  * @param currencyDetectionSource optional text for currency hints (e.g. raw user message when `userContent` includes draft context).
@@ -29,7 +27,7 @@ export async function fetchInvoiceAiNormalizedJson(
   userContent: string,
   opts?: { currencyDetectionSource?: string }
 ): Promise<Record<string, unknown>> {
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: INVOICE_PARSER_SYSTEM },

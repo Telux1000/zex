@@ -2,4 +2,6 @@ node_modules
 .next
 .env
 .env.local
+.env*.bak*
+.env.local.bak*
 .DS_Store

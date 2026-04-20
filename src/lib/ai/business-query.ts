@@ -1,9 +1,7 @@
-import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { BUSINESS_QUERY_SYSTEM, businessQueryUser } from '@/lib/ai/prompts/business-query';
 import type { DashboardFinancialRange } from '@/lib/dashboard/date-range';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 export type BusinessQueryType =
   | 'overdue_invoices'
@@ -35,7 +33,7 @@ export async function resolveBusinessQuery(
   businessId: string,
   financialWindow?: DashboardFinancialRange | null
 ): Promise<BusinessQueryResult> {
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: BUSINESS_QUERY_SYSTEM },

@@ -1,10 +1,8 @@
-import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { INSIGHTS_ANALYSIS_SYSTEM, insightsAnalysisUser } from '@/lib/ai/prompts/insights';
 import type { AiInsight } from '@/lib/database.types';
 import type { DashboardFinancialRange } from '@/lib/dashboard/date-range';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 export interface InsightInput {
   type: string;
@@ -81,7 +79,7 @@ export async function generateInsights(
     revenue_in_dashboard_period: revenue_in_dashboard_period,
   };
 
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: INSIGHTS_ANALYSIS_SYSTEM },

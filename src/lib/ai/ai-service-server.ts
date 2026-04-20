@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import {
   buildActivityContext,
   generateActivityIntelligence,
@@ -407,10 +407,8 @@ async function generateActivityIntelligenceOpenAI(
     `Context JSON:\n${JSON.stringify(context)}`,
   ].join('\n');
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
   const completion = await withTimeout(
-    openai.chat.completions.create({
+    getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: system },

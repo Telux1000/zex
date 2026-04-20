@@ -1,8 +1,6 @@
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
 import type { ParsedInvoice } from '@/lib/validations/invoice';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 const VISION_SYSTEM = `You are an OCR and invoice extraction assistant. Extract all text from this image (screenshot, document, or email). 
 Format as a single block of text that could be used to create an invoice: client/customer name, line items with quantities and prices, due date if mentioned, and any notes. 
@@ -12,7 +10,7 @@ async function extractVisionInvoiceText(imageContent: {
   type: 'image_url';
   image_url: { url: string };
 }): Promise<string> {
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       { role: 'system', content: VISION_SYSTEM },

@@ -1,8 +1,6 @@
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
 import type { ParsedInvoice } from '@/lib/validations/invoice';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 /**
  * Voice pipeline: audio → Whisper transcription → AI invoice parser → ParsedInvoice
@@ -15,7 +13,7 @@ export async function transcribeAndParseInvoice(audioBuffer: Buffer): Promise<{
     type: 'audio/webm',
   });
 
-  const transcription = await openai.audio.transcriptions.create({
+  const transcription = await getOpenAI().audio.transcriptions.create({
     file,
     model: 'whisper-1',
     response_format: 'text',

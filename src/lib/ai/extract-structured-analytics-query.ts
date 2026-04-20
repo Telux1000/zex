@@ -1,14 +1,12 @@
-import OpenAI from 'openai';
 import {
   StructuredAnalyticsQuerySchema,
   type StructuredAnalyticsQuery,
 } from '@/lib/analytics/structured-analytics-query.types';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import {
   FINANCIAL_ANALYTICS_ASSISTANT_SYSTEM,
   financialAnalyticsAssistantUser,
 } from '@/lib/ai/prompts/financial-analytics-assistant';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 /**
  * Turn natural language into a validated structured analytics query (no SQL, no numbers).
@@ -18,7 +16,7 @@ export async function extractStructuredAnalyticsQuery(
   question: string,
   options?: { workspaceTimezone?: string | null }
 ): Promise<StructuredAnalyticsQuery> {
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: FINANCIAL_ANALYTICS_ASSISTANT_SYSTEM },

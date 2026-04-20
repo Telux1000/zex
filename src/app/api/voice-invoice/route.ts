@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
 import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
 import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
 
 function inferTaxPercentFromText(text: string): number {
   const lower = text.toLowerCase();
@@ -82,7 +78,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing OpenAI API key' }, { status: 500 });
     }
 
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAI().audio.transcriptions.create({
       model: 'whisper-1',
       file: file as any,
       response_format: 'text',

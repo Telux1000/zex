@@ -1,9 +1,7 @@
-import OpenAI from 'openai';
 import { z } from 'zod';
 import type { PaymentsNaturalRangeSpec } from '@/lib/analytics/payments-received-time-range';
+import { getOpenAI } from '@/lib/ai/openai-server';
 import { PAYMENTS_TIME_INTENT_SYSTEM, paymentsTimeIntentUser } from '@/lib/ai/prompts/payments-time-intent';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 const Weekday = z.enum([
   'monday',
@@ -54,7 +52,7 @@ export type PaymentsTimeIntentExtraction =
  * Map natural language → validated structured range spec (no absolute dates).
  */
 export async function extractPaymentsTimeIntent(question: string): Promise<PaymentsTimeIntentExtraction> {
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: PAYMENTS_TIME_INTENT_SYSTEM },
