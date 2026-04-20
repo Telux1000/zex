@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
 import { logActivity } from '@/lib/activity';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getStripe } from '@/lib/stripe';

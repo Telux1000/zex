@@ -1,17 +1,25 @@
-import Stripe from 'stripe';
+type StripeClient = InstanceType<typeof import('stripe').default>;
 
-let stripeSingleton: Stripe | null = null;
+let stripeSingleton: StripeClient | null = null;
 
 function resolveStripeSecretKey(): string | null {
-  const key = process.env.STRIPE_SECRET_KEY?.trim();
-  return key || null;
+  const raw = process.env.STRIPE_SECRET_KEY;
+  if (raw == null || typeof raw !== 'string') return null;
+  const key = raw.trim();
+  if (!key) return null;
+  return key;
 }
 
-/** Lazily construct Stripe; returns null when the secret key is unset (safe at import / build time). */
-export function getStripeOrNull(): Stripe | null {
+/**
+ * Lazily load the Stripe SDK and construct the client only when a secret key exists.
+ * Avoids `new Stripe()` during module init (Stripe v17+ throws if the key is missing).
+ */
+export function getStripeOrNull(): StripeClient | null {
   const key = resolveStripeSecretKey();
   if (!key) return null;
   if (!stripeSingleton) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Stripe = require('stripe') as typeof import('stripe').default;
     stripeSingleton = new Stripe(key, { typescript: true });
   }
   return stripeSingleton;
@@ -22,7 +30,7 @@ export function getStripeOrNull(): Stripe | null {
  * Throws only when called without STRIPE_SECRET_KEY — never at module import time
  * (so `next build` succeeds when the key is absent).
  */
-export function getStripe(): Stripe {
+export function getStripe(): StripeClient {
   const stripe = getStripeOrNull();
   if (!stripe) {
     throw new Error('STRIPE_SECRET_KEY is not configured');
