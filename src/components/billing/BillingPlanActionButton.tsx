@@ -25,7 +25,7 @@ export function BillingPlanActionButton({
   cta: string;
   disabled: boolean;
   popular: boolean;
-  /** When true (lapsed subscription), start Stripe Checkout instead of PATCH plan. */
+  /** When true (lapsed subscription), start Paddle checkout instead of PATCH plan. */
   requiresPayment?: boolean;
   embeddedInPricingCard?: boolean;
   trialSecondaryStyle?: boolean;
@@ -84,7 +84,7 @@ export function BillingPlanActionButton({
       <button
         type="button"
         disabled={inactive}
-        title={payBlocked ? 'This plan needs a Stripe price ID in environment configuration.' : undefined}
+        title={payBlocked ? 'This plan needs a Paddle catalog price ID in environment configuration.' : undefined}
         onClick={onClick}
         className={cn(
           pricingCardSecondaryCtaClassName,
@@ -101,7 +101,7 @@ export function BillingPlanActionButton({
     <button
       type="button"
       disabled={inactive}
-      title={payBlocked ? 'This plan needs a Stripe price ID in environment configuration.' : undefined}
+      title={payBlocked ? 'This plan needs a Paddle catalog price ID in environment configuration.' : undefined}
       onClick={onClick}
       className={cn(
         'inline-flex w-full items-center justify-center py-2.5 text-center text-sm font-semibold',

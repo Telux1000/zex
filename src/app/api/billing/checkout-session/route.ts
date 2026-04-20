@@ -65,18 +65,22 @@ export async function POST(req: Request) {
     .maybeSingle();
   const prof = ownerProfile as {
     billing_plan?: unknown;
+    /** Legacy column name; stores Paddle catalog price id (`pri_*`). */
     selected_stripe_price_id?: string | null;
     billing_interval?: string | null;
   } | null;
 
-  const lockedPrice =
+  const lockedCatalogPriceId =
     prof && normalizeBillingPlan(prof.billing_plan) === plan && prof.selected_stripe_price_id?.trim()
       ? prof.selected_stripe_price_id.trim()
       : '';
 
   const interval = normalizePlanBillingInterval(prof?.billing_interval) ?? 'monthly';
   const priceId =
-    lockedPrice || catalogPriceIdForPlanInterval(plan, interval) || pricing.catalogPriceId?.trim() || '';
+    lockedCatalogPriceId ||
+    catalogPriceIdForPlanInterval(plan, interval) ||
+    pricing.catalogPriceId?.trim() ||
+    '';
 
   if (!priceId) {
     return NextResponse.json(

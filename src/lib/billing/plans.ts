@@ -13,7 +13,7 @@ export type PricingPlan = {
   catalogPriceId: string | null;
   catalogPriceIdMonthly?: string | null;
   catalogPriceIdYearly?: string | null;
-  /** True = no paid subscription / no Stripe trial for this tier (e.g. Starter). */
+  /** True = no paid subscription / no trial checkout for this tier (e.g. Starter). Paddle handles paid tiers. */
   isFree: boolean;
   /** Whether to show the secondary “Start N-day trial” action on pricing cards. */
   showTrialCTA: boolean;

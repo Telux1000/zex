@@ -5,6 +5,7 @@ import { logActivity } from '@/lib/activity';
 import { logAuditEvent } from '@/lib/audit-log';
 import { getStripe } from '@/lib/stripe';
 import { evaluateStripeConnectAccount } from '@/lib/stripe-connect';
+import { isStripeConnectRestApiEnabled } from '@/lib/integrations/stripe-connect/connect-rest-enabled';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { paymentAmountInBase } from '@/lib/invoices/fx-snapshot';
@@ -39,8 +40,13 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    // Platform SaaS subscriptions use Paddle (`/api/webhooks/paddle`). This handler is Stripe Connect + invoice card payments only.
-    if (session.mode !== 'subscription') {
+    // Platform SaaS subscriptions use Paddle (`/api/webhooks/paddle`).
+    if (session.mode === 'subscription') {
+      return NextResponse.json({ received: true, ignored: 'platform_subscription_checkout' });
+    }
+
+    // Invoice card checkouts (Stripe Connect / payment links) only.
+    {
     const invoiceId = session.metadata?.invoice_id;
     const businessId = session.metadata?.business_id;
     if (!invoiceId || !businessId) {
@@ -211,7 +217,7 @@ export async function POST(req: Request) {
     }
   }
 
-  if (event.type === 'account.updated') {
+  if (event.type === 'account.updated' && isStripeConnectRestApiEnabled()) {
     const account = event.data.object as Stripe.Account;
     const businessId = account.metadata?.business_id;
     if (businessId) {

@@ -254,7 +254,7 @@ export default async function BillingPaymentsPage({
           </div>
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
             {canSwitchPlan
-              ? 'Pay securely with Stripe. Your card is saved to your Stripe customer for renewals.'
+              ? 'Pay securely with Paddle. Subscription renewals are handled in your Paddle customer billing.'
               : 'The workspace owner manages subscription billing.'}
           </p>
           {canSwitchPlan ? (

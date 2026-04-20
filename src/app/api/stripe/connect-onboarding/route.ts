@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getStripe } from '@/lib/stripe';
+import { isStripeConnectRestApiEnabled } from '@/lib/integrations/stripe-connect/connect-rest-enabled';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 const CONNECT_RETURN_URL =
@@ -16,6 +16,19 @@ function toAbsoluteUrl(input: string): string {
 
 export async function POST() {
   try {
+    if (!isStripeConnectRestApiEnabled()) {
+      return NextResponse.json(
+        {
+          error: 'Stripe Connect is disabled for this deployment.',
+          code: 'stripe_connect_disabled',
+          message: 'Set STRIPE_CONNECT_ENABLED=true to enable merchant card payouts via Stripe Connect.',
+        },
+        { status: 503 }
+      );
+    }
+
+    const { getStripe } = await import('@/lib/stripe');
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -114,4 +127,3 @@ export async function POST() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

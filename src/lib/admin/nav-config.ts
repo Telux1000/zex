@@ -23,7 +23,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: '/admin', label: 'Overview', description: 'Console home and shortcuts.', icon: LayoutDashboard },
   { href: '/admin/accounts', label: 'Accounts', description: 'Subscriber businesses and usage.', icon: Building2 },
   { href: '/admin/users', label: 'Users', description: 'Subscriber logins, roles, and access.', icon: UserCircle },
-  { href: '/admin/billing', label: 'Billing', description: 'Plans, payments, Stripe sync.', icon: CreditCard },
+  { href: '/admin/billing', label: 'Billing', description: 'Plans, payments, Paddle subscriptions.', icon: CreditCard },
   { href: '/admin/support', label: 'Support', description: 'Support tickets and triage.', icon: LifeBuoy },
   { href: '/admin/analytics', label: 'Analytics', description: 'Adoption and platform metrics.', icon: BarChart3 },
   {

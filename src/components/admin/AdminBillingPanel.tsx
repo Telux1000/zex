@@ -156,7 +156,7 @@ export function AdminBillingPanel() {
     void load();
   }, [load]);
 
-  async function syncStripe(accountId: string) {
+  async function syncBillingAck(accountId: string) {
     setSyncing(accountId);
     try {
       await fetch('/api/admin/billing/sync', {
@@ -388,7 +388,8 @@ export function AdminBillingPanel() {
                         { divider: true },
                         {
                           label: 'Change plan',
-                          onClick: () => setActionMsg(`Plan changes are handled in Stripe for ${a.account_name}.`),
+                          onClick: () =>
+                            setActionMsg(`Plan changes for ${a.account_name} are managed via Paddle (customer billing portal or support).`),
                         },
                         {
                           label: a.subscription_status === 'suspended' ? 'Resume subscription' : 'Pause subscription',
@@ -403,11 +404,11 @@ export function AdminBillingPanel() {
                           label: 'Cancel subscription',
                           danger: true,
                           onClick: () =>
-                            setActionMsg(`Cancellation is restricted here; complete cancellation flow in Stripe for ${a.account_name}.`),
+                            setActionMsg(`Cancellation is restricted here; complete cancellation in Paddle or via support for ${a.account_name}.`),
                         },
                         {
-                          label: syncing === a.account_id ? 'Syncing…' : 'Sync Stripe data',
-                          onClick: () => void syncStripe(a.account_id),
+                          label: syncing === a.account_id ? 'Syncing…' : 'Ack billing sync',
+                          onClick: () => void syncBillingAck(a.account_id),
                           disabled: syncing === a.account_id,
                         },
                       ]}
@@ -480,7 +481,7 @@ export function AdminBillingPanel() {
                   {selected.payment_status === 'paid'
                     ? `Latest charge succeeded (${formatCurrency(selected.amount_cents)}).`
                     : selected.payment_status === 'failed'
-                      ? 'Latest charge failed. Follow up in Stripe for detailed failure reason.'
+                      ? 'Latest charge failed. Follow up in Paddle or your payment provider for details.'
                       : 'No settled charge captured yet.'}
                 </div>
               </div>
