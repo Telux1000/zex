@@ -12,6 +12,8 @@ import {
   parseCustomerReminderSettings,
   serializeCustomerReminderSettings,
 } from '@/lib/invoices/reminder-settings';
+import { canHardDeleteCustomer, hardDeleteCustomer } from '@/lib/customers/customer-lifecycle';
+import { assertCustomerLifecycleAccess } from '@/lib/customers/customer-lifecycle-guard';
 
 export async function GET(
   _req: Request,
@@ -38,7 +40,11 @@ export async function GET(
     .single();
   if (!business) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  return NextResponse.json(customer);
+  const hardDelete = await canHardDeleteCustomer(supabase, id);
+  return NextResponse.json({
+    ...customer,
+    canHardDeleteCustomer: hardDelete,
+  });
 }
 
 export async function PATCH(
@@ -228,32 +234,25 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const { data: customer } = await supabase
-    .from('customers')
-    .select('id, business_id, name, company')
-    .eq('id', id)
-    .single();
+  const access = await assertCustomerLifecycleAccess(supabase, id, user.id);
+  if (!access.ok) return access.response;
 
-  if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const { data: business } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('id', customer.business_id)
-    .eq('owner_id', user.id)
-    .single();
-  if (!business) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-  const { error } = await supabase.from('customers').delete().eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const customerName = String((customer as any).company || (customer as any).name || id);
-  await createActivity(supabase, {
-    business_id: String((business as any).id),
-    eventType: 'customer_deleted',
-    title: `Customer ${customerName} deleted`,
-    description: 'Customer record removed',
-    entityType: 'customer',
-    entityId: String(id),
+  const actorName = (await resolveActorDisplayName(supabase, user.id)) ?? user.email ?? 'User';
+  const decision = await hardDeleteCustomer({
+    supabase,
+    customerId: id,
+    actorUserId: user.id,
+    actorName,
   });
+  if (!decision.allowed) {
+    return NextResponse.json(
+      {
+        error:
+          'Customer cannot be permanently deleted because billing records exist. Archive or anonymize this customer instead.',
+        blockers: decision.blockers,
+      },
+      { status: 409 }
+    );
+  }
   return NextResponse.json({ ok: true });
 }

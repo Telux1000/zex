@@ -201,9 +201,31 @@ export default function LandingPage() {
         <footer className="border-t border-[var(--sidebar-border)] py-8">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 sm:flex-row">
             <AppLogoInline href="/" size="sm" />
-            <p className="text-xs text-slate-500 dark:text-slate-500">
-              © {new Date().getFullYear()} Zenzex. All rights reserved.
-            </p>
+            <div className="flex flex-col items-center gap-3 sm:items-end">
+              <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500 dark:text-slate-500">
+                <Link
+                  href="/terms"
+                  className="transition-colors hover:text-slate-700 dark:hover:text-slate-300"
+                >
+                  Terms of Service
+                </Link>
+                <Link
+                  href="/privacy"
+                  className="transition-colors hover:text-slate-700 dark:hover:text-slate-300"
+                >
+                  Privacy Policy
+                </Link>
+                <Link
+                  href="/refunds"
+                  className="transition-colors hover:text-slate-700 dark:hover:text-slate-300"
+                >
+                  Refund Policy
+                </Link>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-500">
+                © {new Date().getFullYear()} Zenzex. All rights reserved.
+              </p>
+            </div>
           </div>
         </footer>
       </main>

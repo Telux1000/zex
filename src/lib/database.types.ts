@@ -226,6 +226,14 @@ export interface Customer {
   country_code?: string | null;
   phone: string | null;
   notes: string | null;
+  stripe_customer_id?: string | null;
+  is_active?: boolean;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archive_reason?: string | null;
+  anonymized_at?: string | null;
+  anonymized_by?: string | null;
+  deletion_locked_reason?: string | null;
   /** automaticReminders + reminderTiming — defaults for invoices that follow customer rules */
   reminder_settings?: Json | null;
   created_at: string;
@@ -393,6 +401,11 @@ export type AuditAction =
   | 'refund_failed'
   | 'payment_plan_created'
   | 'payment_plan_updated'
+  | 'archived'
+  | 'anonymized'
+  | 'restored'
+  | 'hard_delete_attempted'
+  | 'hard_deleted'
   | 'user_invited'
   | 'invite_resent'
   | 'invite_revoked'

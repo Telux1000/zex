@@ -50,6 +50,11 @@ export type AuditAction =
   | 'refund_failed'
   | 'payment_plan_created'
   | 'payment_plan_updated'
+  | 'archived'
+  | 'anonymized'
+  | 'restored'
+  | 'hard_delete_attempted'
+  | 'hard_deleted'
   | 'user_invited'
   | 'invite_resent'
   | 'invite_revoked'
@@ -464,6 +469,31 @@ export function formatAuditLog(
           ? `${actor} updated ${customerLabel}'s profile`
           : `${actor} updated a customer profile`;
       }
+      if (action === 'archived') {
+        return customerLabel
+          ? `${actor} archived ${customerLabel}`
+          : `${actor} archived a customer`;
+      }
+      if (action === 'anonymized') {
+        return customerLabel
+          ? `${actor} anonymized ${customerLabel}`
+          : `${actor} anonymized a customer`;
+      }
+      if (action === 'restored') {
+        return customerLabel
+          ? `${actor} restored ${customerLabel}`
+          : `${actor} restored a customer`;
+      }
+      if (action === 'hard_delete_attempted') {
+        return customerLabel
+          ? `${actor} attempted permanent deletion for ${customerLabel}`
+          : `${actor} attempted permanent customer deletion`;
+      }
+      if (action === 'hard_deleted') {
+        return customerLabel
+          ? `${actor} permanently deleted ${customerLabel}`
+          : `${actor} permanently deleted a customer`;
+      }
       return `${actor} performed an action`;
     }
     case 'payment': {
@@ -619,6 +649,11 @@ export const AUDIT_ACTION_FILTER_OPTIONS: { value: AuditAction; label: string }[
   { value: 'refund_failed', label: 'Refund failed' },
   { value: 'payment_plan_created', label: 'Payment plan created' },
   { value: 'payment_plan_updated', label: 'Payment plan updated' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'anonymized', label: 'Anonymized' },
+  { value: 'restored', label: 'Restored' },
+  { value: 'hard_delete_attempted', label: 'Hard delete attempted' },
+  { value: 'hard_deleted', label: 'Hard deleted' },
   { value: 'user_invited', label: 'User invited' },
   { value: 'invite_resent', label: 'Invite resent' },
   { value: 'invite_revoked', label: 'Invite revoked' },

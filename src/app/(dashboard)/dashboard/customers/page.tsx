@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import CustomersTable from '@/components/customers/CustomersTable';
+import CustomersTable from '@/components/customers/CustomersTableStable';
 import {
   getPrimaryBusinessForUser,
   getServerSupabaseUser,
@@ -9,7 +9,7 @@ import { redirectToOnboardingIfCoreIncomplete } from '@/lib/onboarding/core-setu
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams?: { add?: string; return_to?: string };
+  searchParams?: { add?: string; return_to?: string; tab?: string; view?: string };
 }) {
   const { supabase, user } = await getServerSupabaseUser();
   if (!user) return null;
@@ -32,26 +32,61 @@ export default async function CustomersPage({
     .eq('id', user.id)
     .maybeSingle();
 
-  const { count: customerCount } = await supabase
-    .from('customers')
-    .select('id', { count: 'exact', head: true })
-    .eq('business_id', business.id);
+  let customerCount = 0;
+  {
+    const scopedCount = await supabase
+      .from('customers')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', business.id)
+      .is('archived_at', null)
+      .or('is_active.is.null,is_active.eq.true');
+    if (!scopedCount.error) {
+      customerCount = scopedCount.count ?? 0;
+    } else {
+      const fallbackCount = await supabase
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .eq('business_id', business.id);
+      customerCount = fallbackCount.count ?? 0;
+    }
+  }
 
   redirectToOnboardingIfCoreIncomplete({
     profile: profileRow as { full_name?: string | null; onboarding_completed_at?: string | null } | null,
     business,
-    customerCount: customerCount ?? 0,
+    customerCount,
   });
 
-  const { data: customers } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('business_id', business.id)
-    .order('created_at', { ascending: false });
+  const tab = searchParams?.tab === 'archived' ? 'archived' : 'active';
+  let customers: import('@/lib/database.types').Customer[] | null = null;
+  {
+    let scopedQuery = supabase
+      .from('customers')
+      .select('*')
+      .eq('business_id', business.id)
+      .is('anonymized_at', null);
+    scopedQuery =
+      tab === 'archived'
+        ? scopedQuery.not('archived_at', 'is', null)
+        : scopedQuery.is('archived_at', null).or('is_active.is.null,is_active.eq.true');
+    const scoped = await scopedQuery.order('created_at', { ascending: false });
+    if (!scoped.error) {
+      customers = scoped.data ?? [];
+    } else {
+      const fallback = await supabase
+        .from('customers')
+        .select('*')
+        .eq('business_id', business.id)
+        .order('created_at', { ascending: false });
+      customers = fallback.data ?? [];
+    }
+  }
 
   const add = searchParams?.add;
   const openAddOnMount = add === '1' || add === 'true';
   const returnToAfterCreate = searchParams?.return_to?.trim() || null;
+  const initialTab = tab;
+  const initialView = searchParams?.view === 'redaction-log' ? 'redaction-log' : 'table';
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -65,6 +100,8 @@ export default async function CustomersPage({
           businessId={business.id}
           companyBaseCurrency={business.currency}
           initialCustomers={customers ?? []}
+          initialTab={initialTab}
+          initialView={initialView}
           openAddOnMount={openAddOnMount}
           returnToAfterCreate={returnToAfterCreate}
         />

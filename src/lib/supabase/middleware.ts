@@ -2,28 +2,37 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { SupabaseCookieToSet } from '@/lib/supabase/cookie-types';
 
+function getSupabasePublicEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!url || !anon) return null;
+  return { url, anon };
+}
+
 export async function updateSession(request: NextRequest) {
+  const env = getSupabasePublicEnv();
+  if (!env) {
+    // Avoid middleware invocation crash when env vars are missing.
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        flowType: 'pkce',
+  const supabase = createServerClient(env.url, env.anon, {
+    auth: {
+      flowType: 'pkce',
+    },
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
       },
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet: SupabaseCookieToSet[]) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options as never)
-          );
-        },
+      setAll(cookiesToSet: SupabaseCookieToSet[]) {
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options as never)
+        );
       },
-    }
-  );
+    },
+  });
 
   await supabase.auth.getUser();
 
