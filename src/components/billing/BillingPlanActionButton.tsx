@@ -25,7 +25,6 @@ export function BillingPlanActionButton({
   billingInterval,
   customerEmail,
   preferInternalTrialAction,
-  userStatus,
 }: {
   targetPlan: BillingPlan;
   cta: string;
@@ -41,7 +40,6 @@ export function BillingPlanActionButton({
   customerEmail?: string | null;
   /** Force non-checkout internal plan/trial action for trial CTA paths. */
   preferInternalTrialAction?: boolean;
-  userStatus?: 'trialing' | 'active' | 'past_due' | 'cancelled' | 'trial_expired';
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -64,7 +62,6 @@ export function BillingPlanActionButton({
           pricing.isFree || preferInternalTrialAction
             ? 'update_internal_plan'
             : 'open_paddle_checkout',
-        userStatus: userStatus ?? 'unknown',
         priceId: resolvedPriceId,
         customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
