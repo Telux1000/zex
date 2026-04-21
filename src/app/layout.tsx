@@ -30,10 +30,31 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const serverTheme = await getServerUserTheme();
+  const initialSurface = serverTheme === 'dark' ? '#0c111d' : '#f6f8fc';
+  const initialScheme = serverTheme === 'dark' ? 'dark' : 'light';
 
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
+        <meta name="color-scheme" content="light dark" />
+        <style>{`
+          html { background: ${initialSurface}; color-scheme: ${initialScheme}; }
+          html.dark { background: #0c111d; color-scheme: dark; }
+          @media (prefers-color-scheme: dark) {
+            html { background: #0c111d; color-scheme: dark; }
+          }
+          .theme-preload *, .theme-preload *::before, .theme-preload *::after {
+            transition: none !important;
+            animation: none !important;
+          }
+          body { background: transparent; }
+        `}</style>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{document.documentElement.classList.add('theme-preload');requestAnimationFrame(function(){requestAnimationFrame(function(){document.documentElement.classList.remove('theme-preload');});});}catch(e){}})();",
+          }}
+        />
         <ThemeBootScript serverTheme={serverTheme} />
       </head>
       <body className="min-h-screen antialiased font-sans">
