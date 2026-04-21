@@ -258,14 +258,28 @@ export default async function BillingPaymentsPage({
           </div>
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
             {canSwitchPlan
-              ? 'Pay securely with Paddle. Subscription renewals are handled in your Paddle customer billing.'
+              ? requiresPayment
+                ? 'Pay securely with Paddle to restore access. Subscription renewals are handled in your Paddle customer billing.'
+                : planCard.isFree
+                  ? 'Add a payment method when you move to a paid plan.'
+                  : 'Your saved payment methods are managed in Paddle customer billing.'
               : 'The workspace owner manages subscription billing.'}
           </p>
           {canSwitchPlan ? (
             <div className="mt-4">
-              <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval} customerEmail={user.email}>
-                {requiresPayment ? 'Pay & restore access' : 'Add payment method'}
-              </BillingCheckoutButton>
+              {requiresPayment ? (
+                <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval} customerEmail={user.email}>
+                  Pay & restore access
+                </BillingCheckoutButton>
+              ) : planCard.isFree ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No payment method is needed on Starter. Choose a paid plan below to add one at checkout.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  For active subscriptions, open your latest Paddle receipt or billing email to manage card details.
+                </p>
+              )}
             </div>
           ) : null}
         </article>
