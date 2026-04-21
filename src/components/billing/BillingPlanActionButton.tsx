@@ -70,12 +70,15 @@ export function BillingPlanActionButton({
         if (!res.ok || !j.url) {
           if (
             typeof j.error === 'string' &&
-            j.error.includes('Subscription billing is not configured') &&
+            (j.error.includes('Subscription billing is not configured') ||
+              j.error.toLowerCase().includes('lacks permission') ||
+              j.error.toLowerCase().includes("aren't permitted") ||
+              j.error.toLowerCase().includes('not authorized')) &&
             resolvedPriceId
           ) {
             if (isDev) {
               console.warn(
-                '[PricingCTA][Billing] Falling back to frontend Paddle checkout because server billing API key is missing.'
+                '[PricingCTA][Billing] Falling back to frontend Paddle checkout because server-side Paddle API access is unavailable.'
               );
             }
             await openPaddleCheckout(resolvedPriceId);

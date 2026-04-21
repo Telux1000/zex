@@ -113,7 +113,11 @@ export async function POST(req: Request) {
   try {
     customerId = await getOrCreatePaddleCustomer(paddle, user.email.trim(), user.id);
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Could not create billing customer';
+    const raw = e instanceof Error ? e.message : 'Could not create billing customer';
+    const lowered = raw.toLowerCase();
+    const message = lowered.includes("aren't permitted") || lowered.includes('not permitted')
+      ? 'Paddle server API key lacks permission for customer operations. Use a valid Paddle Billing API key for this environment.'
+      : raw;
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
@@ -130,7 +134,11 @@ export async function POST(req: Request) {
     });
     checkoutUrl = transaction.checkout?.url ?? null;
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Checkout creation failed';
+    const raw = e instanceof Error ? e.message : 'Checkout creation failed';
+    const lowered = raw.toLowerCase();
+    const message = lowered.includes("aren't permitted") || lowered.includes('not permitted')
+      ? 'Paddle server API key lacks permission for transaction checkout. Verify API key type and sandbox/production environment match.'
+      : raw;
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
