@@ -61,35 +61,12 @@ export function BillingPlanActionButton({
     onBusyPlanChange?.(targetPlan);
     try {
       if (!pricing.isFree) {
-        const res = await fetch('/api/billing/checkout-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan: targetPlan, billing_interval: chosenInterval }),
-        });
-        const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
-        if (!res.ok || !j.url) {
-          if (
-            typeof j.error === 'string' &&
-            (j.error.includes('Subscription billing is not configured') ||
-              j.error.toLowerCase().includes('lacks permission') ||
-              j.error.toLowerCase().includes("aren't permitted") ||
-              j.error.toLowerCase().includes('not authorized')) &&
-            resolvedPriceId
-          ) {
-            if (isDev) {
-              console.warn(
-                '[PricingCTA][Billing] Falling back to frontend Paddle checkout because server-side Paddle API access is unavailable.'
-              );
-            }
-            await openPaddleCheckout(resolvedPriceId);
-            return;
-          }
-          const msg = typeof j.error === 'string' ? j.error : 'Could not start checkout.';
+        if (!resolvedPriceId) {
+          const msg = `Missing Paddle price ID for ${chosenInterval} billing on ${targetPlan}.`;
           setErrorMessage(msg);
-          if (isDev) console.error('[PricingCTA][Billing] checkout-session failed', { plan: targetPlan, chosenInterval, msg });
           return;
         }
-        window.location.assign(j.url);
+        await openPaddleCheckout(resolvedPriceId);
         return;
       }
 

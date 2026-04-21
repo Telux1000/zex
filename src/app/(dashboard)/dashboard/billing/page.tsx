@@ -7,6 +7,7 @@ import {
   formatPlanMonthlyPrice,
   formatTrialDaysRemaining,
   normalizeBillingPlan,
+  normalizePlanBillingInterval,
   PRICING_TRIAL_DAYS,
   pricingPlans,
   pricingPromoBannerHeadline,
@@ -102,7 +103,7 @@ export default async function BillingPaymentsPage({
   const profileClient = admin ?? supabase;
   const { data: subscriberProfile } = await profileClient
     .from('profiles')
-    .select('billing_plan, trial_started_at, trial_ends_at, subscription_status, created_at')
+    .select('billing_plan, billing_interval, trial_started_at, trial_ends_at, subscription_status, created_at')
     .eq('id', ownerId)
     .maybeSingle();
 
@@ -118,6 +119,9 @@ export default async function BillingPaymentsPage({
     (subscriberProfile as { trial_started_at?: string | null } | null)?.trial_started_at ?? null;
   const trialEndsRaw =
     (subscriberProfile as { trial_ends_at?: string | null } | null)?.trial_ends_at ?? null;
+  const profileBillingIntervalRaw =
+    (subscriberProfile as { billing_interval?: string | null } | null)?.billing_interval ?? null;
+  const profileBillingInterval = normalizePlanBillingInterval(profileBillingIntervalRaw) ?? 'yearly';
   const profileCreatedAt =
     (subscriberProfile as { created_at?: string | null } | null)?.created_at ?? null;
 
@@ -259,7 +263,7 @@ export default async function BillingPaymentsPage({
           </p>
           {canSwitchPlan ? (
             <div className="mt-4">
-              <BillingCheckoutButton plan={plan}>
+              <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval}>
                 {requiresPayment ? 'Pay & restore access' : 'Add payment method'}
               </BillingCheckoutButton>
             </div>

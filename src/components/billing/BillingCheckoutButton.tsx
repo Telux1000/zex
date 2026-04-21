@@ -1,38 +1,40 @@
 'use client';
 
 import { useState } from 'react';
-import { getPricingPlan, type BillingPlan } from '@/lib/billing/plans';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
+import { getPricingPlan, type BillingPlan, type PlanBillingInterval } from '@/lib/billing/plans';
+import { openPaddleCheckout } from '@/lib/paddle/paddle-browser';
 import { cn } from '@/lib/utils/cn';
 
 /** Opens Paddle Checkout for the given plan (subscription). Owner-only; parent should gate visibility. */
 export function BillingCheckoutButton({
   plan,
+  billingInterval,
   className,
   children,
 }: {
   plan: BillingPlan;
+  billingInterval?: PlanBillingInterval;
   className?: string;
   children: React.ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pricing = getPricingPlan(plan);
-  const priceConfigured = !pricing.isFree && Boolean(pricing.catalogPriceId?.trim());
+  const chosenInterval = billingInterval ?? 'yearly';
+  const resolvedPriceId = catalogPriceIdForPlanInterval(plan, chosenInterval);
+  const priceConfigured = !pricing.isFree && Boolean(resolvedPriceId?.trim());
 
   async function onClick() {
-    if (loading || !priceConfigured) return;
+    if (loading) return;
+    setError(null);
+    if (!priceConfigured || !resolvedPriceId) {
+      setError(`Missing Paddle price ID for ${chosenInterval} billing on ${plan}.`);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch('/api/billing/checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
-      if (!res.ok || !j.url) {
-        window.alert(typeof j.error === 'string' ? j.error : 'Could not start checkout.');
-        return;
-      }
-      window.location.assign(j.url);
+      await openPaddleCheckout(resolvedPriceId);
     } finally {
       setLoading(false);
     }
@@ -47,21 +49,23 @@ export function BillingCheckoutButton({
   }
 
   return (
-    <button
-      type="button"
-      disabled={loading || !priceConfigured}
-      title={
-        !priceConfigured
-          ? 'Set NEXT_PUBLIC_PADDLE_PRICE_* for this plan to enable checkout.'
-          : undefined
-      }
-      onClick={onClick}
-      className={cn(
-        'inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50',
-        className
-      )}
-    >
-      {loading ? 'Redirecting…' : children}
-    </button>
+    <>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onClick}
+        className={cn(
+          'inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50',
+          className
+        )}
+      >
+        {loading ? 'Opening…' : children}
+      </button>
+      {error ? (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="status">
+          {error}
+        </p>
+      ) : null}
+    </>
   );
 }

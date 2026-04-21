@@ -95,6 +95,12 @@ export function OnboardingPricingStep({
     setError(null);
     persistPlanChoice(plan);
     const resolvedPriceId = catalogPriceIdForPlanInterval(plan, billingInterval);
+    if (!resolvedPriceId) {
+      const msg = `Missing Paddle price ID for ${billingInterval} billing on ${plan}.`;
+      setError(msg);
+      if (isDev) console.error('[PricingCTA][Onboarding] missing price id', { plan, billingInterval });
+      return;
+    }
 
     if (isDev) {
       console.info('[PricingCTA][Onboarding] checkout click', {
@@ -109,35 +115,7 @@ export function OnboardingPricingStep({
 
     setLoadingPlan(plan);
     try {
-      const res = await fetch('/api/billing/checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, billing_interval: billingInterval }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
-      if (!res.ok || !j.url) {
-        if (
-          typeof j.error === 'string' &&
-          (j.error.includes('Subscription billing is not configured') ||
-            j.error.toLowerCase().includes('lacks permission') ||
-            j.error.toLowerCase().includes("aren't permitted") ||
-            j.error.toLowerCase().includes('not authorized')) &&
-          resolvedPriceId
-        ) {
-          if (isDev) {
-            console.warn(
-              '[PricingCTA][Onboarding] Falling back to frontend Paddle checkout because server-side Paddle API access is unavailable.'
-            );
-          }
-          await openPaddleCheckout(resolvedPriceId);
-          return;
-        }
-        const msg = typeof j.error === 'string' ? j.error : 'Could not start Paddle checkout.';
-        setError(msg);
-        console.error('[PricingCTA][Onboarding] checkout failed', { plan, billingInterval, msg });
-        return;
-      }
-      window.location.assign(j.url);
+      await openPaddleCheckout(resolvedPriceId);
     } finally {
       setLoadingPlan(null);
     }
