@@ -15,6 +15,7 @@ import {
 } from '@/lib/billing/plans';
 import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
 import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
+import { openPaddleCheckout } from '@/lib/paddle/paddle-browser';
 
 const BILLING_INTERVAL_KEY = 'zenzex-onboarding-billing-interval';
 const SELECTED_PLAN_KEY = 'zenzex-onboarding-selected-plan';
@@ -115,6 +116,19 @@ export function OnboardingPricingStep({
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
       if (!res.ok || !j.url) {
+        if (
+          typeof j.error === 'string' &&
+          j.error.includes('Subscription billing is not configured') &&
+          resolvedPriceId
+        ) {
+          if (isDev) {
+            console.warn(
+              '[PricingCTA][Onboarding] Falling back to frontend Paddle checkout because server billing API key is missing.'
+            );
+          }
+          await openPaddleCheckout(resolvedPriceId);
+          return;
+        }
         const msg = typeof j.error === 'string' ? j.error : 'Could not start Paddle checkout.';
         setError(msg);
         console.error('[PricingCTA][Onboarding] checkout failed', { plan, billingInterval, msg });

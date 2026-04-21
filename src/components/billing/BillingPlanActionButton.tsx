@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils/cn';
 import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
 import { getPricingPlan, type BillingPlan, type PlanBillingInterval } from '@/lib/billing/plans';
+import { openPaddleCheckout } from '@/lib/paddle/paddle-browser';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 
 export function BillingPlanActionButton({
@@ -67,6 +68,19 @@ export function BillingPlanActionButton({
         });
         const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
         if (!res.ok || !j.url) {
+          if (
+            typeof j.error === 'string' &&
+            j.error.includes('Subscription billing is not configured') &&
+            resolvedPriceId
+          ) {
+            if (isDev) {
+              console.warn(
+                '[PricingCTA][Billing] Falling back to frontend Paddle checkout because server billing API key is missing.'
+              );
+            }
+            await openPaddleCheckout(resolvedPriceId);
+            return;
+          }
           const msg = typeof j.error === 'string' ? j.error : 'Could not start checkout.';
           setErrorMessage(msg);
           if (isDev) console.error('[PricingCTA][Billing] checkout-session failed', { plan: targetPlan, chosenInterval, msg });
