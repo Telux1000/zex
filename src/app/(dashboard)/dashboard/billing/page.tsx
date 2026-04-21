@@ -263,7 +263,7 @@ export default async function BillingPaymentsPage({
           </p>
           {canSwitchPlan ? (
             <div className="mt-4">
-              <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval}>
+              <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval} customerEmail={user.email}>
                 {requiresPayment ? 'Pay & restore access' : 'Add payment method'}
               </BillingCheckoutButton>
             </div>
@@ -278,6 +278,7 @@ export default async function BillingPaymentsPage({
         requiresPayment={requiresPayment}
         trialMessagingHeadline={trialMessagingHeadline}
         trialDays={trialDaysConfigured}
+        customerEmail={user.email}
       />
 
       <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5">

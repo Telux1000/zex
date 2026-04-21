@@ -10,11 +10,13 @@ import { cn } from '@/lib/utils/cn';
 export function BillingCheckoutButton({
   plan,
   billingInterval,
+  customerEmail,
   className,
   children,
 }: {
   plan: BillingPlan;
   billingInterval?: PlanBillingInterval;
+  customerEmail?: string | null;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -34,7 +36,7 @@ export function BillingCheckoutButton({
     }
     setLoading(true);
     try {
-      await openPaddleCheckout(resolvedPriceId);
+      await openPaddleCheckout(resolvedPriceId, customerEmail ?? undefined);
     } finally {
       setLoading(false);
     }

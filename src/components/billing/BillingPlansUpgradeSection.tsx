@@ -14,6 +14,7 @@ export function BillingPlansUpgradeSection({
   requiresPayment,
   trialMessagingHeadline,
   trialDays,
+  customerEmail,
 }: {
   plans: PricingPlan[];
   currentPlan: BillingPlan;
@@ -21,6 +22,7 @@ export function BillingPlansUpgradeSection({
   requiresPayment: boolean;
   trialMessagingHeadline: string;
   trialDays: number;
+  customerEmail?: string | null;
 }) {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
   const [busyRowPlan, setBusyRowPlan] = useState<BillingPlan | null>(null);
@@ -83,6 +85,7 @@ export function BillingPlansUpgradeSection({
                   popular
                   requiresPayment={requiresPayment}
                   billingInterval={billingInterval}
+                  customerEmail={customerEmail}
                   embeddedInPricingCard
                   busyRowPlan={busyRowPlan}
                   onBusyPlanChange={setBusyRowPlan}
@@ -97,6 +100,7 @@ export function BillingPlansUpgradeSection({
                     popular={false}
                     requiresPayment={requiresPayment}
                     billingInterval={billingInterval}
+                    customerEmail={customerEmail}
                     embeddedInPricingCard
                     trialSecondaryStyle
                     busyRowPlan={busyRowPlan}

@@ -11,7 +11,9 @@ export type PaddleCheckoutItem = { priceId: string; quantity: number };
 export interface PaddleJs {
   Environment: { set: (env: 'sandbox' | 'production') => void };
   Initialize: (options: { token: string }) => void;
-  Checkout: { open: (options: { items: PaddleCheckoutItem[] }) => void };
+  Checkout: {
+    open: (options: { items: PaddleCheckoutItem[]; customer?: { email?: string } }) => void;
+  };
 }
 
 declare global {
@@ -143,12 +145,13 @@ export function ensurePaddleReady(): Promise<void> {
   return paddleReadyPromise;
 }
 
-export function openPaddleCheckout(priceId: string): Promise<void> {
+export function openPaddleCheckout(priceId: string, customerEmail?: string): Promise<void> {
   const trimmedPriceId = priceId.trim();
   if (!trimmedPriceId) {
     console.error('[Paddle] Cannot open checkout: missing priceId.');
     return Promise.reject(new Error('Missing priceId'));
   }
+  const email = customerEmail?.trim();
 
   return ensurePaddleReady().then(() => {
     const Paddle = window.Paddle;
@@ -160,11 +163,13 @@ export function openPaddleCheckout(priceId: string): Promise<void> {
       console.info('[Paddle] Opening checkout.', {
         environment: getPaddleEnvironment(),
         priceId: trimmedPriceId,
+        customerEmail: email ?? null,
         initialized: Boolean(window.Paddle),
       });
     }
     Paddle.Checkout.open({
       items: [{ priceId: trimmedPriceId, quantity: 1 }],
+      ...(email ? { customer: { email } } : {}),
     });
   });
 }

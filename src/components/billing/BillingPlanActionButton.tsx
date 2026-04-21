@@ -23,6 +23,7 @@ export function BillingPlanActionButton({
   /** When set, all pricing-card actions are disabled; this row shows Saving when it matches. */
   busyRowPlan,
   billingInterval,
+  customerEmail,
 }: {
   targetPlan: BillingPlan;
   cta: string;
@@ -35,6 +36,7 @@ export function BillingPlanActionButton({
   onBusyPlanChange?: (plan: BillingPlan | null) => void;
   busyRowPlan?: BillingPlan | null;
   billingInterval?: PlanBillingInterval;
+  customerEmail?: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,7 @@ export function BillingPlanActionButton({
           setErrorMessage(msg);
           return;
         }
-        await openPaddleCheckout(resolvedPriceId);
+        await openPaddleCheckout(resolvedPriceId, customerEmail ?? undefined);
         return;
       }
 
