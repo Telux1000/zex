@@ -42,23 +42,10 @@ export function BillingPlanActionButton({
   const pricing = getPricingPlan(targetPlan);
   const chosenInterval = billingInterval ?? 'yearly';
   const resolvedPriceId = pricing.isFree ? null : catalogPriceIdForPlanInterval(targetPlan, chosenInterval);
-  const priceConfigured = pricing.isFree || Boolean(resolvedPriceId?.trim());
-  const payBlocked = !priceConfigured;
 
   async function onClick() {
     if (disabled || loading || busyRowPlan != null) return;
     setErrorMessage(null);
-    if (payBlocked) {
-      const msg = `Missing Paddle price ID for ${chosenInterval} billing on ${targetPlan}.`;
-      setErrorMessage(msg);
-      if (isDev) {
-        console.error('[PricingCTA][Billing] blocked: missing price ID', {
-          plan: targetPlan,
-          billingCycle: chosenInterval,
-        });
-      }
-      return;
-    }
     if (isDev) {
       console.info('[PricingCTA][Billing]', {
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
@@ -117,11 +104,6 @@ export function BillingPlanActionButton({
         <button
           type="button"
           disabled={inactive}
-          title={
-            payBlocked
-              ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
-              : undefined
-          }
           onClick={onClick}
           className={cn(
             pricingCardSecondaryCtaClassName,
@@ -145,11 +127,6 @@ export function BillingPlanActionButton({
       <button
         type="button"
         disabled={inactive}
-        title={
-          payBlocked
-            ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
-            : undefined
-        }
         onClick={onClick}
         className={cn(
           'inline-flex w-full items-center justify-center py-2.5 text-center text-sm font-semibold',

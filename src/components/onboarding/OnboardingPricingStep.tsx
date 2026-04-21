@@ -94,11 +94,6 @@ export function OnboardingPricingStep({
     setError(null);
     persistPlanChoice(plan);
     const resolvedPriceId = catalogPriceIdForPlanInterval(plan, billingInterval);
-    if (!resolvedPriceId) {
-      setError('This plan is missing a Paddle price ID for the selected billing interval.');
-      console.error('[PricingCTA][Onboarding] Missing priceId.', { plan, billingInterval });
-      return;
-    }
 
     if (isDev) {
       console.info('[PricingCTA][Onboarding] checkout click', {
