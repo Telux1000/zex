@@ -98,9 +98,8 @@ export function BillingPlanActionButton({
     }
   }
 
-  const globalBusy = busyRowPlan != null;
   const rowShowsSaving = loading || busyRowPlan === targetPlan;
-  const inactive = disabled || globalBusy || loading;
+  const inactive = disabled || rowShowsSaving;
 
   if (trialSecondaryStyle) {
     return (
