@@ -125,6 +125,7 @@ export function OnboardingPricingStep({
         plan,
         billingCycle: billingInterval,
         priceId: resolvedPriceId,
+        customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
       });
     }

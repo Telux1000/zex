@@ -56,6 +56,7 @@ export function BillingPlanActionButton({
         plan: targetPlan,
         billingCycle: chosenInterval,
         priceId: resolvedPriceId,
+        customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
       });
     }

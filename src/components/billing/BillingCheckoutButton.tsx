@@ -22,6 +22,7 @@ export function BillingCheckoutButton({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isDev = process.env.NODE_ENV !== 'production';
   const pricing = getPricingPlan(plan);
   const chosenInterval = billingInterval ?? 'yearly';
   const resolvedPriceId = catalogPriceIdForPlanInterval(plan, chosenInterval);
@@ -33,6 +34,16 @@ export function BillingCheckoutButton({
     if (!priceConfigured || !resolvedPriceId) {
       setError(`Missing Paddle price ID for ${chosenInterval} billing on ${plan}.`);
       return;
+    }
+    if (isDev) {
+      console.info('[PricingCTA][BillingCheckoutButton] open', {
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
+        plan,
+        billingCycle: chosenInterval,
+        priceId: resolvedPriceId,
+        customerEmail: customerEmail ?? null,
+        paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
+      });
     }
     setLoading(true);
     try {
