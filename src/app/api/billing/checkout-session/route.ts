@@ -18,7 +18,21 @@ import { getPaddleBillingClient } from '@/lib/billing/paddle-client';
 export async function POST(req: Request) {
   const paddle = getPaddleBillingClient();
   if (!paddle) {
-    return NextResponse.json({ error: 'Subscription billing is not configured.' }, { status: 503 });
+    const isDev = process.env.NODE_ENV !== 'production';
+    const diagnostics = isDev
+      ? {
+          paddle_billing_api_key_present: Boolean(process.env.PADDLE_BILLING_API_KEY?.trim()),
+          paddle_billing_environment: process.env.PADDLE_BILLING_ENVIRONMENT?.trim() || 'unset',
+          next_public_paddle_client_token_present: Boolean(process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN?.trim()),
+        }
+      : undefined;
+    return NextResponse.json(
+      {
+        error: 'Subscription billing is not configured.',
+        ...(diagnostics ? { diagnostics } : {}),
+      },
+      { status: 503 }
+    );
   }
 
   const supabase = await createClient();
