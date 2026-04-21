@@ -56,7 +56,7 @@ export function BillingPlansUpgradeSection({
           currentPlanId={currentPlan}
           renderDualCta={(option) => {
             const current = option.id === currentPlan;
-            const isPaidPlan = option.isFree !== true;
+            const isPaidPlan = option.id !== 'starter';
             const primaryCta = requiresPayment
               ? current
                 ? 'Pay & activate'
