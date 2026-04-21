@@ -56,14 +56,18 @@ export function BillingPlansUpgradeSection({
           currentPlanId={currentPlan}
           renderDualCta={(option) => {
             const current = option.id === currentPlan;
+            const isPaidPlan = option.isFree !== true;
             const primaryCta = requiresPayment
               ? current
                 ? 'Pay & activate'
                 : pricingCardPrimaryCtaLabel(option.id)
               : current
-                ? 'Current plan'
+                ? isPaidPlan
+                  ? 'Upgrade now'
+                  : 'Current plan'
                 : pricingCardPrimaryCtaLabel(option.id);
-            const planButtonDisabled = requiresPayment ? false : current;
+            // Keep paid-plan primary CTA clickable during trial/current plan so users can convert early.
+            const planButtonDisabled = current && !requiresPayment && !isPaidPlan;
 
             if (!canSwitchPlan) {
               return {
@@ -95,7 +99,7 @@ export function BillingPlansUpgradeSection({
                 option.showTrialCTA === true ? (
                   <BillingPlanActionButton
                     targetPlan={option.id}
-                    cta={secondaryLabel}
+                    cta={current && !requiresPayment ? 'Current trial plan' : secondaryLabel}
                     disabled={planButtonDisabled}
                     popular={false}
                     requiresPayment={requiresPayment}
