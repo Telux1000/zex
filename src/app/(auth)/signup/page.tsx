@@ -2,12 +2,18 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
+import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
+
+function safeNextPath(raw: string | null): string {
+  const value = (raw ?? '/dashboard').trim();
+  if (!value.startsWith('/') || value.startsWith('//')) return '/dashboard';
+  return value;
+}
 
 function SignupPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,6 +21,20 @@ function SignupPageInner() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const supabase = createClient();
+  const nextPath = safeNextPath(searchParams.get('next'));
+  const plan = searchParams.get('plan')?.trim() ?? '';
+  const billing = normalizeBillingIntervalParam(searchParams.get('billing'));
+  const isPricingIntent = plan === 'growth' || plan === 'professional' || plan === 'enterprise';
+
+  const loginHref = (() => {
+    const params = new URLSearchParams();
+    params.set('next', nextPath);
+    if (isPricingIntent) {
+      params.set('plan', plan);
+      params.set('billing', billing);
+    }
+    return `/login?${params.toString()}`;
+  })();
 
   useEffect(() => {
     const pre = searchParams.get('email')?.trim();
@@ -36,7 +56,12 @@ function SignupPageInner() {
         setErrorMessage(data.error ?? 'Sign up failed.');
         return;
       }
-      router.replace(`/signup/confirm?email=${encodeURIComponent(email.trim())}`);
+      const params = new URLSearchParams({ email: email.trim(), next: nextPath });
+      if (isPricingIntent) {
+        params.set('plan', plan);
+        params.set('billing', billing);
+      }
+      window.location.assign(`/signup/confirm?${params.toString()}`);
     } catch {
       setErrorMessage('Network error. Please try again.');
     } finally {
@@ -48,7 +73,7 @@ function SignupPageInner() {
     setLoading(true);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}` },
     });
   }
 
@@ -120,7 +145,7 @@ function SignupPageInner() {
 
         <p className="text-center text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}
-          <Link href="/login" className="app-link-accent">
+          <Link href={loginHref} className="app-link-accent">
             Sign in
           </Link>
         </p>

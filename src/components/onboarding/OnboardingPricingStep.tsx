@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
@@ -12,6 +13,8 @@ import {
   pricingPromoBannerHeadline,
   pricingTrialMessaging,
 } from '@/lib/billing/plans';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
+import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
 
 const BILLING_INTERVAL_KEY = 'zenzex-onboarding-billing-interval';
 const SELECTED_PLAN_KEY = 'zenzex-onboarding-selected-plan';
@@ -25,12 +28,28 @@ export function OnboardingPricingStep({
   trialDays: number;
   onCompleted: () => void;
 }) {
+  const searchParams = useSearchParams();
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
   const [loadingPlan, setLoadingPlan] = useState<BillingPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isDev = process.env.NODE_ENV !== 'production';
 
   const anyLoading = loadingPlan !== null;
   const secondaryLabel = pricingCardSecondaryTrialCtaLabel(trialDays);
+
+  useEffect(() => {
+    const plan = searchParams.get('plan');
+    const interval = normalizeBillingIntervalParam(searchParams.get('billing'));
+    if (plan === 'growth' || plan === 'professional' || plan === 'enterprise' || plan === 'starter') {
+      try {
+        sessionStorage.setItem(SELECTED_PLAN_KEY, plan);
+        sessionStorage.setItem(BILLING_INTERVAL_KEY, interval);
+      } catch {
+        /* ignore */
+      }
+      setBillingInterval(interval);
+    }
+  }, [searchParams]);
 
   function persistInterval(interval: PlanBillingInterval) {
     setBillingInterval(interval);
@@ -66,6 +85,47 @@ export function OnboardingPricingStep({
         return;
       }
       onCompleted();
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
+  async function startCheckoutForPlan(plan: BillingPlan) {
+    setError(null);
+    persistPlanChoice(plan);
+    const resolvedPriceId = catalogPriceIdForPlanInterval(plan, billingInterval);
+    if (!resolvedPriceId) {
+      setError('This plan is missing a Paddle price ID for the selected billing interval.');
+      console.error('[PricingCTA][Onboarding] Missing priceId.', { plan, billingInterval });
+      return;
+    }
+
+    if (isDev) {
+      console.info('[PricingCTA][Onboarding] checkout click', {
+        route: typeof window !== 'undefined' ? window.location.pathname : '/onboarding',
+        auth: 'authenticated',
+        plan,
+        billingCycle: billingInterval,
+        priceId: resolvedPriceId,
+        paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
+      });
+    }
+
+    setLoadingPlan(plan);
+    try {
+      const res = await fetch('/api/billing/checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, billing_interval: billingInterval }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+      if (!res.ok || !j.url) {
+        const msg = typeof j.error === 'string' ? j.error : 'Could not start Paddle checkout.';
+        setError(msg);
+        console.error('[PricingCTA][Onboarding] checkout failed', { plan, billingInterval, msg });
+        return;
+      }
+      window.location.assign(j.url);
     } finally {
       setLoadingPlan(null);
     }
@@ -109,12 +169,13 @@ export function OnboardingPricingStep({
         billingInterval={billingInterval}
         renderDualCta={(plan: PricingPlan) => {
           const busy = loadingPlan === plan.id;
+          const openFlow = plan.isFree ? () => void startTrialForPlan(plan.id) : () => void startCheckoutForPlan(plan.id);
           return {
             primary: (
               <button
                 type="button"
                 disabled={anyLoading}
-                onClick={() => void startTrialForPlan(plan.id)}
+                onClick={openFlow}
                 className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {busy ? 'Saving…' : pricingCardPrimaryCtaLabel(plan.id)}
@@ -125,7 +186,7 @@ export function OnboardingPricingStep({
                 <button
                   type="button"
                   disabled={anyLoading}
-                  onClick={() => void startTrialForPlan(plan.id)}
+                  onClick={openFlow}
                   className={`${pricingCardSecondaryCtaClassName} disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   {busy ? 'Saving…' : secondaryLabel}

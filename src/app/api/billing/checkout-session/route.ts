@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const primary = await getPrimaryBusinessForUser(user.id);
-  if (!primary?.ownerId || primary.ownerId !== user.id) {
+  if (primary?.ownerId && primary.ownerId !== user.id) {
     return NextResponse.json(
       { error: 'Only the workspace owner can start subscription checkout.' },
       { status: 403 }
@@ -75,7 +75,8 @@ export async function POST(req: Request) {
       ? prof.selected_stripe_price_id.trim()
       : '';
 
-  const interval = normalizePlanBillingInterval(prof?.billing_interval) ?? 'monthly';
+  const requestedInterval = normalizePlanBillingInterval(body.billing_interval);
+  const interval = requestedInterval ?? normalizePlanBillingInterval(prof?.billing_interval) ?? 'monthly';
   const priceId =
     lockedCatalogPriceId ||
     catalogPriceIdForPlanInterval(plan, interval) ||

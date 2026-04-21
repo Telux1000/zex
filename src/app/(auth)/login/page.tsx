@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
+import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
 
 function safeNextPath(raw: string | null): string {
   const value = (raw ?? '/dashboard').trim();
@@ -22,6 +23,20 @@ function LoginPageContent() {
   const supabase = createClient();
   const nextPath = safeNextPath(searchParams.get('next'));
   const isAdminContext = searchParams.get('context') === 'admin' || nextPath.startsWith('/admin');
+  const plan = searchParams.get('plan')?.trim() ?? '';
+  const billing = normalizeBillingIntervalParam(searchParams.get('billing'));
+  const isPricingIntent = plan === 'growth' || plan === 'professional' || plan === 'enterprise';
+
+  const signupHref = (() => {
+    const params = new URLSearchParams();
+    if (email.trim()) params.set('email', email.trim());
+    if (searchParams.get('next')) params.set('next', nextPath);
+    if (isPricingIntent) {
+      params.set('plan', plan);
+      params.set('billing', billing);
+    }
+    return `/signup${params.toString() ? `?${params.toString()}` : ''}`;
+  })();
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -137,7 +152,7 @@ function LoginPageContent() {
 
         <p className="text-center text-sm text-slate-600 dark:text-slate-400">
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="app-link-accent">
+          <Link href={signupHref} className="app-link-accent">
             Sign up
           </Link>
         </p>

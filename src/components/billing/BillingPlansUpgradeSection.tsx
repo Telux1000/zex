@@ -82,6 +82,7 @@ export function BillingPlansUpgradeSection({
                   disabled={planButtonDisabled}
                   popular
                   requiresPayment={requiresPayment}
+                  billingInterval={billingInterval}
                   embeddedInPricingCard
                   busyRowPlan={busyRowPlan}
                   onBusyPlanChange={setBusyRowPlan}
@@ -95,6 +96,7 @@ export function BillingPlansUpgradeSection({
                     disabled={planButtonDisabled}
                     popular={false}
                     requiresPayment={requiresPayment}
+                    billingInterval={billingInterval}
                     embeddedInPricingCard
                     trialSecondaryStyle
                     busyRowPlan={busyRowPlan}

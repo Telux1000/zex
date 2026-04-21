@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils/cn';
-import { getPricingPlan, type BillingPlan } from '@/lib/billing/plans';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
+import { getPricingPlan, type BillingPlan, type PlanBillingInterval } from '@/lib/billing/plans';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 
 export function BillingPlanActionButton({
@@ -20,6 +21,7 @@ export function BillingPlanActionButton({
   onBusyPlanChange,
   /** When set, all pricing-card actions are disabled; this row shows Saving when it matches. */
   busyRowPlan,
+  billingInterval,
 }: {
   targetPlan: BillingPlan;
   cta: string;
@@ -31,23 +33,37 @@ export function BillingPlanActionButton({
   trialSecondaryStyle?: boolean;
   onBusyPlanChange?: (plan: BillingPlan | null) => void;
   busyRowPlan?: BillingPlan | null;
+  billingInterval?: PlanBillingInterval;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const isDev = process.env.NODE_ENV !== 'production';
   const pricing = getPricingPlan(targetPlan);
-  const priceConfigured = pricing.isFree || Boolean(pricing.catalogPriceId?.trim());
-  const payBlocked = requiresPayment && !priceConfigured;
+  const chosenInterval = billingInterval ?? 'yearly';
+  const resolvedPriceId = pricing.isFree ? null : catalogPriceIdForPlanInterval(targetPlan, chosenInterval);
+  const priceConfigured = pricing.isFree || Boolean(resolvedPriceId?.trim());
+  const payBlocked = !priceConfigured;
 
   async function onClick() {
     if (disabled || loading || payBlocked || busyRowPlan != null) return;
+    if (isDev) {
+      console.info('[PricingCTA][Billing]', {
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
+        auth: 'authenticated',
+        plan: targetPlan,
+        billingCycle: chosenInterval,
+        priceId: resolvedPriceId,
+        paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
+      });
+    }
     setLoading(true);
     onBusyPlanChange?.(targetPlan);
     try {
-      if (requiresPayment) {
+      if (!pricing.isFree) {
         const res = await fetch('/api/billing/checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan: targetPlan }),
+          body: JSON.stringify({ plan: targetPlan, billing_interval: chosenInterval }),
         });
         const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
         if (!res.ok || !j.url) {
@@ -84,7 +100,11 @@ export function BillingPlanActionButton({
       <button
         type="button"
         disabled={inactive}
-        title={payBlocked ? 'This plan needs a Paddle catalog price ID in environment configuration.' : undefined}
+        title={
+          payBlocked
+            ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
+            : undefined
+        }
         onClick={onClick}
         className={cn(
           pricingCardSecondaryCtaClassName,
@@ -101,7 +121,11 @@ export function BillingPlanActionButton({
     <button
       type="button"
       disabled={inactive}
-      title={payBlocked ? 'This plan needs a Paddle catalog price ID in environment configuration.' : undefined}
+      title={
+        payBlocked
+          ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
+          : undefined
+      }
       onClick={onClick}
       className={cn(
         'inline-flex w-full items-center justify-center py-2.5 text-center text-sm font-semibold',

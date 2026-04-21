@@ -1,25 +1,70 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   type PlanBillingInterval,
   PRICING_TRIAL_DAYS,
-  planIsFree,
+  type BillingPlan,
   pricingCardPrimaryCtaLabel,
   pricingCardSecondaryTrialCtaLabel,
   pricingPlans,
   pricingPromoBannerHeadline,
   pricingTrialMessaging,
 } from '@/lib/billing/plans';
-import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
+import { createClient } from '@/lib/supabase/client';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
-import { SubscribeButton } from '@/components/paddle/SubscribeButton';
+import { buildPricingAuthHref, buildPricingNextPath, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
 
 export function LandingPricingSection() {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (active) {
+        setIsAuthenticated(Boolean(data.session));
+      }
+    };
+    void loadSession();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setIsAuthenticated(Boolean(session));
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  function pricingCtaHref(plan: BillingPlan) {
+    if (!shouldRouteThroughAuth(plan)) {
+      return `/signup?${new URLSearchParams({ plan, billing: billingInterval }).toString()}`;
+    }
+    if (isAuthenticated) {
+      return buildPricingNextPath(plan, billingInterval);
+    }
+    return buildPricingAuthHref('/login', plan, billingInterval);
+  }
+
+  function logPricingClick(plan: BillingPlan, href: string) {
+    if (!isDev) return;
+    console.info('[PricingCTA][Landing] click', {
+      route: typeof window !== 'undefined' ? window.location.pathname : '/',
+      auth: isAuthenticated ? 'authenticated' : 'anonymous',
+      plan,
+      billingCycle: billingInterval,
+      href,
+    });
+  }
 
   return (
     <section id="pricing" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-16 sm:py-20">
@@ -49,47 +94,23 @@ export function LandingPricingSection() {
             plans={pricingPlans}
             billingInterval={billingInterval}
             renderDualCta={(plan) => {
-              const signupHref = `/signup?${new URLSearchParams({
-                plan: plan.id,
-                billing: billingInterval,
-              }).toString()}`;
-              const priceId = catalogPriceIdForPlanInterval(plan.id, billingInterval);
+              const href = pricingCtaHref(plan.id);
               const primaryLabel = pricingCardPrimaryCtaLabel(plan.id);
-              const paidPlan = !planIsFree(plan.id);
               return {
                 primary: (
-                  paidPlan ? (
-                    <SubscribeButton
-                      priceId={priceId ?? ''}
-                      label={primaryLabel}
-                      billingCycle={billingInterval}
-                      className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
-                      disabled={!priceId}
-                    />
-                  ) : (
-                    <Link
-                      href={signupHref}
-                      className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
-                    >
-                      {primaryLabel}
-                    </Link>
-                  )
+                  <Link
+                    href={href}
+                    onClick={() => logPricingClick(plan.id, href)}
+                    className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
+                  >
+                    {primaryLabel}
+                  </Link>
                 ),
                 secondary:
                   plan.showTrialCTA === true ? (
-                    paidPlan ? (
-                      <SubscribeButton
-                        priceId={priceId ?? ''}
-                        label={pricingCardSecondaryTrialCtaLabel()}
-                        billingCycle={billingInterval}
-                        className={pricingCardSecondaryCtaClassName}
-                        disabled={!priceId}
-                      />
-                    ) : (
-                      <Link href={signupHref} className={pricingCardSecondaryCtaClassName}>
-                        {pricingCardSecondaryTrialCtaLabel()}
-                      </Link>
-                    )
+                    <Link href={href} onClick={() => logPricingClick(plan.id, href)} className={pricingCardSecondaryCtaClassName}>
+                      {pricingCardSecondaryTrialCtaLabel()}
+                    </Link>
                   ) : null,
               };
             }}
