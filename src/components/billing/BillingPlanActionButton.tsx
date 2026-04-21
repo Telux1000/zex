@@ -46,8 +46,19 @@ export function BillingPlanActionButton({
   const payBlocked = !priceConfigured;
 
   async function onClick() {
-    if (disabled || loading || payBlocked || busyRowPlan != null) return;
+    if (disabled || loading || busyRowPlan != null) return;
     setErrorMessage(null);
+    if (payBlocked) {
+      const msg = `Missing Paddle price ID for ${chosenInterval} billing on ${targetPlan}.`;
+      setErrorMessage(msg);
+      if (isDev) {
+        console.error('[PricingCTA][Billing] blocked: missing price ID', {
+          plan: targetPlan,
+          billingCycle: chosenInterval,
+        });
+      }
+      return;
+    }
     if (isDev) {
       console.info('[PricingCTA][Billing]', {
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
@@ -98,7 +109,7 @@ export function BillingPlanActionButton({
 
   const globalBusy = busyRowPlan != null;
   const rowShowsSaving = loading || busyRowPlan === targetPlan;
-  const inactive = disabled || payBlocked || globalBusy || loading;
+  const inactive = disabled || globalBusy || loading;
 
   if (trialSecondaryStyle) {
     return (
