@@ -40,6 +40,7 @@ export function BillingCheckoutButton({
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
         plan,
         billingCycle: chosenInterval,
+        action: 'open_paddle_checkout',
         priceId: resolvedPriceId,
         customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),

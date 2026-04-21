@@ -55,6 +55,7 @@ export function BillingPlanActionButton({
         auth: 'authenticated',
         plan: targetPlan,
         billingCycle: chosenInterval,
+        action: pricing.isFree ? 'update_internal_plan' : 'open_paddle_checkout',
         priceId: resolvedPriceId,
         customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),

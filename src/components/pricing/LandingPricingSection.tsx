@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   type PlanBillingInterval,
   PRICING_TRIAL_DAYS,
@@ -12,20 +12,41 @@ import {
   pricingPromoBannerHeadline,
   pricingTrialMessaging,
 } from '@/lib/billing/plans';
+import { createClient } from '@/lib/supabase/client';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
-import { buildPricingAuthHref, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
+import { buildPricingAuthHref, buildPricingNextPath, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
 
 export function LandingPricingSection() {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const isDev = process.env.NODE_ENV !== 'production';
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (active) setIsAuthenticated(Boolean(data.session));
+    };
+    void loadSession();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setIsAuthenticated(Boolean(session));
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   function pricingCtaHref(plan: BillingPlan) {
     if (!shouldRouteThroughAuth(plan)) {
       return `/signup?${new URLSearchParams({ plan, billing: billingInterval }).toString()}`;
     }
-    // Public landing CTA for paid plans should always go through auth intent first.
+    if (isAuthenticated) {
+      return buildPricingNextPath(plan, billingInterval);
+    }
     return buildPricingAuthHref('/login', plan, billingInterval);
   }
 
@@ -33,9 +54,14 @@ export function LandingPricingSection() {
     if (!isDev) return;
     console.info('[PricingCTA][Landing] click', {
       route: typeof window !== 'undefined' ? window.location.pathname : '/',
-      auth: 'public-landing',
+      auth: isAuthenticated ? 'authenticated' : 'anonymous',
       plan,
       billingCycle: billingInterval,
+      action: shouldRouteThroughAuth(plan)
+        ? isAuthenticated
+          ? 'route_to_onboarding_trial'
+          : 'route_to_auth'
+        : 'route_to_signup',
       href,
     });
   }

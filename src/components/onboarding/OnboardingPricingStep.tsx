@@ -15,8 +15,6 @@ import {
 } from '@/lib/billing/plans';
 import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
 import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
-import { openPaddleCheckout } from '@/lib/paddle/paddle-browser';
-import { createClient } from '@/lib/supabase/client';
 
 const BILLING_INTERVAL_KEY = 'zenzex-onboarding-billing-interval';
 const SELECTED_PLAN_KEY = 'zenzex-onboarding-selected-plan';
@@ -34,7 +32,6 @@ export function OnboardingPricingStep({
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
   const [loadingPlan, setLoadingPlan] = useState<BillingPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const isDev = process.env.NODE_ENV !== 'production';
 
   const anyLoading = loadingPlan !== null;
@@ -53,20 +50,6 @@ export function OnboardingPricingStep({
       setBillingInterval(interval);
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    let active = true;
-    const supabase = createClient();
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!active) return;
-      setCustomerEmail(data.user?.email?.trim() || null);
-    };
-    void loadUser();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   function persistInterval(interval: PlanBillingInterval) {
     setBillingInterval(interval);
@@ -89,6 +72,17 @@ export function OnboardingPricingStep({
   async function startTrialForPlan(plan: BillingPlan) {
     setError(null);
     persistPlanChoice(plan);
+    const resolvedPriceId = catalogPriceIdForPlanInterval(plan, billingInterval);
+    if (isDev) {
+      console.info('[PricingCTA][Onboarding] trial start click', {
+        route: typeof window !== 'undefined' ? window.location.pathname : '/onboarding',
+        auth: 'authenticated',
+        plan,
+        billingCycle: billingInterval,
+        action: 'start_internal_trial',
+        resolvedPriceId,
+      });
+    }
     setLoadingPlan(plan);
     try {
       const res = await fetch('/api/onboarding/commit-pricing', {
@@ -102,37 +96,6 @@ export function OnboardingPricingStep({
         return;
       }
       onCompleted();
-    } finally {
-      setLoadingPlan(null);
-    }
-  }
-
-  async function startCheckoutForPlan(plan: BillingPlan) {
-    setError(null);
-    persistPlanChoice(plan);
-    const resolvedPriceId = catalogPriceIdForPlanInterval(plan, billingInterval);
-    if (!resolvedPriceId) {
-      const msg = `Missing Paddle price ID for ${billingInterval} billing on ${plan}.`;
-      setError(msg);
-      if (isDev) console.error('[PricingCTA][Onboarding] missing price id', { plan, billingInterval });
-      return;
-    }
-
-    if (isDev) {
-      console.info('[PricingCTA][Onboarding] checkout click', {
-        route: typeof window !== 'undefined' ? window.location.pathname : '/onboarding',
-        auth: 'authenticated',
-        plan,
-        billingCycle: billingInterval,
-        priceId: resolvedPriceId,
-        customerEmail: customerEmail ?? null,
-        paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
-      });
-    }
-
-    setLoadingPlan(plan);
-    try {
-      await openPaddleCheckout(resolvedPriceId, customerEmail ?? undefined);
     } finally {
       setLoadingPlan(null);
     }
@@ -176,7 +139,7 @@ export function OnboardingPricingStep({
         billingInterval={billingInterval}
         renderDualCta={(plan: PricingPlan) => {
           const busy = loadingPlan === plan.id;
-          const openFlow = plan.isFree ? () => void startTrialForPlan(plan.id) : () => void startCheckoutForPlan(plan.id);
+          const openFlow = () => void startTrialForPlan(plan.id);
           return {
             primary: (
               <button
