@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          'Catalog price is not configured for this plan. Set NEXT_PUBLIC_PADDLE_PRICE_* env vars in Paddle.',
+          'Catalog price is not configured for this plan. Set NEXT_PUBLIC_PADDLE_PRICE_*_MONTHLY / *_YEARLY env vars.',
       },
       { status: 400 }
     );

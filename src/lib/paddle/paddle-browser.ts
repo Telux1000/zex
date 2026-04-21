@@ -4,6 +4,7 @@
  */
 
 const PADDLE_SCRIPT_SRC = 'https://cdn.paddle.com/paddle/v2/paddle.js';
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 export type PaddleCheckoutItem = { priceId: string; quantity: number };
 
@@ -23,6 +24,24 @@ let paddleReadyPromise: Promise<void> | null = null;
 
 function getClientToken(): string | undefined {
   return process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN?.trim() || undefined;
+}
+
+export type PaddleRuntimeEnvironment = 'sandbox' | 'production';
+
+function normalizePaddleEnvironment(raw: string | undefined): PaddleRuntimeEnvironment {
+  const value = raw?.trim().toLowerCase();
+  if (!value || value === 'sandbox' || value === 'test') return 'sandbox';
+  if (value === 'production' || value === 'live') return 'production';
+  console.error(
+    `[Paddle] Invalid environment "${raw}". Expected "sandbox" or "production/live". Falling back to sandbox.`
+  );
+  return 'sandbox';
+}
+
+export function getPaddleEnvironment(): PaddleRuntimeEnvironment {
+  return normalizePaddleEnvironment(
+    process.env.PADDLE_BILLING_ENVIRONMENT ?? process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT
+  );
 }
 
 function loadPaddleScript(): Promise<void> {
@@ -106,14 +125,18 @@ export function ensurePaddleReady(): Promise<void> {
         throw err;
       }
 
-      const env = (process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT?.trim().toLowerCase() ?? 'sandbox') as
-        | 'sandbox'
-        | 'production';
+      const env = getPaddleEnvironment();
       if (env === 'sandbox') {
         Paddle.Environment.set('sandbox');
       }
+      if (IS_DEV) {
+        console.info(`[Paddle] Initializing Paddle.js in ${env} mode.`);
+      }
 
       Paddle.Initialize({ token });
+      if (IS_DEV) {
+        console.info('[Paddle] Paddle initialized.');
+      }
     })();
   }
 
@@ -121,14 +144,27 @@ export function ensurePaddleReady(): Promise<void> {
 }
 
 export function openPaddleCheckout(priceId: string): Promise<void> {
+  const trimmedPriceId = priceId.trim();
+  if (!trimmedPriceId) {
+    console.error('[Paddle] Cannot open checkout: missing priceId.');
+    return Promise.reject(new Error('Missing priceId'));
+  }
+
   return ensurePaddleReady().then(() => {
     const Paddle = window.Paddle;
     if (!Paddle) {
       console.error('[Paddle] Checkout.open called but Paddle is not available.');
       return;
     }
+    if (IS_DEV) {
+      console.info('[Paddle] Opening checkout.', {
+        environment: getPaddleEnvironment(),
+        priceId: trimmedPriceId,
+        initialized: Boolean(window.Paddle),
+      });
+    }
     Paddle.Checkout.open({
-      items: [{ priceId, quantity: 1 }],
+      items: [{ priceId: trimmedPriceId, quantity: 1 }],
     });
   });
 }

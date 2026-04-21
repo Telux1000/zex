@@ -5,16 +5,18 @@ import { planIsFree, type BillingPlan, type PlanBillingInterval } from '@/lib/bi
  *
  * Assumptions:
  * - Each env value is a Billing API price ID created in Paddle for a recurring subscription.
- * - Monthly: NEXT_PUBLIC_PADDLE_PRICE_{PLAN_UPPER}
+ * - Monthly: NEXT_PUBLIC_PADDLE_PRICE_{PLAN_UPPER}_MONTHLY (preferred)
  * - Yearly: NEXT_PUBLIC_PADDLE_PRICE_{PLAN_UPPER}_YEARLY (optional; falls back to monthly if unset).
+ * - Legacy monthly fallback supported: NEXT_PUBLIC_PADDLE_PRICE_{PLAN_UPPER}
  *
  * TODO: Create matching products/prices in Paddle sandbox/production and set these env vars.
  */
 const MONTHLY_ENV: Record<BillingPlan, string | undefined> = {
-  starter: process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER,
-  growth: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH,
-  professional: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL,
-  enterprise: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE,
+  starter: process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER,
+  growth: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH,
+  professional:
+    process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL,
+  enterprise: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE,
 };
 
 const YEARLY_ENV: Record<BillingPlan, string | undefined> = {
@@ -23,6 +25,7 @@ const YEARLY_ENV: Record<BillingPlan, string | undefined> = {
   professional: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_YEARLY,
   enterprise: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_YEARLY,
 };
+let envValidationLogged = false;
 
 function trimId(id: string | undefined | null): string | null {
   const t = id?.trim();
@@ -39,6 +42,26 @@ export function catalogPriceIdForPlanInterval(
   const yearly = trimId(YEARLY_ENV[plan]) ?? monthly;
   if (interval === 'yearly') return yearly;
   return monthly;
+}
+
+export function validatePublicPaddlePriceEnv(): void {
+  if (envValidationLogged || typeof window === 'undefined') return;
+  envValidationLogged = true;
+  const plans: BillingPlan[] = ['growth', 'professional', 'enterprise'];
+  for (const plan of plans) {
+    const monthly = catalogPriceIdForPlanInterval(plan, 'monthly');
+    const yearly = catalogPriceIdForPlanInterval(plan, 'yearly');
+    if (!monthly) {
+      console.error(
+        `[Paddle] Missing monthly price ID for ${plan}. Set NEXT_PUBLIC_PADDLE_PRICE_${plan.toUpperCase()}_MONTHLY.`
+      );
+    }
+    if (!yearly) {
+      console.error(
+        `[Paddle] Missing yearly price ID for ${plan}. Set NEXT_PUBLIC_PADDLE_PRICE_${plan.toUpperCase()}_YEARLY.`
+      );
+    }
+  }
 }
 
 /** Reverse lookup for webhook payloads (subscription line items). */

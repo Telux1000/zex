@@ -5,15 +5,18 @@ import { useState } from 'react';
 import {
   type PlanBillingInterval,
   PRICING_TRIAL_DAYS,
+  planIsFree,
   pricingCardPrimaryCtaLabel,
   pricingCardSecondaryTrialCtaLabel,
   pricingPlans,
   pricingPromoBannerHeadline,
   pricingTrialMessaging,
 } from '@/lib/billing/plans';
+import { catalogPriceIdForPlanInterval } from '@/lib/billing/catalog-price-map';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
+import { SubscribeButton } from '@/components/paddle/SubscribeButton';
 
 export function LandingPricingSection() {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
@@ -50,20 +53,43 @@ export function LandingPricingSection() {
                 plan: plan.id,
                 billing: billingInterval,
               }).toString()}`;
+              const priceId = catalogPriceIdForPlanInterval(plan.id, billingInterval);
+              const primaryLabel = pricingCardPrimaryCtaLabel(plan.id);
+              const paidPlan = !planIsFree(plan.id);
               return {
                 primary: (
-                  <Link
-                    href={signupHref}
-                    className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
-                  >
-                    {pricingCardPrimaryCtaLabel(plan.id)}
-                  </Link>
+                  paidPlan ? (
+                    <SubscribeButton
+                      priceId={priceId ?? ''}
+                      label={primaryLabel}
+                      billingCycle={billingInterval}
+                      className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
+                      disabled={!priceId}
+                    />
+                  ) : (
+                    <Link
+                      href={signupHref}
+                      className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
+                    >
+                      {primaryLabel}
+                    </Link>
+                  )
                 ),
                 secondary:
                   plan.showTrialCTA === true ? (
-                    <Link href={signupHref} className={pricingCardSecondaryCtaClassName}>
-                      {pricingCardSecondaryTrialCtaLabel()}
-                    </Link>
+                    paidPlan ? (
+                      <SubscribeButton
+                        priceId={priceId ?? ''}
+                        label={pricingCardSecondaryTrialCtaLabel()}
+                        billingCycle={billingInterval}
+                        className={pricingCardSecondaryCtaClassName}
+                        disabled={!priceId}
+                      />
+                    ) : (
+                      <Link href={signupHref} className={pricingCardSecondaryCtaClassName}>
+                        {pricingCardSecondaryTrialCtaLabel()}
+                      </Link>
+                    )
                   ) : null,
               };
             }}

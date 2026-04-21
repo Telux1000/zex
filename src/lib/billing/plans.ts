@@ -101,7 +101,11 @@ export const pricingPlans: PricingPlan[] = [
     id: 'growth',
     name: 'Growth',
     priceMonthlyCents: 5900,
-    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
+    catalogPriceId:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
+    catalogPriceIdMonthly:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
+    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
@@ -116,7 +120,15 @@ export const pricingPlans: PricingPlan[] = [
     id: 'professional',
     name: 'Professional',
     priceMonthlyCents: 7900,
-    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ?? null,
+    catalogPriceId:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ??
+      null,
+    catalogPriceIdMonthly:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ??
+      null,
+    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
@@ -134,7 +146,11 @@ export const pricingPlans: PricingPlan[] = [
     id: 'enterprise',
     name: 'Enterprise',
     priceMonthlyCents: 9900,
-    catalogPriceId: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
+    catalogPriceId:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
+    catalogPriceIdMonthly:
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
+    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
