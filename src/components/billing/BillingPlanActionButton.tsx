@@ -37,6 +37,7 @@ export function BillingPlanActionButton({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isDev = process.env.NODE_ENV !== 'production';
   const pricing = getPricingPlan(targetPlan);
   const chosenInterval = billingInterval ?? 'yearly';
@@ -46,6 +47,7 @@ export function BillingPlanActionButton({
 
   async function onClick() {
     if (disabled || loading || payBlocked || busyRowPlan != null) return;
+    setErrorMessage(null);
     if (isDev) {
       console.info('[PricingCTA][Billing]', {
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/billing',
@@ -67,7 +69,9 @@ export function BillingPlanActionButton({
         });
         const j = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
         if (!res.ok || !j.url) {
-          window.alert(typeof j.error === 'string' ? j.error : 'Could not start checkout.');
+          const msg = typeof j.error === 'string' ? j.error : 'Could not start checkout.';
+          setErrorMessage(msg);
+          if (isDev) console.error('[PricingCTA][Billing] checkout-session failed', { plan: targetPlan, chosenInterval, msg });
           return;
         }
         window.location.assign(j.url);
@@ -81,7 +85,8 @@ export function BillingPlanActionButton({
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        window.alert(typeof j.error === 'string' ? j.error : 'Could not update plan.');
+        const msg = typeof j.error === 'string' ? j.error : 'Could not update plan.';
+        setErrorMessage(msg);
         return;
       }
       router.refresh();
@@ -97,6 +102,35 @@ export function BillingPlanActionButton({
 
   if (trialSecondaryStyle) {
     return (
+      <>
+        <button
+          type="button"
+          disabled={inactive}
+          title={
+            payBlocked
+              ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
+              : undefined
+          }
+          onClick={onClick}
+          className={cn(
+            pricingCardSecondaryCtaClassName,
+            inactive && 'cursor-not-allowed opacity-60',
+            !inactive && 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+          )}
+        >
+          {rowShowsSaving ? 'Saving…' : cta}
+        </button>
+        {errorMessage ? (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="status">
+            {errorMessage}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <>
       <button
         type="button"
         disabled={inactive}
@@ -107,37 +141,22 @@ export function BillingPlanActionButton({
         }
         onClick={onClick}
         className={cn(
-          pricingCardSecondaryCtaClassName,
-          inactive && 'cursor-not-allowed opacity-60',
-          !inactive && 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+          'inline-flex w-full items-center justify-center py-2.5 text-center text-sm font-semibold',
+          !embeddedInPricingCard && 'mt-8',
+          inactive
+            ? 'cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+            : embeddedInPricingCard || popular
+              ? 'app-btn-primary'
+              : 'app-btn-secondary'
         )}
       >
         {rowShowsSaving ? 'Saving…' : cta}
       </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={inactive}
-      title={
-        payBlocked
-          ? `This plan needs a Paddle catalog price ID for ${chosenInterval} billing in environment configuration.`
-          : undefined
-      }
-      onClick={onClick}
-      className={cn(
-        'inline-flex w-full items-center justify-center py-2.5 text-center text-sm font-semibold',
-        !embeddedInPricingCard && 'mt-8',
-        inactive
-          ? 'cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-          : embeddedInPricingCard || popular
-            ? 'app-btn-primary'
-            : 'app-btn-secondary'
-      )}
-    >
-      {rowShowsSaving ? 'Saving…' : cta}
-    </button>
+      {errorMessage ? (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="status">
+          {errorMessage}
+        </p>
+      ) : null}
+    </>
   );
 }

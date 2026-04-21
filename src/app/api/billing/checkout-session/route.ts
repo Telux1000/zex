@@ -78,7 +78,7 @@ export async function POST(req: Request) {
   const requestedInterval = normalizePlanBillingInterval(body.billing_interval);
   const interval = requestedInterval ?? normalizePlanBillingInterval(prof?.billing_interval) ?? 'monthly';
   const priceId =
-    lockedCatalogPriceId ||
+    (!requestedInterval ? lockedCatalogPriceId : '') ||
     catalogPriceIdForPlanInterval(plan, interval) ||
     pricing.catalogPriceId?.trim() ||
     '';
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const billingInterval = normalizePlanBillingInterval(prof?.billing_interval);
+  const billingInterval = interval;
 
   let customerId: string;
   try {
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
       customData: {
         saas_owner_user_id: user.id,
         saas_billing_plan: plan,
-        saas_billing_interval: billingInterval ?? '',
+        saas_billing_interval: billingInterval,
       },
     });
     checkoutUrl = transaction.checkout?.url ?? null;
