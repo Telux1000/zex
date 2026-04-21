@@ -10,6 +10,7 @@ import { pricingCardPrimaryCtaLabel, pricingCardSecondaryTrialCtaLabel, pricingT
 export function BillingPlansUpgradeSection({
   plans,
   currentPlan,
+  currentSubscriptionStatus,
   canSwitchPlan,
   requiresPayment,
   trialMessagingHeadline,
@@ -18,6 +19,7 @@ export function BillingPlansUpgradeSection({
 }: {
   plans: PricingPlan[];
   currentPlan: BillingPlan;
+  currentSubscriptionStatus: 'trialing' | 'active' | 'past_due' | 'cancelled' | 'trial_expired';
   canSwitchPlan: boolean;
   requiresPayment: boolean;
   trialMessagingHeadline: string;
@@ -56,14 +58,19 @@ export function BillingPlansUpgradeSection({
           currentPlanId={currentPlan}
           renderDualCta={(option) => {
             const current = option.id === currentPlan;
+            const isTrialing = currentSubscriptionStatus === 'trialing';
+            const isPaidPlan = option.isFree === false;
             const primaryCta = requiresPayment
               ? current
                 ? 'Pay & activate'
                 : pricingCardPrimaryCtaLabel(option.id)
-              : current
-                ? 'Current plan'
+              : isTrialing && current && isPaidPlan
+                ? `Upgrade to ${option.name}`
+                : current
+                  ? 'Current plan'
                 : pricingCardPrimaryCtaLabel(option.id);
-            const planButtonDisabled = requiresPayment ? false : current;
+            // During trial we allow immediate paid conversion on any paid plan (including current).
+            const planButtonDisabled = requiresPayment ? false : isTrialing ? false : current;
 
             if (!canSwitchPlan) {
               return {
@@ -86,6 +93,7 @@ export function BillingPlansUpgradeSection({
                   requiresPayment={requiresPayment}
                   billingInterval={billingInterval}
                   customerEmail={customerEmail}
+                  userStatus={currentSubscriptionStatus}
                   embeddedInPricingCard
                   busyRowPlan={busyRowPlan}
                   onBusyPlanChange={setBusyRowPlan}
@@ -99,9 +107,10 @@ export function BillingPlansUpgradeSection({
                     disabled={planButtonDisabled}
                     popular={false}
                     requiresPayment={requiresPayment}
-                    preferInternalTrialAction
+                    preferInternalTrialAction={currentSubscriptionStatus !== 'trialing'}
                     billingInterval={billingInterval}
                     customerEmail={customerEmail}
+                    userStatus={currentSubscriptionStatus}
                     embeddedInPricingCard
                     trialSecondaryStyle
                     busyRowPlan={busyRowPlan}

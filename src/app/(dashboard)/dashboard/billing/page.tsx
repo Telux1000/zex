@@ -274,6 +274,7 @@ export default async function BillingPaymentsPage({
       <BillingPlansUpgradeSection
         plans={pricingPlansEffective}
         currentPlan={plan}
+        currentSubscriptionStatus={effective}
         canSwitchPlan={canSwitchPlan}
         requiresPayment={requiresPayment}
         trialMessagingHeadline={trialMessagingHeadline}
