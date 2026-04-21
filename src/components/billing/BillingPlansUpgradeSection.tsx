@@ -99,6 +99,7 @@ export function BillingPlansUpgradeSection({
                     disabled={planButtonDisabled}
                     popular={false}
                     requiresPayment={requiresPayment}
+                    preferInternalTrialAction
                     billingInterval={billingInterval}
                     customerEmail={customerEmail}
                     embeddedInPricingCard

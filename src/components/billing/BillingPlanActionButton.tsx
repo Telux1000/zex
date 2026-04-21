@@ -24,6 +24,7 @@ export function BillingPlanActionButton({
   busyRowPlan,
   billingInterval,
   customerEmail,
+  preferInternalTrialAction,
 }: {
   targetPlan: BillingPlan;
   cta: string;
@@ -37,6 +38,8 @@ export function BillingPlanActionButton({
   busyRowPlan?: BillingPlan | null;
   billingInterval?: PlanBillingInterval;
   customerEmail?: string | null;
+  /** Force non-checkout internal plan/trial action for trial CTA paths. */
+  preferInternalTrialAction?: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -55,7 +58,10 @@ export function BillingPlanActionButton({
         auth: 'authenticated',
         plan: targetPlan,
         billingCycle: chosenInterval,
-        action: pricing.isFree ? 'update_internal_plan' : 'open_paddle_checkout',
+        action:
+          pricing.isFree || preferInternalTrialAction
+            ? 'update_internal_plan'
+            : 'open_paddle_checkout',
         priceId: resolvedPriceId,
         customerEmail: customerEmail ?? null,
         paddleInitialized: typeof window !== 'undefined' && Boolean(window.Paddle),
@@ -64,7 +70,7 @@ export function BillingPlanActionButton({
     setLoading(true);
     onBusyPlanChange?.(targetPlan);
     try {
-      if (!pricing.isFree) {
+      if (!pricing.isFree && !preferInternalTrialAction) {
         if (!resolvedPriceId) {
           const msg = `Missing Paddle price ID for ${chosenInterval} billing on ${targetPlan}.`;
           setErrorMessage(msg);
