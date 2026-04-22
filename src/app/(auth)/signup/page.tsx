@@ -13,6 +13,9 @@ function safeNextPath(raw: string | null): string {
   return value;
 }
 
+const CLOSED_SIGNUP_DEFAULT_MESSAGE =
+  'We’re temporarily pausing new signups while we perform updates. Please check back shortly.';
+
 function SignupPageInner() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
@@ -120,8 +123,7 @@ function SignupPageInner() {
           <p className="text-sm text-slate-500 dark:text-slate-400">Checking signup availability…</p>
         ) : signupMode === 'CLOSED' ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-            <p className="font-medium">Signups are currently disabled</p>
-            {signupMessage && <p className="mt-1">{signupMessage}</p>}
+            <p className="font-medium">{signupMessage ?? CLOSED_SIGNUP_DEFAULT_MESSAGE}</p>
           </div>
         ) : (
         <form onSubmit={signUp} className="space-y-4">

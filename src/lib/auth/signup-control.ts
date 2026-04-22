@@ -51,7 +51,13 @@ export async function fetchSignupSettings(admin: SupabaseClient): Promise<Signup
 
 export type SignupPolicyResult =
   | { ok: true; inviteIdToConsume: string | null }
-  | { ok: false; status: 403; error: 'Signups are currently disabled' | 'Invite required to register' };
+  | {
+      ok: false;
+      status: 403;
+      error:
+        | 'We’re temporarily pausing new signups while we perform updates. Please check back shortly.'
+        | 'Invite required to register';
+    };
 
 export async function validateSignupAccess(params: {
   admin: SupabaseClient;
@@ -62,7 +68,11 @@ export async function validateSignupAccess(params: {
   const inviteToken = String(params.inviteToken ?? '').trim();
   if (params.mode === 'OPEN') return { ok: true, inviteIdToConsume: null };
   if (params.mode === 'CLOSED') {
-    return { ok: false, status: 403, error: 'Signups are currently disabled' };
+    return {
+      ok: false,
+      status: 403,
+      error: 'We’re temporarily pausing new signups while we perform updates. Please check back shortly.',
+    };
   }
   if (!inviteToken) {
     return { ok: false, status: 403, error: 'Invite required to register' };
