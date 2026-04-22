@@ -10,6 +10,19 @@ function safeNextPath(raw: string | null): string {
   return n;
 }
 
+function classifyAuthError(message: string): 'link_expired' | 'auth' {
+  const m = message.toLowerCase();
+  if (
+    m.includes('expired') ||
+    m.includes('invalid') ||
+    m.includes('otp') ||
+    m.includes('already used')
+  ) {
+    return 'link_expired';
+  }
+  return 'auth';
+}
+
 /**
  * Handles Supabase email confirmation / OAuth return.
  * Must run in the browser: PKCE uses ?code= (OK on server too) but legacy implicit flows put
@@ -27,8 +40,17 @@ function AuthCallbackContent() {
     (async () => {
       const code = searchParams.get('code');
       const next = safeNextPath(searchParams.get('next'));
+      const explicitError = searchParams.get('error');
+      const explicitErrorDescription = searchParams.get('error_description');
+      const hasNextParam = searchParams.has('next');
 
       try {
+        if (explicitError) {
+          const mapped = classifyAuthError(explicitErrorDescription ?? explicitError);
+          router.replace(`/login?error=${mapped}`);
+          return;
+        }
+
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
@@ -40,7 +62,14 @@ function AuthCallbackContent() {
             const { data: second, error: e2 } = await supabase.auth.getSession();
             if (e2) throw e2;
             if (!second.session) {
-              if (!cancelled) router.replace('/login?error=auth');
+              if (!cancelled) {
+                // Email-confirmation links can be valid even when project settings do not auto-sign-in.
+                if (!hasNextParam) {
+                  router.replace('/login?verified=success');
+                } else {
+                  router.replace('/login?error=auth');
+                }
+              }
               return;
             }
           }
@@ -56,10 +85,11 @@ function AuthCallbackContent() {
 
         router.replace(next);
         router.refresh();
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setHint('Could not confirm. Redirecting to sign in…');
-          router.replace('/login?error=auth');
+          const mapped = classifyAuthError(error instanceof Error ? error.message : '');
+          router.replace(`/login?error=${mapped}`);
         }
       }
     })();

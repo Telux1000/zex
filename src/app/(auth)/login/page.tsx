@@ -79,9 +79,24 @@ function LoginPageContent() {
         </div>
 
         <form onSubmit={signInWithEmail} className="space-y-4">
+          {searchParams.get('verified') === 'success' && !message && (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              Email verified successfully. Please sign in to continue.
+            </p>
+          )}
           {searchParams.get('reset') === 'success' && !message && (
             <p className="text-sm text-emerald-600 dark:text-emerald-400">
               Password updated successfully. Please sign in.
+            </p>
+          )}
+          {searchParams.get('error') === 'link_expired' && !message && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              This verification link is invalid or expired. Please request a new one.
+            </p>
+          )}
+          {searchParams.get('error') === 'auth' && !message && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              We couldn&apos;t complete sign-in from that link. Please sign in manually.
             </p>
           )}
           <div>
