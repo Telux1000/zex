@@ -343,11 +343,11 @@ export function AdminAccountsOnboardingPanel() {
                           {new Date(row.last_follow_up.sent_at).toLocaleString()}
                         </span>
                         <br />
-                        <span className="text-zinc-500 dark:text-zinc-500">
+                        <small className="text-xs text-zinc-500 dark:text-zinc-500">
                           {humanizeOnboardingFollowUpLabel(
                             row.last_follow_up.template_display ?? row.last_follow_up.template_id
                           )}
-                        </span>
+                        </small>
                       </>
                     ) : (
                       '—'
@@ -360,11 +360,11 @@ export function AdminAccountsOnboardingPanel() {
                           {new Date(row.next_follow_up.scheduled_for).toLocaleString()}
                         </span>
                         <br />
-                        <span className="text-zinc-500 dark:text-zinc-500">
+                        <small className="text-xs text-zinc-500 dark:text-zinc-500">
                           {humanizeOnboardingFollowUpLabel(
                             row.next_follow_up.template_display ?? row.next_follow_up.template_id
                           )}
-                        </span>
+                        </small>
                       </>
                     ) : (
                       '—'
