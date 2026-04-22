@@ -63,6 +63,35 @@ function stageTone(stage: OnboardingStage): 'active' | 'pending' | 'neutral' {
   return 'neutral';
 }
 
+/** e.g. `onboarding-login-no-onboarding-2h` → `Onboarding Login No Onboarding 2hrs.` */
+function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): string {
+  let slug = String(templateDisplayOrEnvKey ?? '').trim();
+  if (!slug) return '';
+  if (slug.startsWith('POSTMARK_TEMPLATE_')) {
+    slug = slug.slice('POSTMARK_TEMPLATE_'.length).replace(/_/g, '-').toLowerCase();
+  } else {
+    slug = slug.replace(/_/g, '-').toLowerCase();
+  }
+  const parts = slug.split('-').filter((p) => p.length > 0);
+  if (parts.length === 0) return templateDisplayOrEnvKey;
+
+  const last = parts[parts.length - 1]!;
+  const duration = /^(\d+)(m|h|d)$/i.exec(last);
+  const wordParts = duration ? parts.slice(0, -1) : parts;
+  const titled = wordParts.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+  if (!duration) return titled;
+
+  const n = duration[1]!;
+  const u = duration[2]!.toLowerCase();
+  let suffix = last;
+  if (u === 'm') suffix = `${n}mins.`;
+  else if (u === 'h') suffix = `${n}hrs.`;
+  else if (u === 'd') suffix = `${n}days.`;
+
+  return titled ? `${titled} ${suffix}` : suffix;
+}
+
 export function AdminAccountsOnboardingPanel() {
   const router = useRouter();
   const pathname = usePathname();
@@ -307,15 +336,39 @@ export function AdminAccountsOnboardingPanel() {
                   <AdminTd className="text-zinc-700 dark:text-zinc-300">
                     {row.days_stuck == null ? '—' : `${row.days_stuck}d`}
                   </AdminTd>
-                  <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                    {row.last_follow_up
-                      ? `${new Date(row.last_follow_up.sent_at).toLocaleString()} (${row.last_follow_up.template_display ?? row.last_follow_up.template_id})`
-                      : '—'}
+                  <AdminTd className="max-w-[16rem] align-top text-sm text-zinc-600 dark:text-zinc-400">
+                    {row.last_follow_up ? (
+                      <>
+                        <span className="whitespace-nowrap">
+                          {new Date(row.last_follow_up.sent_at).toLocaleString()}
+                        </span>
+                        <br />
+                        <span className="text-zinc-500 dark:text-zinc-500">
+                          {humanizeOnboardingFollowUpLabel(
+                            row.last_follow_up.template_display ?? row.last_follow_up.template_id
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      '—'
+                    )}
                   </AdminTd>
-                  <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                    {row.next_follow_up
-                      ? `${new Date(row.next_follow_up.scheduled_for).toLocaleString()} (${row.next_follow_up.template_display ?? row.next_follow_up.template_id})`
-                      : '—'}
+                  <AdminTd className="max-w-[16rem] align-top text-sm text-zinc-600 dark:text-zinc-400">
+                    {row.next_follow_up ? (
+                      <>
+                        <span className="whitespace-nowrap">
+                          {new Date(row.next_follow_up.scheduled_for).toLocaleString()}
+                        </span>
+                        <br />
+                        <span className="text-zinc-500 dark:text-zinc-500">
+                          {humanizeOnboardingFollowUpLabel(
+                            row.next_follow_up.template_display ?? row.next_follow_up.template_id
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      '—'
+                    )}
                   </AdminTd>
                   <AdminTd>
                     <AdminBadge tone={row.follow_up_status === 'paused' ? 'warning' : 'active'}>
