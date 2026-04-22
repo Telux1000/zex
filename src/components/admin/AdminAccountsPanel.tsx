@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import {
   allowedAccountLifecycleActions,
   type AccountLifecycleAction,
   type AccountLifecycleStatus,
 } from '@/lib/admin/account-lifecycle';
+import { AdminAccountsOnboardingPanel } from '@/components/admin/AdminAccountsOnboardingPanel';
 import { AdminBadge } from '@/components/admin/AdminBadge';
 import { AdminConfirmDialog } from '@/components/admin/AdminConfirmDialog';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
@@ -101,12 +102,19 @@ export function AdminAccountsPanel() {
   const [confirm, setConfirm] = useState<{ accountId: string; action: AccountLifecycleAction } | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const activeView = searchParams.get('view') === 'onboarding' ? 'onboarding' : 'accounts';
   const drillActivity = searchParams.get('activity');
   const drillUsage = searchParams.get('usage');
   const drillRange = searchParams.get('range');
 
   useEffect(() => {
+    if (activeView !== 'accounts') {
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     fetch('/api/admin/accounts')
@@ -124,7 +132,14 @@ export function AdminAccountsPanel() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load accounts'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeView]);
+
+  function setView(nextView: 'accounts' | 'onboarding') {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextView === 'onboarding') params.set('view', 'onboarding');
+    else params.delete('view');
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+  }
 
   const planOptions = useMemo(() => {
     const set = new Set<string>();
@@ -194,7 +209,7 @@ export function AdminAccountsPanel() {
     }));
   }
 
-  if (error) {
+  if (activeView === 'accounts' && error) {
     return (
       <AdminContentCard className="border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-950/30">
         <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
@@ -202,7 +217,7 @@ export function AdminAccountsPanel() {
     );
   }
 
-  if (loading) {
+  if (activeView === 'accounts' && loading) {
     return (
       <AdminContentCard>
         <p className="text-sm text-zinc-500">Loading accounts…</p>
@@ -211,10 +226,41 @@ export function AdminAccountsPanel() {
   }
 
   return (
-    <AdminContentCard>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Accounts are the primary entity. Click a row to manage members and user operations.
-      </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+        <button
+          type="button"
+          onClick={() => setView('accounts')}
+          className={cn(
+            'rounded-lg px-3 py-2 text-sm font-semibold transition',
+            activeView === 'accounts'
+              ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+              : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900'
+          )}
+        >
+          Accounts
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('onboarding')}
+          className={cn(
+            'rounded-lg px-3 py-2 text-sm font-semibold transition',
+            activeView === 'onboarding'
+              ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+              : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900'
+          )}
+        >
+          Onboarding
+        </button>
+      </div>
+
+      {activeView === 'onboarding' ? (
+        <AdminAccountsOnboardingPanel />
+      ) : (
+        <AdminContentCard>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Accounts are the primary entity. Click a row to manage members and user operations.
+          </p>
       {drillBanner ? (
         <p className="mt-3 rounded-lg border border-sky-200/90 bg-sky-50/80 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-200">
           {drillBanner}
@@ -359,6 +405,8 @@ export function AdminAccountsPanel() {
         onClose={() => !confirmBusy && setConfirm(null)}
         onConfirm={runConfirm}
       />
-    </AdminContentCard>
+        </AdminContentCard>
+      )}
+    </div>
   );
 }

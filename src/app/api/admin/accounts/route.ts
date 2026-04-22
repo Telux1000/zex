@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import {
+  deriveAccountOnboardingDaysStuck,
+  deriveAccountOnboardingStage,
+  deriveAccountOnboardingStuckReason,
+  type AccountOnboardingStage,
+} from '@/lib/admin/account-onboarding';
 import { deriveAccountLifecycleStatus, canManageSubscriberLifecycle } from '@/lib/admin/account-lifecycle';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
@@ -15,6 +21,38 @@ import { maskEmail, maskText } from '@/lib/admin/privacy';
 
 const ACCOUNTS_LIMIT = 250;
 const DAY_MS = 1000 * 60 * 60 * 24;
+const ONBOARDING_STAGE_VALUES: AccountOnboardingStage[] = [
+  'ACCOUNT_CREATED',
+  'SIGNUP_UNVERIFIED',
+  'VERIFIED_NO_LOGIN',
+  'LOGIN_NO_ONBOARDING',
+  'ONBOARDING_IN_PROGRESS',
+  'ONBOARDING_COMPLETED',
+];
+
+type OnboardingFilterStage = 'ALL_INCOMPLETE' | AccountOnboardingStage;
+type OnboardingSortField = 'created_at' | 'days_stuck' | 'last_activity_at';
+
+function parseOnboardingStage(raw: string | null): OnboardingFilterStage {
+  if (raw === 'ALL_INCOMPLETE') return raw;
+  if (raw && ONBOARDING_STAGE_VALUES.includes(raw as AccountOnboardingStage)) return raw as AccountOnboardingStage;
+  return 'ALL_INCOMPLETE';
+}
+
+function parseOnboardingSort(raw: string | null): OnboardingSortField {
+  if (raw === 'days_stuck' || raw === 'last_activity_at' || raw === 'created_at') return raw;
+  return 'days_stuck';
+}
+
+function parseSortDirection(raw: string | null): 'asc' | 'desc' {
+  return raw === 'asc' ? 'asc' : 'desc';
+}
+
+function parsePositiveInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.floor(n), min), max);
+}
 
 async function loadSubscriptionRows(admin: NonNullable<ReturnType<typeof getSupabaseServiceAdmin>>) {
   const candidates = ['subscriptions', 'billing_subscriptions'];
@@ -29,13 +67,187 @@ async function loadSubscriptionRows(admin: NonNullable<ReturnType<typeof getSupa
   return { table: null as string | null, rows: [] as Record<string, unknown>[] };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const gate = await requireAdminApiAccess();
   if (!gate.ok) return gate.response;
 
   const { supabase, user, adminRole } = gate;
   const admin = getSupabaseServiceAdmin();
   if (!admin) return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
+  const url = new URL(req.url);
+
+  if (url.searchParams.get('view') === 'onboarding') {
+    const page = parsePositiveInt(url.searchParams.get('page'), 1, 1, 100_000);
+    const pageSize = parsePositiveInt(url.searchParams.get('page_size'), 25, 1, 100);
+    const stageFilter = parseOnboardingStage(url.searchParams.get('stage'));
+    const search = (url.searchParams.get('search') ?? '').trim().toLowerCase();
+    const sortBy = parseOnboardingSort(url.searchParams.get('sort'));
+    const sortDir = parseSortDirection(url.searchParams.get('dir'));
+
+    const businessesRes = await admin
+      .from('businesses')
+      .select('id, name, owner_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (businessesRes.error) return NextResponse.json({ error: businessesRes.error.message }, { status: 500 });
+    const businesses = businessesRes.data ?? [];
+
+    const ownerIds = Array.from(new Set(businesses.map((b) => String(b.owner_id)).filter(Boolean)));
+    const [profilesRes, activityRes] = await Promise.all([
+      ownerIds.length === 0
+        ? Promise.resolve({
+            data: [] as {
+              id: string;
+              full_name: string | null;
+              email: string | null;
+              onboarding_completed_at: string | null;
+              onboarding_pricing_completed_at: string | null;
+            }[],
+            error: null,
+          })
+        : admin
+            .from('profiles')
+            .select('id, full_name, email, onboarding_completed_at, onboarding_pricing_completed_at')
+            .in('id', ownerIds),
+      admin
+        .from('activity_events')
+        .select('business_id, created_at')
+        .gte('created_at', new Date(Date.now() - 180 * DAY_MS).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(50_000),
+    ]);
+    if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+    if (activityRes.error) return NextResponse.json({ error: activityRes.error.message }, { status: 500 });
+
+    const authByOwner = new Map<
+      string,
+      { created_at: string | null; last_sign_in_at: string | null; email_confirmed_at: string | null; email: string | null }
+    >();
+    const AUTH_CHUNK = 30;
+    for (let i = 0; i < ownerIds.length; i += AUTH_CHUNK) {
+      const chunk = ownerIds.slice(i, i + AUTH_CHUNK);
+      const results = await Promise.all(chunk.map((id) => admin.auth.admin.getUserById(id)));
+      for (let j = 0; j < chunk.length; j += 1) {
+        const authUser = results[j].data?.user;
+        authByOwner.set(chunk[j], {
+          created_at: authUser?.created_at ?? null,
+          last_sign_in_at: authUser?.last_sign_in_at ?? null,
+          email_confirmed_at: authUser?.email_confirmed_at ?? null,
+          email: authUser?.email ?? null,
+        });
+      }
+    }
+
+    const profileByOwner = new Map((profilesRes.data ?? []).map((p) => [String(p.id), p]));
+    const lastActivityByBusiness = new Map<string, string>();
+    for (const event of activityRes.data ?? []) {
+      const businessId = String(event.business_id ?? '');
+      if (!businessId || lastActivityByBusiness.has(businessId)) continue;
+      lastActivityByBusiness.set(businessId, String(event.created_at));
+    }
+
+    const onboardingRows = businesses.map((business) => {
+      const ownerId = String(business.owner_id);
+      const profile = profileByOwner.get(ownerId);
+      const auth = authByOwner.get(ownerId);
+      const createdAt = auth?.created_at ?? business.created_at ?? null;
+      const emailVerifiedAt = auth?.email_confirmed_at ?? null;
+      const firstSignedInAt = auth?.last_sign_in_at ?? null;
+      const onboardingStartedAt = profile?.onboarding_pricing_completed_at ?? null;
+      const onboardingCompletedAt = profile?.onboarding_completed_at ?? null;
+      const onboardingStage = deriveAccountOnboardingStage({
+        created_at: createdAt,
+        email_verified_at: emailVerifiedAt,
+        first_signed_in_at: firstSignedInAt,
+        onboarding_started_at: onboardingStartedAt,
+        onboarding_completed_at: onboardingCompletedAt,
+      });
+      const stuckReason = deriveAccountOnboardingStuckReason(onboardingStage);
+      const daysStuck = deriveAccountOnboardingDaysStuck(onboardingStage, {
+        created_at: createdAt,
+        email_verified_at: emailVerifiedAt,
+        first_signed_in_at: firstSignedInAt,
+        onboarding_started_at: onboardingStartedAt,
+        onboarding_completed_at: onboardingCompletedAt,
+      });
+      const name = (profile?.full_name ?? '').trim() || business.name || '—';
+      const email = (profile?.email ?? auth?.email ?? '').trim();
+      const lastActivityAt = lastActivityByBusiness.get(String(business.id)) ?? firstSignedInAt ?? null;
+
+      return {
+        id: String(business.id),
+        name,
+        email,
+        created_at: createdAt ?? business.created_at,
+        email_verified_at: emailVerifiedAt,
+        first_signed_in_at: firstSignedInAt,
+        onboarding_started_at: onboardingStartedAt,
+        onboarding_completed_at: onboardingCompletedAt,
+        last_activity_at: lastActivityAt,
+        onboarding_stage: onboardingStage,
+        stuck_reason: stuckReason,
+        days_stuck: daysStuck,
+      };
+    });
+
+    const filtered = onboardingRows
+      .filter((row) => {
+        if (stageFilter === 'ALL_INCOMPLETE') return row.onboarding_stage !== 'ONBOARDING_COMPLETED';
+        return row.onboarding_stage === stageFilter;
+      })
+      .filter((row) => {
+        if (!search) return true;
+        return row.name.toLowerCase().includes(search) || row.email.toLowerCase().includes(search);
+      });
+
+    filtered.sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      if (sortBy === 'created_at') {
+        return (
+          (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir ||
+          a.name.localeCompare(b.name)
+        );
+      }
+      if (sortBy === 'last_activity_at') {
+        const av = a.last_activity_at ? new Date(a.last_activity_at).getTime() : -1;
+        const bv = b.last_activity_at ? new Date(b.last_activity_at).getTime() : -1;
+        return (av - bv) * dir || a.name.localeCompare(b.name);
+      }
+      const av = a.days_stuck ?? -1;
+      const bv = b.days_stuck ?? -1;
+      return (av - bv) * dir || a.name.localeCompare(b.name);
+    });
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const accounts = filtered.slice(start, start + pageSize);
+
+    await logAdminAuditEvent({
+      supabase,
+      actorUserId: user.id,
+      actorRole: adminRole,
+      action: 'admin_view_accounts',
+      metadata: {
+        view: 'onboarding',
+        total,
+        stage: stageFilter,
+      },
+    });
+
+    return NextResponse.json({
+      actor: { canManageLifecycle: canManageSubscriberLifecycle(adminRole) },
+      view: 'onboarding',
+      accounts,
+      pagination: {
+        page: safePage,
+        page_size: pageSize,
+        total,
+        total_pages: totalPages,
+      },
+    });
+  }
 
   /**
    * Source of truth for Zenzex subscriber workspaces is `public.businesses`.
