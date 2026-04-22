@@ -1,0 +1,19 @@
+Finish confirming your email — {{product_name}}
+
+Hi {{first_name}},
+
+Thanks for signing up. We still need you to confirm your email address ({{email}}) so we can finish securing your account.
+
+Check your inbox (and spam folder) for your original confirmation email from {{product_name}}, and click the link inside.
+
+{{#app_url}}
+Open {{product_name}}:
+{{app_url}}
+{{/app_url}}
+{{^app_url}}
+If you need a new confirmation link, open the app and use the option to resend verification from the sign-in or sign-up screen.
+{{/app_url}}
+
+If you did not create an account with {{product_name}}, you can ignore this email.
+
+© {{year}} {{product_name}}

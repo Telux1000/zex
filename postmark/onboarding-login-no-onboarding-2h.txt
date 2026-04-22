@@ -1,0 +1,19 @@
+Finish your {{product_name}} setup
+
+Hi {{first_name}},
+
+You're signed in to {{product_name}} as {{email}}, but onboarding is not finished yet. When you have a few minutes, continue the guided setup so your workspace is ready to use.
+
+You can pause and come back any time — we'll save your progress.
+
+{{#app_url}}
+Continue onboarding:
+{{app_url}}/onboarding
+{{/app_url}}
+{{^app_url}}
+After you sign in, open the onboarding flow from your dashboard or settings to continue setup.
+{{/app_url}}
+
+If you did not sign up for {{product_name}}, you can ignore this email.
+
+© {{year}} {{product_name}}

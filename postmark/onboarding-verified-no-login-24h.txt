@@ -1,0 +1,19 @@
+Your email is verified — sign in to {{product_name}}
+
+Hi {{first_name}},
+
+Your email is verified ({{email}}). The next step is to sign in for the first time so you can finish onboarding and open your workspace.
+
+Use the same email address and the password you chose at signup. If you forgot your password, use "Forgot password" on the sign-in page.
+
+{{#app_url}}
+Sign in here:
+{{app_url}}
+{{/app_url}}
+{{^app_url}}
+Open your app's sign-in page and log in with {{email}} to continue.
+{{/app_url}}
+
+If you did not create an account with {{product_name}}, you can ignore this email.
+
+© {{year}} {{product_name}}

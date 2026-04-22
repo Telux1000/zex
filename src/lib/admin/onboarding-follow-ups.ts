@@ -38,6 +38,30 @@ const MAX_AUTOMATED_PER_STAGE_CYCLE = 3;
 
 const STUCK_STAGE_SET = new Set<AccountOnboardingStage>(STUCK_ONBOARDING_STAGES);
 
+/** Merge fields for Postmark onboarding follow-up templates (alias e.g. `onboarding-signup-unverified-30m`). */
+function buildOnboardingFollowUpTemplateModel(
+  snapshot: OnboardingUserSnapshot,
+  opts: { stage: AccountOnboardingStage; stepKey: string }
+): Record<string, string> {
+  const appUrl = String(process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  const productName = String(process.env.NEXT_PUBLIC_APP_NAME ?? 'Zenzex').trim() || 'Zenzex';
+  const year = String(new Date().getFullYear());
+  const first = String(snapshot.full_name ?? '').trim();
+  const greetingName = first || 'there';
+  return {
+    firstName: greetingName,
+    first_name: greetingName,
+    email: String(snapshot.email ?? '').trim(),
+    onboardingStage: opts.stage,
+    onboarding_stage: opts.stage,
+    stepKey: opts.stepKey,
+    step_key: opts.stepKey,
+    app_url: appUrl,
+    product_name: productName,
+    year,
+  };
+}
+
 const FOLLOW_UP_SEQUENCES: Record<
   Extract<AccountOnboardingStage, 'SIGNUP_UNVERIFIED' | 'VERIFIED_NO_LOGIN' | 'LOGIN_NO_ONBOARDING' | 'ONBOARDING_IN_PROGRESS'>,
   FollowUpSequenceStep[]
@@ -354,12 +378,10 @@ async function sendFollowUpRow(row: FollowUpRow, snapshot: OnboardingUserSnapsho
     to: snapshot.email,
     templateAlias: tpl.templateAlias,
     templateId: tpl.templateId,
-    templateModel: {
-      firstName: snapshot.full_name ?? '',
-      email: snapshot.email,
-      onboardingStage: snapshot.onboarding_stage,
+    templateModel: buildOnboardingFollowUpTemplateModel(snapshot, {
+      stage: snapshot.onboarding_stage,
       stepKey: row.step_key,
-    },
+    }),
     tag: 'onboarding_follow_up',
     metadata: {
       user_id: row.user_id,
@@ -468,12 +490,10 @@ export async function sendManualOnboardingFollowUp(input: {
     to: snapshot.email,
     templateAlias: tpl.templateAlias,
     templateId: tpl.templateId,
-    templateModel: {
-      firstName: snapshot.full_name ?? '',
-      email: snapshot.email,
-      onboardingStage: input.stage,
+    templateModel: buildOnboardingFollowUpTemplateModel(snapshot, {
+      stage: input.stage,
       stepKey: 'manual',
-    },
+    }),
     tag: 'onboarding_follow_up_manual',
     metadata: {
       user_id: snapshot.user_id,

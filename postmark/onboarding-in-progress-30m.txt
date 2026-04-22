@@ -1,0 +1,19 @@
+Continue your {{product_name}} setup
+
+Hi {{first_name}},
+
+It looks like you started onboarding for {{product_name}} as {{email}} but haven't finished yet. Jump back in whenever you're ready — your progress is saved.
+
+Most people wrap up in just a few more minutes.
+
+{{#app_url}}
+Continue setup:
+{{app_url}}/onboarding
+{{/app_url}}
+{{^app_url}}
+Sign in to {{product_name}} and open onboarding from your dashboard or settings to continue where you left off.
+{{/app_url}}
+
+If you did not start onboarding with {{product_name}}, you can ignore this email.
+
+© {{year}} {{product_name}}
