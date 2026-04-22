@@ -8,7 +8,6 @@ import {
   allowedAccountLifecycleActions,
   type AccountLifecycleAction,
   type AccountLifecycleStatus,
-  type AccountLifecycleState,
   type TenantUserLifecycleStatus,
 } from '@/lib/admin/account-lifecycle';
 import { AdminBadge } from '@/components/admin/AdminBadge';
@@ -42,32 +41,6 @@ type DetailPayload = {
     lifecycle_status: AccountLifecycleStatus;
     created_at: string;
     users_count: number;
-    owner_lifecycle: {
-      lifecycle_state: AccountLifecycleState;
-      needs_attention: boolean;
-      email_verified_at: string | null;
-      last_sign_in_at: string | null;
-      onboarding_status: 'not_started' | 'in_progress' | 'completed';
-      onboarding_started_at: string | null;
-      onboarding_completed_at: string | null;
-    };
-    lifecycle_timeline: Array<{
-      type:
-        | 'account_created'
-        | 'verification_email_sent'
-        | 'email_verified'
-        | 'first_sign_in'
-        | 'onboarding_started'
-        | 'onboarding_completed';
-      label: string;
-      at: string;
-    }>;
-    support: {
-      can_resend_verification: boolean;
-      onboarding_link: string | null;
-      can_password_reset: boolean;
-      last_activity_at: string | null;
-    };
   };
   users: Array<{
     id: string;
@@ -103,13 +76,6 @@ function statusBadgeTone(
 
 function formatStatusLabel(s: string): string {
   return s.slice(0, 1).toUpperCase() + s.slice(1);
-}
-
-function lifecycleLabel(state: AccountLifecycleState): string {
-  if (state === 'UNVERIFIED') return 'Unverified';
-  if (state === 'VERIFIED_NOT_SIGNED_IN') return 'Verified, never signed in';
-  if (state === 'SIGNED_IN_ONBOARDING_INCOMPLETE') return 'Signed in, onboarding incomplete';
-  return 'Active';
 }
 
 /** Match server: no reset for deactivated subscriber users; pending/active/suspended OK. */
@@ -150,8 +116,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
   } | null>(null);
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
   const [userActionMsg, setUserActionMsg] = useState<string | null>(null);
-  const [supportActionMsg, setSupportActionMsg] = useState<string | null>(null);
-  const [supportBusy, setSupportBusy] = useState(false);
   const [accountSection, setAccountSection] = useState<'users' | 'activity'>('users');
 
   const router = useRouter();
@@ -396,27 +360,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
     return items;
   }
 
-  async function runResendVerification() {
-    setSupportBusy(true);
-    try {
-      const res = await fetch(`/api/admin/accounts/${accountId}/support-actions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resend_verification' }),
-      });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(j.error ?? 'Could not resend verification email.');
-        return;
-      }
-      setSupportActionMsg('Verification email sent.');
-      setError(null);
-      await load();
-    } finally {
-      setSupportBusy(false);
-    }
-  }
-
   async function inviteUser(e: React.FormEvent) {
     e.preventDefault();
     setInviteBusy(true);
@@ -446,7 +389,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
 
   const ls = data.account.lifecycle_status;
   const accountMenu = buildAccountMenu(ls);
-  const ownerLifecycle = data.account.owner_lifecycle;
 
   return (
     <div className="space-y-6">
@@ -466,10 +408,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <AdminBadge tone="neutral">Plan: {data.account.plan}</AdminBadge>
               <AdminBadge tone={statusBadgeTone(ls)}>{formatStatusLabel(ls)}</AdminBadge>
-              <AdminBadge tone={ownerLifecycle.needs_attention ? 'suspended' : 'pending'}>
-                {lifecycleLabel(ownerLifecycle.lifecycle_state)}
-              </AdminBadge>
-              {ownerLifecycle.needs_attention ? <AdminBadge tone="suspended">Needs attention</AdminBadge> : null}
               <AdminBadge tone="neutral">{data.account.users_count} users</AdminBadge>
             </div>
           </div>
@@ -487,80 +425,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
           </div>
         </div>
         <div className="mt-4 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          <div className="mb-3 rounded-md border border-zinc-200/80 p-3 text-sm dark:border-zinc-800">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-medium text-zinc-900 dark:text-zinc-100">Account lifecycle</h3>
-              <div className="flex flex-wrap gap-2">
-                <AdminBadge tone={ownerLifecycle.email_verified_at ? 'active' : 'pending'}>
-                  {ownerLifecycle.email_verified_at ? 'Verified' : 'Unverified'}
-                </AdminBadge>
-                <AdminBadge tone={ownerLifecycle.onboarding_completed_at ? 'active' : 'pending'}>
-                  {ownerLifecycle.onboarding_completed_at ? 'Onboarding completed' : 'Onboarding incomplete'}
-                </AdminBadge>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              Last sign-in: {ownerLifecycle.last_sign_in_at ? new Date(ownerLifecycle.last_sign_in_at).toLocaleString() : 'Never'} ·
-              Last activity:{' '}
-              {data.account.support.last_activity_at ? new Date(data.account.support.last_activity_at).toLocaleString() : '—'}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={!data.account.support.can_resend_verification || supportBusy}
-                onClick={() => void runResendVerification()}
-                className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700"
-              >
-                Resend verification email
-              </button>
-              {data.account.support.onboarding_link ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}${data.account.support.onboarding_link}`;
-                    void navigator.clipboard.writeText(url);
-                    setSupportActionMsg('Onboarding link copied.');
-                  }}
-                  className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium dark:border-zinc-700"
-                >
-                  Copy onboarding link
-                </button>
-              ) : null}
-              {data.account.support.can_password_reset ? (
-                <button
-                  type="button"
-                  disabled={supportBusy}
-                  onClick={() => {
-                    setUserActionMsg(null);
-                    setPasswordResetConfirm({
-                      userId: data.account.owner.id,
-                      name: data.account.owner.name,
-                      email: data.account.owner.email,
-                    });
-                  }}
-                  className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium dark:border-zinc-700"
-                >
-                  Send password reset
-                </button>
-              ) : null}
-            </div>
-            {supportActionMsg ? (
-              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400" role="status">
-                {supportActionMsg}
-              </p>
-            ) : null}
-            <div className="mt-3 space-y-1">
-              {data.account.lifecycle_timeline.length === 0 ? (
-                <p className="text-xs text-zinc-500">No lifecycle events recorded yet.</p>
-              ) : (
-                data.account.lifecycle_timeline.map((event) => (
-                  <p key={`${event.type}-${event.at}`} className="text-xs text-zinc-600 dark:text-zinc-400">
-                    {event.label}: {new Date(event.at).toLocaleString()}
-                  </p>
-                ))
-              )}
-            </div>
-          </div>
           <div
             className="inline-flex rounded-md border border-zinc-200 bg-zinc-50 p-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
             role="tablist"
