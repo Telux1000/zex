@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { createClient } from '@/lib/supabase/server';
 import { isStripeConnectRestApiEnabled } from '@/lib/integrations/stripe-connect/connect-rest-enabled';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 const CONNECT_RETURN_URL =
   process.env.STRIPE_CONNECT_RETURN_URL ?? '/settings?section=payment&stripe=return';
 const CONNECT_REFRESH_URL =
   process.env.STRIPE_CONNECT_REFRESH_URL ?? '/settings?section=payment&stripe=refresh';
 
-function toAbsoluteUrl(input: string): string {
+function toAbsoluteUrl(input: string, appUrl: string): string {
   if (input.startsWith('http://') || input.startsWith('https://')) return input;
-  if (input.startsWith('/')) return `${APP_URL}${input}`;
-  return `${APP_URL}/${input}`;
+  if (input.startsWith('/')) return `${appUrl}${input}`;
+  return `${appUrl}/${input}`;
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     if (!isStripeConnectRestApiEnabled()) {
       return NextResponse.json(
@@ -46,14 +46,15 @@ export async function POST() {
         { status: 400 }
       );
     }
+    const appUrl = resolveAppBaseUrl(new URL(req.url).origin) ?? 'http://localhost:3000';
 
     const { getStripe } = await import('@/lib/stripe');
 
     const accountLink = await getStripe().accountLinks.create({
       account: business.stripe_account_id,
       type: 'account_onboarding',
-      refresh_url: toAbsoluteUrl(CONNECT_REFRESH_URL),
-      return_url: toAbsoluteUrl(CONNECT_RETURN_URL),
+      refresh_url: toAbsoluteUrl(CONNECT_REFRESH_URL, appUrl),
+      return_url: toAbsoluteUrl(CONNECT_RETURN_URL, appUrl),
     });
 
     return NextResponse.json({ url: accountLink.url });

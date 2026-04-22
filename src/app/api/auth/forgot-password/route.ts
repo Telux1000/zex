@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { sendEmail, sendTemplatedEmail, resolvePostmarkTemplateFromEnv } from '@/services/postmark';
 
-function appResetPasswordUrl() {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+function appResetPasswordUrl(preferredOrigin?: string) {
+  const base = resolveAppBaseUrl(preferredOrigin);
   return base ? `${base}/reset-password` : undefined;
 }
 
@@ -27,7 +28,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const redirectTo = appResetPasswordUrl();
+  const requestOrigin = (() => {
+    try {
+      return new URL(req.url).origin;
+    } catch {
+      return undefined;
+    }
+  })();
+  const redirectTo = appResetPasswordUrl(requestOrigin);
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email,

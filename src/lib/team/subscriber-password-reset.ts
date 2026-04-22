@@ -1,3 +1,4 @@
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { sendEmail, sendTemplatedEmail, resolvePostmarkTemplateFromEnv } from '@/services/postmark';
 
@@ -5,7 +6,7 @@ import { sendEmail, sendTemplatedEmail, resolvePostmarkTemplateFromEnv } from '@
 const POSTMARK_USER_PASSWORD_RESET_TEMPLATE_ENV = 'POSTMARK_TEMPLATE_USER_PASSWORD_RESET';
 
 function appResetPasswordUrl() {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+  const base = resolveAppBaseUrl();
   return base ? `${base}/reset-password` : undefined;
 }
 

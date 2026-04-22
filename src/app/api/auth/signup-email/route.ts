@@ -40,7 +40,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Service temporarily unavailable.' }, { status: 503 });
   }
 
-  const redirectTo = getEmailRedirectToForSignupResend();
+  const requestOrigin = (() => {
+    try {
+      return new URL(req.url).origin;
+    } catch {
+      return undefined;
+    }
+  })();
+  const redirectTo = getEmailRedirectToForSignupResend(requestOrigin);
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'signup',
     email: normalized,

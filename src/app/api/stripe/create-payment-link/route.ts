@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { createClient } from '@/lib/supabase/server';
 import { createPaymentLink } from '@/lib/stripe';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
@@ -9,8 +10,6 @@ import { notifyBusinessEvent } from '@/services/notifications';
 import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-data';
 import { deliverInvoiceSendEmail } from '@/lib/invoices/send-invoice-delivery';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 export async function POST(req: Request) {
   try {
@@ -103,6 +102,7 @@ export async function POST(req: Request) {
       balance_due: balanceDue,
     });
     const payable = epd.enabled && epd.eligible ? epd.payable_now : balanceDue;
+    const appUrl = resolveAppBaseUrl(new URL(req.url).origin) ?? 'http://localhost:3000';
 
     const { url, sessionId } = await createPaymentLink({
       invoiceId: invoice.id,
@@ -111,8 +111,8 @@ export async function POST(req: Request) {
       amount: payable,
       currency: invoice.currency,
       customerEmail: invoice.customer_email,
-      successUrl: `${APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${APP_URL}/pay/cancel`,
+      successUrl: `${appUrl}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${appUrl}/pay/cancel`,
     });
     const paymentUrl = typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
 

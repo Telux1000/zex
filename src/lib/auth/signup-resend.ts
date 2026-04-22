@@ -38,8 +38,42 @@ export function getClientIp(req: Request): string | null {
 }
 
 function appAuthCallbackUrl(): string | undefined {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+  const base = resolveAppBaseUrl();
   return base ? `${base}/auth/callback` : undefined;
+}
+
+function normalizeAbsoluteUrl(raw: string | undefined): string | undefined {
+  const value = String(raw ?? '').trim();
+  if (!value) return undefined;
+  if (!/^https?:\/\//i.test(value)) return undefined;
+  return value.replace(/\/$/, '');
+}
+
+function normalizeHostLike(raw: string | undefined): string | undefined {
+  const value = String(raw ?? '').trim().replace(/\/$/, '');
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value.replace(/\/$/, '');
+  return `https://${value}`;
+}
+
+export function resolveAppBaseUrl(preferredOrigin?: string): string | undefined {
+  const configured = normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_APP_URL);
+  if (configured) return configured;
+
+  const origin = normalizeAbsoluteUrl(preferredOrigin);
+  if (origin) return origin;
+
+  const vercelProduction = normalizeHostLike(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+  if (vercelProduction) return vercelProduction;
+
+  const vercelPreview = normalizeHostLike(process.env.VERCEL_URL);
+  if (vercelPreview) return vercelPreview;
+
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://www.zenzex.com';
+  }
+
+  return undefined;
 }
 
 export async function logSignupResendAttempt(
@@ -193,6 +227,7 @@ export async function executeSignupResend(
   return { ok: true, sent: true, message: 'Email sent again.' };
 }
 
-export function getEmailRedirectToForSignupResend(): string | undefined {
-  return appAuthCallbackUrl();
+export function getEmailRedirectToForSignupResend(preferredOrigin?: string): string | undefined {
+  const base = resolveAppBaseUrl(preferredOrigin);
+  return base ? `${base}/auth/callback` : appAuthCallbackUrl();
 }

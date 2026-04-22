@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 
 const TOKEN_BYTES = 32;
 
@@ -11,13 +12,13 @@ export function hashInviteToken(plain: string): string {
 }
 
 export function buildInviteAcceptUrl(plainToken: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? '';
+  const base = resolveAppBaseUrl() ?? '';
   if (!base) return `/invite/accept?token=${encodeURIComponent(plainToken)}`;
   return `${base}/invite/accept?token=${encodeURIComponent(plainToken)}`;
 }
 
 export function buildInternalStaffInviteUrl(plainToken: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? '';
+  const base = resolveAppBaseUrl() ?? '';
   if (!base) return `/invite/staff?token=${encodeURIComponent(plainToken)}`;
   return `${base}/invite/staff?token=${encodeURIComponent(plainToken)}`;
 }

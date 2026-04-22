@@ -40,7 +40,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Invalid email address.' }, { status: 400 });
   }
 
-  const emailRedirectTo = getEmailRedirectToForSignupResend();
+  const requestOrigin = (() => {
+    try {
+      return new URL(req.url).origin;
+    } catch {
+      return undefined;
+    }
+  })();
+  const emailRedirectTo = getEmailRedirectToForSignupResend(requestOrigin);
 
   const result = await executeSignupResend(admin, {
     emailNormalized: normalized,

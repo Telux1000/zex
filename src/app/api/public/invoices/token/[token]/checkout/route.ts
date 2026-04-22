@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createPaymentLink } from '@/lib/stripe';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { findInvoiceByPublicToken } from '@/lib/invoices/public-token';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const appUrl = resolveAppBaseUrl(new URL(req.url).origin) ?? 'http://localhost:3000';
   const { token } = await params;
   const supabase = await createServiceClient();
   const resolved = await findInvoiceByPublicToken(supabase as any, token);
@@ -52,8 +52,8 @@ export async function POST(
       amount: payable,
       currency: String(invoice.currency ?? 'USD'),
       customerEmail: String(invoice.customer_email ?? '') || null,
-      successUrl: `${APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${APP_URL}/invoice/view/${encodeURIComponent(token)}`,
+      successUrl: `${appUrl}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${appUrl}/invoice/view/${encodeURIComponent(token)}`,
     });
 
     if (!url) return NextResponse.json({ error: 'Could not create payment link' }, { status: 500 });

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { createPaymentLink } from '@/lib/stripe';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { buildInvoiceEmailSubject } from '@/lib/invoices/email-subject';
@@ -8,7 +9,7 @@ import { canManageAutoReminders } from '@/lib/invoices/auto-reminders-eligibilit
 import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-data';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+const APP_URL = resolveAppBaseUrl() ?? 'http://localhost:3000';
 
 export type ReminderDeliveryKind = 'manual' | 'scheduled' | 'offset';
 

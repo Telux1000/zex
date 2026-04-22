@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
+import { resolveAppBaseUrl } from '@/lib/auth/signup-resend';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createPaymentLink } from '@/lib/stripe';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 /**
  * Create Stripe Checkout session for a public invoice (no auth).
  * Allowed only when invoice is sent, viewed, or overdue and not paid.
  */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const appUrl = resolveAppBaseUrl(new URL(req.url).origin) ?? 'http://localhost:3000';
   const supabase = await createServiceClient();
 
   const { data: invoice, error: invError } = await supabase
@@ -64,8 +64,8 @@ export async function POST(
       amount: payable,
       currency: invoice.currency,
       customerEmail: invoice.customer_email,
-      successUrl: `${APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${APP_URL}/i/${invoice.id}`,
+      successUrl: `${appUrl}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${appUrl}/i/${invoice.id}`,
     });
 
     if (!url) {
