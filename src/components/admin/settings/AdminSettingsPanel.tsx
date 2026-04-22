@@ -7,12 +7,14 @@ import { useAdminSupportUnread } from '@/contexts/AdminSupportUnreadContext';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
 import { cn } from '@/lib/utils/cn';
 import type { AdminPlatformSettingsDTO } from '@/lib/admin/admin-platform-settings';
+import type { SignupSettings } from '@/lib/auth/signup-control';
 import type { InternalSecuritySettingsDTO } from '@/lib/admin/internal-security-settings';
 
-type TabId = 'platform' | 'notifications' | 'authentication' | 'billing' | 'ai' | 'environment';
+type TabId = 'platform' | 'signup' | 'notifications' | 'authentication' | 'billing' | 'ai' | 'environment';
 
 type SettingsPayload = {
   platform: AdminPlatformSettingsDTO;
+  signup: SignupSettings;
   security: InternalSecuritySettingsDTO;
   environment: {
     node_env: string;
@@ -22,10 +24,12 @@ type SettingsPayload = {
     app_url_configured: boolean;
   };
   can_edit: boolean;
+  can_edit_signup: boolean;
 };
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'platform', label: 'Platform' },
+  { id: 'signup', label: 'Signup' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'authentication', label: 'Authentication & access' },
   { id: 'billing', label: 'Billing' },
@@ -127,7 +131,7 @@ export function AdminSettingsPanel() {
     );
   }
 
-  const { platform, security, environment, can_edit: canEdit } = data;
+  const { platform, signup, security, environment, can_edit: canEdit, can_edit_signup: canEditSignup } = data;
   const readOnly = !canEdit;
 
   return (
@@ -184,6 +188,13 @@ export function AdminSettingsPanel() {
             onSave={(patch) => void saveSection('platform', patch)}
           />
         )}
+        {tab === 'signup' && (
+          <SignupTab
+            signup={signup}
+            disabled={!canEditSignup || saving}
+            onSave={(patch) => void saveSection('signup', patch)}
+          />
+        )}
         {tab === 'notifications' && (
           <NotificationsTab
             platform={platform}
@@ -233,6 +244,157 @@ export function AdminSettingsPanel() {
           .
         </p>
       </AdminContentCard>
+    </div>
+  );
+}
+
+function SignupTab({
+  signup,
+  disabled,
+  onSave,
+}: {
+  signup: SignupSettings;
+  disabled: boolean;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [mode, setMode] = useState(signup.signup_mode);
+  const [message, setMessage] = useState(signup.signup_message ?? '');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteHours, setInviteHours] = useState(168);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMode(signup.signup_mode);
+    setMessage(signup.signup_message ?? '');
+  }, [signup]);
+
+  async function createInvite() {
+    setInviteBusy(true);
+    setInviteMsg(null);
+    setInviteUrl(null);
+    try {
+      const res = await fetch('/api/admin/signup-invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim() || null,
+          expires_in_hours: inviteHours,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setInviteMsg(typeof json.error === 'string' ? json.error : 'Could not create invite.');
+        return;
+      }
+      const link = String(json?.invite?.invite_url ?? '').trim();
+      if (link) setInviteUrl(link);
+      setInviteMsg('Invite generated.');
+    } catch {
+      setInviteMsg('Could not create invite.');
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2">
+      <Field
+        label="Signup mode"
+        description="OPEN allows anyone, CLOSED blocks public registration, INVITE_ONLY requires a valid invite token."
+      >
+        <select
+          className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          value={mode}
+          disabled={disabled}
+          onChange={(e) => setMode(e.target.value as SignupSettings['signup_mode'])}
+        >
+          <option value="OPEN">Open</option>
+          <option value="CLOSED">Closed</option>
+          <option value="INVITE_ONLY">Invite only</option>
+        </select>
+      </Field>
+      <Field
+        label="Signup message"
+        description="Optional message displayed to users when signup is blocked or invite-only."
+      >
+        <textarea
+          className="min-h-[86px] w-full max-w-lg rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          value={message}
+          maxLength={2000}
+          disabled={disabled}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Signups are temporarily paused while we perform maintenance."
+        />
+      </Field>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            onSave({
+              signup_mode: mode,
+              signup_message: message.trim() || null,
+            })
+          }
+          className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Save signup settings
+        </button>
+      </div>
+
+      <div className="mt-6 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Generate signup invite</p>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Use this link when signup mode is set to invite only.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <input
+            type="email"
+            className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            placeholder="Optional recipient email"
+            value={inviteEmail}
+            disabled={disabled || inviteBusy}
+            onChange={(e) => setInviteEmail(e.target.value)}
+          />
+          <input
+            type="number"
+            min={1}
+            max={720}
+            className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            value={inviteHours}
+            disabled={disabled || inviteBusy}
+            onChange={(e) => setInviteHours(Math.min(720, Math.max(1, Number(e.target.value) || 168)))}
+          />
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            disabled={disabled || inviteBusy}
+            onClick={() => void createInvite()}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+          >
+            {inviteBusy ? 'Generating…' : 'Generate invite link'}
+          </button>
+        </div>
+        {inviteMsg && (
+          <p
+            className={cn(
+              'mt-3 text-xs',
+              inviteMsg === 'Invite generated.' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+            )}
+          >
+            {inviteMsg}
+          </p>
+        )}
+        {inviteUrl && (
+          <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+            <p className="font-medium">Invite URL</p>
+            <p className="mt-1 break-all">{inviteUrl}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

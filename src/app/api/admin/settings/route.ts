@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
+import { fetchSignupSettings, normalizeSignupMode } from '@/lib/auth/signup-control';
 import { fetchInternalSecuritySettings } from '@/lib/admin/internal-security-settings';
 import {
   fetchAdminPlatformSettings,
@@ -68,12 +69,21 @@ const authenticationSectionSchema = z
   .merge(internalSecurityPolicyPatchSchema)
   .strict();
 
+const signupSectionSchema = z
+  .object({
+    section: z.literal('signup'),
+    signup_mode: z.enum(['OPEN', 'CLOSED', 'INVITE_ONLY']).optional(),
+    signup_message: z.union([z.string().max(2000), z.literal(''), z.null()]).optional(),
+  })
+  .strict();
+
 const patchSchema = z.discriminatedUnion('section', [
   platformSectionSchema,
   notificationsSectionSchema,
   billingSectionSchema,
   aiSectionSchema,
   authenticationSectionSchema,
+  signupSectionSchema,
 ]);
 
 export async function GET() {
@@ -83,9 +93,10 @@ export async function GET() {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
 
-  const [platform, security] = await Promise.all([
+  const [platform, security, signup] = await Promise.all([
     fetchAdminPlatformSettings(admin),
     fetchInternalSecuritySettings(admin),
+    fetchSignupSettings(admin),
   ]);
 
   const environment = {
@@ -99,17 +110,16 @@ export async function GET() {
   return NextResponse.json({
     platform,
     security,
+    signup,
     environment,
     can_edit: gate.adminRole === 'owner',
+    can_edit_signup: gate.adminRole === 'owner' || gate.adminRole === 'admin',
   });
 }
 
 export async function PATCH(req: Request) {
   const gate = await requireAdminApiAccess();
   if (!gate.ok) return gate.response;
-  if (gate.adminRole !== 'owner') {
-    return NextResponse.json({ error: 'Only owners can change platform settings.' }, { status: 403 });
-  }
 
   let body: unknown;
   try {
@@ -121,6 +131,13 @@ export async function PATCH(req: Request) {
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const section = parsed.data.section;
+  const isSignupPatch = section === 'signup';
+  const canEditSignup = gate.adminRole === 'owner' || gate.adminRole === 'admin';
+  if (isSignupPatch ? !canEditSignup : gate.adminRole !== 'owner') {
+    return NextResponse.json({ error: 'Insufficient role to change this setting.' }, { status: 403 });
   }
 
   const admin = getSupabaseServiceAdmin();
@@ -136,6 +153,49 @@ export async function PATCH(req: Request) {
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     const platform = await fetchAdminPlatformSettings(admin);
     return NextResponse.json({ platform, security: r.policies });
+  }
+  if (parsed.data.section === 'signup') {
+    const current = await fetchSignupSettings(admin);
+    const nextMode = parsed.data.signup_mode ? normalizeSignupMode(parsed.data.signup_mode) : current.signup_mode;
+    const nextMessage =
+      parsed.data.signup_message === undefined
+        ? current.signup_message
+        : parsed.data.signup_message === null || parsed.data.signup_message === ''
+          ? null
+          : String(parsed.data.signup_message).trim().slice(0, 2000);
+
+    const { error: upErr } = await admin
+      .from('app_settings')
+      .update({
+        signup_mode: nextMode,
+        signup_message: nextMessage,
+        updated_at: new Date().toISOString(),
+        updated_by: gate.user.id,
+      })
+      .eq('id', 'default');
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    }
+
+    await logAdminAuditEvent({
+      supabase: gate.supabase,
+      actorUserId: gate.user.id,
+      actorRole: gate.adminRole,
+      action: 'admin_signup_mode_changed',
+      targetType: 'app_settings',
+      targetId: 'default',
+      metadata: {
+        previous: { signup_mode: current.signup_mode, signup_message: current.signup_message },
+        next: { signup_mode: nextMode, signup_message: nextMessage },
+      },
+    });
+
+    return NextResponse.json({
+      signup: {
+        signup_mode: nextMode,
+        signup_message: nextMessage,
+      },
+    });
   }
 
   const { data: rawRow, error: loadErr } = await admin

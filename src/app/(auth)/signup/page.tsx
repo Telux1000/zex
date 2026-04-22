@@ -19,6 +19,10 @@ function SignupPageInner() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [signupMode, setSignupMode] = useState<'OPEN' | 'CLOSED' | 'INVITE_ONLY'>('OPEN');
+  const [signupMessage, setSignupMessage] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState('');
+  const [contextLoaded, setContextLoaded] = useState(false);
 
   const supabase = createClient();
   const nextPath = safeNextPath(searchParams.get('next'));
@@ -39,7 +43,28 @@ function SignupPageInner() {
   useEffect(() => {
     const pre = searchParams.get('email')?.trim();
     if (pre) setEmail(pre);
+    const inviteFromQuery = searchParams.get('invite')?.trim();
+    if (inviteFromQuery) setInviteToken(inviteFromQuery);
   }, [searchParams]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/signup-context')
+      .then((r) => r.json())
+      .then((json) => {
+        if (!active) return;
+        const mode = String(json?.signup_mode ?? 'OPEN').toUpperCase();
+        const normalized = mode === 'CLOSED' || mode === 'INVITE_ONLY' ? mode : 'OPEN';
+        setSignupMode(normalized);
+        setSignupMessage(json?.signup_message ? String(json.signup_message) : null);
+      })
+      .finally(() => {
+        if (active) setContextLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function signUp(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +74,11 @@ function SignupPageInner() {
       const res = await fetch('/api/auth/signup-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          invite_token: inviteToken.trim() || undefined,
+        }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok) {
@@ -87,6 +116,14 @@ function SignupPageInner() {
           </h1>
         </div>
 
+        {!contextLoaded ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Checking signup availability…</p>
+        ) : signupMode === 'CLOSED' ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+            <p className="font-medium">Signups are currently disabled</p>
+            {signupMessage && <p className="mt-1">{signupMessage}</p>}
+          </div>
+        ) : (
         <form onSubmit={signUp} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -115,6 +152,25 @@ function SignupPageInner() {
               className="app-input"
             />
           </div>
+          {signupMode === 'INVITE_ONLY' && (
+            <div>
+              <label htmlFor="invite-token" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Invite code
+              </label>
+              <input
+                id="invite-token"
+                type="text"
+                value={inviteToken}
+                onChange={(e) => setInviteToken(e.target.value)}
+                required
+                className="app-input"
+                placeholder="Paste your invite code"
+              />
+              {signupMessage && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{signupMessage}</p>
+              )}
+            </div>
+          )}
           {errorMessage && (
             <p className="text-sm text-red-600 dark:text-red-400">{errorMessage}</p>
           )}
@@ -122,26 +178,31 @@ function SignupPageInner() {
             {loading ? 'Creating account...' : 'Sign up'}
           </button>
         </form>
+        )}
 
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[var(--card-border)]" />
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-[var(--card)] px-2 text-slate-500 dark:text-slate-400">
-              Or continue with
-            </span>
-          </div>
-        </div>
+        {signupMode === 'OPEN' && (
+          <>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[var(--card-border)]" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-[var(--card)] px-2 text-slate-500 dark:text-slate-400">
+                  Or continue with
+                </span>
+              </div>
+            </div>
 
-        <button
-          type="button"
-          onClick={signInWithGoogle}
-          disabled={loading}
-          className="app-btn-secondary flex w-full items-center justify-center gap-2"
-        >
-          Google
-        </button>
+            <button
+              type="button"
+              onClick={signInWithGoogle}
+              disabled={loading}
+              className="app-btn-secondary flex w-full items-center justify-center gap-2"
+            >
+              Google
+            </button>
+          </>
+        )}
 
         <p className="text-center text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}

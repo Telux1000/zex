@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { deliverSignupConfirmationPostmark } from '@/lib/auth/deliver-signup-confirmation-postmark';
 import { getEmailRedirectToForSignupResend, normalizeSignupEmail } from '@/lib/auth/signup-resend';
+import { consumeSignupInvite, fetchSignupSettings, validateSignupAccess } from '@/lib/auth/signup-control';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string
  * "custom email provider" flow.
  */
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; invite_token?: string };
   try {
     body = (await req.json()) as { email?: string; password?: string };
   } catch {
@@ -58,6 +59,25 @@ export async function POST(req: Request) {
   const admin = getSupabaseServiceAdmin();
   if (!admin) {
     return NextResponse.json({ ok: false, error: 'Service temporarily unavailable.' }, { status: 503 });
+  }
+
+  const signupSettings = await fetchSignupSettings(admin);
+  const access = await validateSignupAccess({
+    admin,
+    mode: signupSettings.signup_mode,
+    email: normalized,
+    inviteToken: body.invite_token,
+  });
+  if (!access.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: access.error,
+        signup_mode: signupSettings.signup_mode,
+        signup_message: signupSettings.signup_message,
+      },
+      { status: access.status }
+    );
   }
 
   const requestOrigin = (() => {
@@ -90,6 +110,17 @@ export async function POST(req: Request) {
     }
     console.error('[signup-email] generateLink', error.message);
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  }
+
+  if (access.inviteIdToConsume) {
+    const consumed = await consumeSignupInvite({
+      admin,
+      inviteId: access.inviteIdToConsume,
+      userId: data?.user?.id ?? null,
+    });
+    if (!consumed) {
+      return NextResponse.json({ ok: false, error: 'Invite required to register' }, { status: 403 });
+    }
   }
 
   const actionLinkRaw = data?.properties?.action_link;

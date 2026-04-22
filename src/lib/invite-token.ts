@@ -17,6 +17,13 @@ export function buildInviteAcceptUrl(plainToken: string): string {
   return `${base}/invite/accept?token=${encodeURIComponent(plainToken)}`;
 }
 
+export function buildSignupInviteUrl(plainToken: string): string {
+  const base = resolveAppBaseUrl() ?? '';
+  const suffix = `/signup?invite=${encodeURIComponent(plainToken)}`;
+  if (!base) return suffix;
+  return `${base}${suffix}`;
+}
+
 export function buildInternalStaffInviteUrl(plainToken: string): string {
   const base = resolveAppBaseUrl() ?? '';
   if (!base) return `/invite/staff?token=${encodeURIComponent(plainToken)}`;
