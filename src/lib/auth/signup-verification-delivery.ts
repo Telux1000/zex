@@ -34,22 +34,22 @@ export async function sendSignupVerificationViaGenerateLink(
   const redirect = options.redirectTo ?? getEmailRedirectToForSignupResend();
   const password = String(options.password ?? '').trim();
 
+  if (!password) {
+    return {
+      error: new Error(
+        'Please enter your signup password and try resend again. For security, signup resend uses signup verification links only.'
+      ),
+    };
+  }
+
   const res = await admin.auth.admin.generateLink({
     type: 'signup',
     email,
-    ...(password ? { password } : {}),
+    password,
     options: redirect ? { redirectTo: redirect } : undefined,
   });
 
   if (res.error) {
-    const msg = res.error.message.toLowerCase();
-    if (!password && (msg.includes('password') || msg.includes('required'))) {
-      return {
-        error: new Error(
-          'Please enter your signup password and try resend again. For security, signup resend uses signup verification links only.'
-        ),
-      };
-    }
     return { error: new Error(res.error.message) };
   }
 
