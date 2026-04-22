@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { AdminBadge } from '@/components/admin/AdminBadge';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
@@ -41,6 +41,8 @@ const STAGE_FILTERS: { id: OnboardingStageFilter; label: string }[] = [
   { id: 'ONBOARDING_IN_PROGRESS', label: 'Onboarding in progress' },
   { id: 'ONBOARDING_COMPLETED', label: 'Completed' },
 ];
+const STAGE_FILTER_IDS = new Set<OnboardingStageFilter>(STAGE_FILTERS.map((f) => f.id));
+const SORT_IDS = new Set<OnboardingSort>(['created_at', 'days_stuck', 'last_activity_at']);
 
 function stageLabel(stage: OnboardingStage): string {
   if (stage === 'ACCOUNT_CREATED') return 'Account created';
@@ -59,15 +61,29 @@ function stageTone(stage: OnboardingStage): 'active' | 'pending' | 'neutral' {
 
 export function AdminAccountsOnboardingPanel() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<OnboardingAccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [stage, setStage] = useState<OnboardingStageFilter>('ALL_INCOMPLETE');
-  const [sort, setSort] = useState<OnboardingSort>('days_stuck');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, page_size: 25, total: 0, total_pages: 1 });
+  const rawStage = searchParams.get('stage') as OnboardingStageFilter | null;
+  const rawSort = searchParams.get('sort') as OnboardingSort | null;
+  const stage = rawStage && STAGE_FILTER_IDS.has(rawStage) ? rawStage : 'ALL_INCOMPLETE';
+  const sort = rawSort && SORT_IDS.has(rawSort) ? rawSort : 'days_stuck';
+  const dir = searchParams.get('dir') === 'asc' ? 'asc' : 'desc';
+  const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
+  const search = searchParams.get('search') ?? '';
+
+  function setOnboardingQuery(next: Partial<Record<'stage' | 'sort' | 'dir' | 'page' | 'search', string | null>>) {
+    const p = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(next)) {
+      if (!v) p.delete(k);
+      else p.set(k, v);
+    }
+    p.set('view', 'onboarding');
+    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,8 +147,10 @@ export function AdminAccountsOnboardingPanel() {
             type="search"
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
+              setOnboardingQuery({
+                search: e.target.value.trim().length > 0 ? e.target.value : null,
+                page: '1',
+              });
             }}
             placeholder="Search name or email…"
             className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-8 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
@@ -146,8 +164,7 @@ export function AdminAccountsOnboardingPanel() {
             <select
               value={stage}
               onChange={(e) => {
-                setStage(e.target.value as OnboardingStageFilter);
-                setPage(1);
+                setOnboardingQuery({ stage: e.target.value, page: '1' });
               }}
               className="h-9 min-w-[13rem] rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
@@ -164,8 +181,7 @@ export function AdminAccountsOnboardingPanel() {
             <select
               value={sort}
               onChange={(e) => {
-                setSort(e.target.value as OnboardingSort);
-                setPage(1);
+                setOnboardingQuery({ sort: e.target.value, page: '1' });
               }}
               className="h-9 min-w-[10rem] rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
@@ -180,8 +196,7 @@ export function AdminAccountsOnboardingPanel() {
             <select
               value={dir}
               onChange={(e) => {
-                setDir(e.target.value as 'asc' | 'desc');
-                setPage(1);
+                setOnboardingQuery({ dir: e.target.value, page: '1' });
               }}
               className="h-9 min-w-[7rem] rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
@@ -262,7 +277,7 @@ export function AdminAccountsOnboardingPanel() {
         <button
           type="button"
           disabled={pagination.page <= 1 || loading}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          onClick={() => setOnboardingQuery({ page: String(Math.max(1, pagination.page - 1)) })}
           className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200"
         >
           Previous
@@ -273,7 +288,7 @@ export function AdminAccountsOnboardingPanel() {
         <button
           type="button"
           disabled={pagination.page >= pagination.total_pages || loading}
-          onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
+          onClick={() => setOnboardingQuery({ page: String(Math.min(pagination.total_pages, pagination.page + 1)) })}
           className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200"
         >
           Next
