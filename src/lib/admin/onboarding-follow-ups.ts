@@ -208,10 +208,10 @@ export async function cancelPendingFollowUpsForUser(
   userId: string,
   reason: string,
   opts?: { stage?: AccountOnboardingStage }
-) {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = getSupabaseServiceAdmin();
-  if (!admin) return;
-  const query = admin
+  if (!admin) return { ok: false, error: 'Server misconfigured' };
+  let q = admin
     .from('onboarding_follow_ups')
     .update({
       status: 'CANCELED',
@@ -220,11 +220,10 @@ export async function cancelPendingFollowUpsForUser(
     })
     .eq('user_id', userId)
     .eq('status', 'PENDING');
-  if (opts?.stage) {
-    await query.eq('onboarding_stage_at_schedule', opts.stage);
-    return;
-  }
-  await query;
+  if (opts?.stage) q = q.eq('onboarding_stage_at_schedule', opts.stage);
+  const { error } = await q;
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 export async function reconcileFollowUpsForSnapshot(snapshot: OnboardingUserSnapshot) {
@@ -233,11 +232,11 @@ export async function reconcileFollowUpsForSnapshot(snapshot: OnboardingUserSnap
   const stage = snapshot.onboarding_stage;
   const isStuck = isStuckOnboardingStage(stage);
   if (!isStuck || stage === 'ONBOARDING_COMPLETED') {
-    await cancelPendingFollowUpsForUser(snapshot.user_id, 'stage_not_stuck');
+    void cancelPendingFollowUpsForUser(snapshot.user_id, 'stage_not_stuck');
     return;
   }
   if (snapshot.follow_ups_paused_at) {
-    await cancelPendingFollowUpsForUser(snapshot.user_id, 'paused_by_admin');
+    void cancelPendingFollowUpsForUser(snapshot.user_id, 'paused_by_admin');
     return;
   }
 
@@ -457,14 +456,15 @@ export async function runOnboardingFollowUpProcessor() {
   return { reconciled: snapshots.length, sent, canceled };
 }
 
-export async function setFollowUpsPaused(userId: string, paused: boolean) {
+export async function setFollowUpsPaused(userId: string, paused: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = getSupabaseServiceAdmin();
-  if (!admin) return { ok: false };
+  if (!admin) return { ok: false, error: 'Server misconfigured' };
   const pausedAt = paused ? new Date().toISOString() : null;
   const res = await admin.from('profiles').update({ onboarding_follow_ups_paused_at: pausedAt }).eq('id', userId);
-  if (res.error) return { ok: false };
+  if (res.error) return { ok: false, error: res.error.message };
   if (paused) {
-    await cancelPendingFollowUpsForUser(userId, 'paused_by_admin');
+    const canceled = await cancelPendingFollowUpsForUser(userId, 'paused_by_admin');
+    if (!canceled.ok) return { ok: false, error: canceled.error };
   } else {
     const snapshots = await listOnboardingSnapshots();
     const snapshot = snapshots.find((s) => s.user_id === userId);

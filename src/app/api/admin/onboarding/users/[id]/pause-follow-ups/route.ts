@@ -12,7 +12,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!userId) return NextResponse.json({ error: 'Missing user id' }, { status: 400 });
 
   const result = await setFollowUpsPaused(userId, true);
-  if (!result.ok) return NextResponse.json({ error: 'Failed to pause follow-ups' }, { status: 500 });
+  if (!result.ok) return NextResponse.json({ error: result.error ?? 'Failed to pause follow-ups' }, { status: 500 });
 
   await logAdminAuditEvent({
     supabase,

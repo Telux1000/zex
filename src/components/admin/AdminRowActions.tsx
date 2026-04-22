@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/cn';
 export type AdminRowActionItem =
   | {
       label: string;
-      onClick: () => void;
+      onClick: () => void | Promise<void>;
       danger?: boolean;
       disabled?: boolean;
     }
@@ -142,8 +142,12 @@ export function AdminRowActions({ items, disabled }: { items: AdminRowActionItem
             )}
             onClick={() => {
               if (item.disabled) return;
-              setOpen(false);
-              item.onClick();
+              const out = item.onClick();
+              if (out != null && typeof (out as Promise<void>).then === 'function') {
+                void (out as Promise<void>).finally(() => setOpen(false));
+              } else {
+                setOpen(false);
+              }
             }}
           >
             {item.label}

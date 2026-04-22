@@ -109,6 +109,28 @@ function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): strin
   return titled ? `${titled} — ${suffix}` : suffix;
 }
 
+async function postAdminOnboardingAction(
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      ...init,
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    if (!res.ok) {
+      const base = json.error ?? `Request failed (${res.status})`;
+      const code = json.code ? ` [${json.code}]` : '';
+      return { ok: false, error: `${base}${code}` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Network error.' };
+  }
+}
+
 export function AdminAccountsOnboardingPanel() {
   const router = useRouter();
   const pathname = usePathname();
@@ -149,7 +171,7 @@ export function AdminAccountsOnboardingPanel() {
         page: String(page),
         page_size: '25',
       });
-      const res = await fetch(`/api/admin/onboarding/users?${params.toString()}`);
+      const res = await fetch(`/api/admin/onboarding/users?${params.toString()}`, { credentials: 'include' });
       const json = (await res.json()) as {
         error?: string;
         accounts?: OnboardingAccountRow[];
@@ -264,15 +286,21 @@ export function AdminAccountsOnboardingPanel() {
                 setProcessorMessage(null);
                 setProcessorRunning(true);
                 try {
-                  const res = await fetch('/api/admin/onboarding/follow-ups/process', { method: 'POST' });
+                  const res = await fetch('/api/admin/onboarding/follow-ups/process', {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
                   const json = (await res.json()) as {
                     error?: string;
+                    code?: string;
                     reconciled?: number;
                     sent?: number;
                     canceled?: number;
                   };
                   if (!res.ok) {
-                    setProcessorMessage(json.error ?? 'Follow-up processor failed.');
+                    const base = json.error ?? 'Follow-up processor failed.';
+                    const code = json.code ? ` [${json.code}]` : '';
+                    setProcessorMessage(`Error: ${base}${code}`);
                     return;
                   }
                   const r = json.reconciled ?? 0;
@@ -281,7 +309,7 @@ export function AdminAccountsOnboardingPanel() {
                   setProcessorMessage(`Processor run: reconciled ${r}, sent ${s}, canceled ${c}.`);
                   await load();
                 } catch {
-                  setProcessorMessage('Network error.');
+                  setProcessorMessage('Error: Network error.');
                 } finally {
                   setProcessorRunning(false);
                 }
@@ -294,7 +322,15 @@ export function AdminAccountsOnboardingPanel() {
           </div>
         </div>
         {processorMessage ? (
-          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{processorMessage}</p>
+          <p
+            className={`mt-2 text-xs ${
+              processorMessage.startsWith('Error:')
+                ? 'text-red-700 dark:text-red-300'
+                : 'text-zinc-600 dark:text-zinc-400'
+            }`}
+          >
+            {processorMessage}
+          </p>
         ) : null}
       </div>
 
@@ -409,18 +445,30 @@ export function AdminAccountsOnboardingPanel() {
                           {
                             label: row.follow_up_status === 'paused' ? 'Resume follow-ups' : 'Pause follow-ups',
                             onClick: async () => {
+                              setProcessorMessage(null);
                               const endpoint =
                                 row.follow_up_status === 'paused'
                                   ? `/api/admin/onboarding/users/${row.id}/resume-follow-ups`
                                   : `/api/admin/onboarding/users/${row.id}/pause-follow-ups`;
-                              await fetch(endpoint, { method: 'POST' });
+                              const out = await postAdminOnboardingAction(endpoint);
+                              if (!out.ok) {
+                                setProcessorMessage(`Error: ${out.error}`);
+                                return;
+                              }
                               await load();
                             },
                           },
                           {
                             label: 'Cancel pending follow-ups',
                             onClick: async () => {
-                              await fetch(`/api/admin/onboarding/users/${row.id}/cancel-follow-ups`, { method: 'POST' });
+                              setProcessorMessage(null);
+                              const out = await postAdminOnboardingAction(
+                                `/api/admin/onboarding/users/${row.id}/cancel-follow-ups`
+                              );
+                              if (!out.ok) {
+                                setProcessorMessage(`Error: ${out.error}`);
+                                return;
+                              }
                               await load();
                             },
                           },
@@ -429,14 +477,21 @@ export function AdminAccountsOnboardingPanel() {
                                 {
                                   label: 'Send next follow-up now',
                                   onClick: async () => {
-                                    await fetch(`/api/admin/onboarding/users/${row.id}/send-follow-up`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        template_id: row.next_follow_up?.template_id,
-                                        onboarding_stage: row.onboarding_stage,
-                                      }),
-                                    });
+                                    setProcessorMessage(null);
+                                    const out = await postAdminOnboardingAction(
+                                      `/api/admin/onboarding/users/${row.id}/send-follow-up`,
+                                      {
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          template_id: row.next_follow_up?.template_id,
+                                          onboarding_stage: row.onboarding_stage,
+                                        }),
+                                      }
+                                    );
+                                    if (!out.ok) {
+                                      setProcessorMessage(`Error: ${out.error}`);
+                                      return;
+                                    }
                                     await load();
                                   },
                                 },

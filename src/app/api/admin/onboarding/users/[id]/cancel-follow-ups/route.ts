@@ -11,7 +11,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const userId = String(params.id ?? '').trim();
   if (!userId) return NextResponse.json({ error: 'Missing user id' }, { status: 400 });
 
-  await cancelPendingFollowUpsForUser(userId, 'canceled_by_admin');
+  const cancelResult = await cancelPendingFollowUpsForUser(userId, 'canceled_by_admin');
+  if (!cancelResult.ok) {
+    return NextResponse.json({ error: cancelResult.error }, { status: 500 });
+  }
   await logAdminAuditEvent({
     supabase,
     actorUserId: user.id,
