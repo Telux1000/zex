@@ -5,6 +5,26 @@ import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 export const dynamic = 'force-dynamic';
 
+function isLocalhostRedirect(raw: string | null): boolean {
+  const value = String(raw ?? '').toLowerCase();
+  return value.includes('localhost') || value.includes('127.0.0.1') || value.includes('0.0.0.0');
+}
+
+function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string): string {
+  const safeRedirect = String(redirectTo ?? '').trim();
+  if (!safeRedirect) return actionLink;
+  try {
+    const u = new URL(actionLink);
+    const existing = u.searchParams.get('redirect_to');
+    if (!existing || isLocalhostRedirect(existing)) {
+      u.searchParams.set('redirect_to', safeRedirect);
+    }
+    return u.toString();
+  } catch {
+    return actionLink;
+  }
+}
+
 /**
  * Email/password signup without calling client signUp(), so Supabase never sends its default
  * "Confirm your signup" message. Uses admin.generateLink (signup), then Postmark — same as docs
@@ -72,12 +92,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
 
-  const actionLink = data?.properties?.action_link;
+  const actionLinkRaw = data?.properties?.action_link;
   const otp = data?.properties?.email_otp ?? '';
-  if (!actionLink) {
+  if (!actionLinkRaw) {
     console.error('[signup-email] missing action_link');
     return NextResponse.json({ ok: false, error: 'Could not complete signup.' }, { status: 500 });
   }
+  const actionLink = enforceSafeRedirectOnActionLink(actionLinkRaw, redirectTo);
 
   try {
     await deliverSignupConfirmationPostmark({
