@@ -6,6 +6,13 @@ export type AccountOnboardingStage =
   | 'ONBOARDING_IN_PROGRESS'
   | 'ONBOARDING_COMPLETED';
 
+export const STUCK_ONBOARDING_STAGES: AccountOnboardingStage[] = [
+  'SIGNUP_UNVERIFIED',
+  'VERIFIED_NO_LOGIN',
+  'LOGIN_NO_ONBOARDING',
+  'ONBOARDING_IN_PROGRESS',
+];
+
 export type AccountOnboardingStuckReason =
   | 'Email verification pending'
   | 'Verified but never signed in'
@@ -66,4 +73,15 @@ export function deriveAccountOnboardingDaysStuck(
   const delta = now - anchor;
   if (!Number.isFinite(delta) || delta < 0) return 0;
   return Math.floor(delta / 86_400_000);
+}
+
+export function deriveAccountOnboardingAnchorAt(
+  stage: AccountOnboardingStage,
+  input: OnboardingInput
+): string | null {
+  if (stage === 'ONBOARDING_IN_PROGRESS') return hasIso(input.onboarding_started_at) ? input.onboarding_started_at : null;
+  if (stage === 'LOGIN_NO_ONBOARDING') return hasIso(input.first_signed_in_at) ? input.first_signed_in_at : null;
+  if (stage === 'VERIFIED_NO_LOGIN') return hasIso(input.email_verified_at) ? input.email_verified_at : null;
+  if (stage === 'ONBOARDING_COMPLETED') return hasIso(input.onboarding_completed_at) ? input.onboarding_completed_at : null;
+  return hasIso(input.created_at) ? input.created_at : null;
 }

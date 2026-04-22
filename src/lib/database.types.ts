@@ -70,6 +70,8 @@ export interface Profile {
   onboarding_completed_at?: string | null;
   /** Set when the owner completes the signup pricing step (before workspace setup). */
   onboarding_pricing_completed_at?: string | null;
+  /** Internal admin control: when set, automated onboarding follow-ups are paused. */
+  onboarding_follow_ups_paused_at?: string | null;
   created_at: string;
   updated_at: string;
 }

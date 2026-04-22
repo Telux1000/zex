@@ -32,6 +32,9 @@ type OnboardingAccountRow = {
   onboarding_stage: OnboardingStage;
   stuck_reason: string | null;
   days_stuck: number | null;
+  follow_up_status: 'active' | 'paused';
+  last_follow_up: { sent_at: string; template_id: string } | null;
+  next_follow_up: { scheduled_for: string; template_id: string } | null;
 };
 
 const STAGE_FILTERS: { id: OnboardingStageFilter; label: string }[] = [
@@ -67,6 +70,8 @@ export function AdminAccountsOnboardingPanel() {
   const [rows, setRows] = useState<OnboardingAccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [processorRunning, setProcessorRunning] = useState(false);
+  const [processorMessage, setProcessorMessage] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, page_size: 25, total: 0, total_pages: 1 });
   const rawStage = searchParams.get('stage') as OnboardingStageFilter | null;
   const rawSort = searchParams.get('sort') as OnboardingSort | null;
@@ -91,7 +96,6 @@ export function AdminAccountsOnboardingPanel() {
     setError(null);
     try {
       const params = new URLSearchParams({
-        view: 'onboarding',
         stage,
         search,
         sort,
@@ -99,7 +103,7 @@ export function AdminAccountsOnboardingPanel() {
         page: String(page),
         page_size: '25',
       });
-      const res = await fetch(`/api/admin/accounts?${params.toString()}`);
+      const res = await fetch(`/api/admin/onboarding/users?${params.toString()}`);
       const json = (await res.json()) as {
         error?: string;
         accounts?: OnboardingAccountRow[];
@@ -206,8 +210,46 @@ export function AdminAccountsOnboardingPanel() {
             </select>
           </label>
 
-          <p className="text-xs text-zinc-500 sm:ml-auto">{totalLabel}</p>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+            <button
+              type="button"
+              disabled={processorRunning || loading}
+              onClick={async () => {
+                setProcessorMessage(null);
+                setProcessorRunning(true);
+                try {
+                  const res = await fetch('/api/admin/onboarding/follow-ups/process', { method: 'POST' });
+                  const json = (await res.json()) as {
+                    error?: string;
+                    reconciled?: number;
+                    sent?: number;
+                    canceled?: number;
+                  };
+                  if (!res.ok) {
+                    setProcessorMessage(json.error ?? 'Follow-up processor failed.');
+                    return;
+                  }
+                  const r = json.reconciled ?? 0;
+                  const s = json.sent ?? 0;
+                  const c = json.canceled ?? 0;
+                  setProcessorMessage(`Processor run: reconciled ${r}, sent ${s}, canceled ${c}.`);
+                  await load();
+                } catch {
+                  setProcessorMessage('Network error.');
+                } finally {
+                  setProcessorRunning(false);
+                }
+              }}
+              className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              {processorRunning ? 'Running…' : 'Run follow-up processor'}
+            </button>
+            <p className="text-xs text-zinc-500">{totalLabel}</p>
+          </div>
         </div>
+        {processorMessage ? (
+          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{processorMessage}</p>
+        ) : null}
       </div>
 
       {loading ? (
@@ -227,6 +269,9 @@ export function AdminAccountsOnboardingPanel() {
               <AdminTh>Onboarding stage</AdminTh>
               <AdminTh>Stuck reason</AdminTh>
               <AdminTh>Days stuck</AdminTh>
+              <AdminTh>Last follow-up</AdminTh>
+              <AdminTh>Next follow-up</AdminTh>
+              <AdminTh>Automation</AdminTh>
               <AdminTh>Last activity at</AdminTh>
               <AdminTh className="w-12 text-right"> </AdminTh>
             </AdminTableHead>
@@ -263,21 +308,72 @@ export function AdminAccountsOnboardingPanel() {
                     {row.days_stuck == null ? '—' : `${row.days_stuck}d`}
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+                    {row.last_follow_up
+                      ? `${new Date(row.last_follow_up.sent_at).toLocaleString()} (${row.last_follow_up.template_id})`
+                      : '—'}
+                  </AdminTd>
+                  <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+                    {row.next_follow_up
+                      ? `${new Date(row.next_follow_up.scheduled_for).toLocaleString()} (${row.next_follow_up.template_id})`
+                      : '—'}
+                  </AdminTd>
+                  <AdminTd>
+                    <AdminBadge tone={row.follow_up_status === 'paused' ? 'warning' : 'active'}>
+                      {row.follow_up_status === 'paused' ? 'Paused' : 'Active'}
+                    </AdminBadge>
+                  </AdminTd>
+                  <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
                     {row.last_activity_at ? new Date(row.last_activity_at).toLocaleString() : '—'}
                   </AdminTd>
                   <AdminTd className="text-right">
-                    {row.account_id ? (
-                      <AdminRowActions
-                        items={[
+                    <AdminRowActions
+                      items={[
+                        ...(row.account_id
+                          ? [
+                              {
+                                label: 'Open account',
+                                onClick: () => router.push(`/admin/accounts/${row.account_id}`),
+                              },
+                            ]
+                          : []),
                           {
-                            label: 'Open account',
-                            onClick: () => router.push(`/admin/accounts/${row.account_id}`),
+                            label: row.follow_up_status === 'paused' ? 'Resume follow-ups' : 'Pause follow-ups',
+                            onClick: async () => {
+                              const endpoint =
+                                row.follow_up_status === 'paused'
+                                  ? `/api/admin/onboarding/users/${row.id}/resume-follow-ups`
+                                  : `/api/admin/onboarding/users/${row.id}/pause-follow-ups`;
+                              await fetch(endpoint, { method: 'POST' });
+                              await load();
+                            },
                           },
-                        ]}
-                      />
-                    ) : (
-                      '—'
-                    )}
+                          {
+                            label: 'Cancel pending follow-ups',
+                            onClick: async () => {
+                              await fetch(`/api/admin/onboarding/users/${row.id}/cancel-follow-ups`, { method: 'POST' });
+                              await load();
+                            },
+                          },
+                          ...(row.next_follow_up
+                            ? [
+                                {
+                                  label: 'Send next follow-up now',
+                                  onClick: async () => {
+                                    await fetch(`/api/admin/onboarding/users/${row.id}/send-follow-up`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        template_id: row.next_follow_up?.template_id,
+                                        onboarding_stage: row.onboarding_stage,
+                                      }),
+                                    });
+                                    await load();
+                                  },
+                                },
+                              ]
+                            : []),
+                      ]}
+                    />
                   </AdminTd>
                 </AdminTr>
               ))}
