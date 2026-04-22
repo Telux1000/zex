@@ -20,6 +20,7 @@ type OnboardingSort = 'created_at' | 'days_stuck' | 'last_activity_at';
 
 type OnboardingAccountRow = {
   id: string;
+  account_id: string | null;
   name: string;
   email: string;
   created_at: string;
@@ -218,6 +219,7 @@ export function AdminAccountsOnboardingPanel() {
           <AdminTable>
             <AdminTableHead>
               <AdminTh>Name</AdminTh>
+              <AdminTh>Workspace</AdminTh>
               <AdminTh>Email</AdminTh>
               <AdminTh>Created at</AdminTh>
               <AdminTh>Verification status</AdminTh>
@@ -232,6 +234,13 @@ export function AdminAccountsOnboardingPanel() {
               {rows.map((row) => (
                 <AdminTr key={row.id}>
                   <AdminTd className="font-medium text-zinc-900 dark:text-zinc-100">{row.name}</AdminTd>
+                  <AdminTd>
+                    {row.account_id ? (
+                      <AdminBadge tone="active">Workspace ready</AdminBadge>
+                    ) : (
+                      <AdminBadge tone="warning">No workspace yet</AdminBadge>
+                    )}
+                  </AdminTd>
                   <AdminTd className="text-zinc-600 dark:text-zinc-300">{row.email || '—'}</AdminTd>
                   <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
                     {row.created_at ? new Date(row.created_at).toLocaleDateString() : '—'}
@@ -257,14 +266,18 @@ export function AdminAccountsOnboardingPanel() {
                     {row.last_activity_at ? new Date(row.last_activity_at).toLocaleString() : '—'}
                   </AdminTd>
                   <AdminTd className="text-right">
-                    <AdminRowActions
-                      items={[
-                        {
-                          label: 'Open account',
-                          onClick: () => router.push(`/admin/accounts/${row.id}`),
-                        },
-                      ]}
-                    />
+                    {row.account_id ? (
+                      <AdminRowActions
+                        items={[
+                          {
+                            label: 'Open account',
+                            onClick: () => router.push(`/admin/accounts/${row.account_id}`),
+                          },
+                        ]}
+                      />
+                    ) : (
+                      '—'
+                    )}
                   </AdminTd>
                 </AdminTr>
               ))}

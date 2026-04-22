@@ -84,31 +84,22 @@ export async function GET(req: Request) {
     const sortBy = parseOnboardingSort(url.searchParams.get('sort'));
     const sortDir = parseSortDirection(url.searchParams.get('dir'));
 
-    const businessesRes = await admin
-      .from('businesses')
-      .select('id, name, owner_id, created_at')
+    const profilesRes = await admin
+      .from('profiles')
+      .select(
+        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at'
+      )
+      .is('internal_admin_role', null)
       .order('created_at', { ascending: false })
       .limit(5000);
-    if (businessesRes.error) return NextResponse.json({ error: businessesRes.error.message }, { status: 500 });
-    const businesses = businessesRes.data ?? [];
+    if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+    const profiles = (profilesRes.data ?? []).filter((p) => String(p.id ?? '').length > 0);
+    const profileIds = profiles.map((p) => String(p.id));
 
-    const ownerIds = Array.from(new Set(businesses.map((b) => String(b.owner_id)).filter(Boolean)));
-    const [profilesRes, activityRes] = await Promise.all([
-      ownerIds.length === 0
-        ? Promise.resolve({
-            data: [] as {
-              id: string;
-              full_name: string | null;
-              email: string | null;
-              onboarding_completed_at: string | null;
-              onboarding_pricing_completed_at: string | null;
-            }[],
-            error: null,
-          })
-        : admin
-            .from('profiles')
-            .select('id, full_name, email, onboarding_completed_at, onboarding_pricing_completed_at')
-            .in('id', ownerIds),
+    const [businessesRes, activityRes] = await Promise.all([
+      profileIds.length === 0
+        ? Promise.resolve({ data: [] as { id: string; name: string | null; owner_id: string; created_at: string }[], error: null })
+        : admin.from('businesses').select('id, name, owner_id, created_at').in('owner_id', profileIds),
       admin
         .from('activity_events')
         .select('business_id, created_at')
@@ -116,7 +107,7 @@ export async function GET(req: Request) {
         .order('created_at', { ascending: false })
         .limit(50_000),
     ]);
-    if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+    if (businessesRes.error) return NextResponse.json({ error: businessesRes.error.message }, { status: 500 });
     if (activityRes.error) return NextResponse.json({ error: activityRes.error.message }, { status: 500 });
 
     const authByOwner = new Map<
@@ -124,8 +115,8 @@ export async function GET(req: Request) {
       { created_at: string | null; last_sign_in_at: string | null; email_confirmed_at: string | null; email: string | null }
     >();
     const AUTH_CHUNK = 30;
-    for (let i = 0; i < ownerIds.length; i += AUTH_CHUNK) {
-      const chunk = ownerIds.slice(i, i + AUTH_CHUNK);
+    for (let i = 0; i < profileIds.length; i += AUTH_CHUNK) {
+      const chunk = profileIds.slice(i, i + AUTH_CHUNK);
       const results = await Promise.all(chunk.map((id) => admin.auth.admin.getUserById(id)));
       for (let j = 0; j < chunk.length; j += 1) {
         const authUser = results[j].data?.user;
@@ -138,7 +129,16 @@ export async function GET(req: Request) {
       }
     }
 
-    const profileByOwner = new Map((profilesRes.data ?? []).map((p) => [String(p.id), p]));
+    const businessByOwner = new Map<string, { id: string; name: string | null; created_at: string }>();
+    for (const business of businessesRes.data ?? []) {
+      const ownerId = String(business.owner_id ?? '');
+      if (!ownerId || businessByOwner.has(ownerId)) continue;
+      businessByOwner.set(ownerId, {
+        id: String(business.id),
+        name: business.name ?? null,
+        created_at: String(business.created_at),
+      });
+    }
     const lastActivityByBusiness = new Map<string, string>();
     for (const event of activityRes.data ?? []) {
       const businessId = String(event.business_id ?? '');
@@ -146,11 +146,11 @@ export async function GET(req: Request) {
       lastActivityByBusiness.set(businessId, String(event.created_at));
     }
 
-    const onboardingRows = businesses.map((business) => {
-      const ownerId = String(business.owner_id);
-      const profile = profileByOwner.get(ownerId);
-      const auth = authByOwner.get(ownerId);
-      const createdAt = auth?.created_at ?? business.created_at ?? null;
+    const onboardingRows = profiles.map((profile) => {
+      const profileId = String(profile.id);
+      const business = businessByOwner.get(profileId) ?? null;
+      const auth = authByOwner.get(profileId);
+      const createdAt = auth?.created_at ?? profile.created_at ?? business?.created_at ?? null;
       const emailVerifiedAt = auth?.email_confirmed_at ?? null;
       const firstSignedInAt = auth?.last_sign_in_at ?? null;
       const onboardingStartedAt = profile?.onboarding_pricing_completed_at ?? null;
@@ -170,15 +170,16 @@ export async function GET(req: Request) {
         onboarding_started_at: onboardingStartedAt,
         onboarding_completed_at: onboardingCompletedAt,
       });
-      const name = (profile?.full_name ?? '').trim() || business.name || '—';
+      const name = (profile?.full_name ?? '').trim() || business?.name || '—';
       const email = (profile?.email ?? auth?.email ?? '').trim();
-      const lastActivityAt = lastActivityByBusiness.get(String(business.id)) ?? firstSignedInAt ?? null;
+      const lastActivityAt = business ? (lastActivityByBusiness.get(String(business.id)) ?? firstSignedInAt ?? null) : firstSignedInAt;
 
       return {
-        id: String(business.id),
+        id: profileId,
+        account_id: business?.id ?? null,
         name,
         email,
-        created_at: createdAt ?? business.created_at,
+        created_at: createdAt ?? profile.created_at,
         email_verified_at: emailVerifiedAt,
         first_signed_in_at: firstSignedInAt,
         onboarding_started_at: onboardingStartedAt,
