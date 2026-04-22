@@ -12,7 +12,6 @@ import {
 
 const INTERNAL_ADMIN_ROLES = new Set(['owner', 'admin', 'support']);
 const READ_ONLY_WRITE_EXEMPT_PREFIXES = [
-  '/api/auth/',
   '/api/admin/settings',
   '/api/webhooks/',
   '/api/cron/',
