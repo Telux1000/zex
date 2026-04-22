@@ -33,8 +33,8 @@ type OnboardingAccountRow = {
   stuck_reason: string | null;
   days_stuck: number | null;
   follow_up_status: 'active' | 'paused';
-  last_follow_up: { sent_at: string; template_id: string } | null;
-  next_follow_up: { scheduled_for: string; template_id: string } | null;
+  last_follow_up: { sent_at: string; template_id: string; template_display?: string } | null;
+  next_follow_up: { scheduled_for: string; template_id: string; template_display?: string } | null;
 };
 
 const STAGE_FILTERS: { id: OnboardingStageFilter; label: string }[] = [
@@ -309,12 +309,12 @@ export function AdminAccountsOnboardingPanel() {
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
                     {row.last_follow_up
-                      ? `${new Date(row.last_follow_up.sent_at).toLocaleString()} (${row.last_follow_up.template_id})`
+                      ? `${new Date(row.last_follow_up.sent_at).toLocaleString()} (${row.last_follow_up.template_display ?? row.last_follow_up.template_id})`
                       : '—'}
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
                     {row.next_follow_up
-                      ? `${new Date(row.next_follow_up.scheduled_for).toLocaleString()} (${row.next_follow_up.template_id})`
+                      ? `${new Date(row.next_follow_up.scheduled_for).toLocaleString()} (${row.next_follow_up.template_display ?? row.next_follow_up.template_id})`
                       : '—'}
                   </AdminTd>
                   <AdminTd>

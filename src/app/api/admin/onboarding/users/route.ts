@@ -27,6 +27,18 @@ function parseSortDirection(raw: string | null): 'asc' | 'desc' {
   return raw === 'asc' ? 'asc' : 'desc';
 }
 
+/** Stored `template_id` is the env var name; show Postmark alias from env or a readable fallback. */
+function onboardingTemplateDisplay(envKey: string): string {
+  const key = String(envKey ?? '').trim();
+  if (!key) return '—';
+  const resolved = String(process.env[key] ?? '').trim();
+  if (resolved) return resolved;
+  if (key.startsWith('POSTMARK_TEMPLATE_')) {
+    return key.slice('POSTMARK_TEMPLATE_'.length).replace(/_/g, '-').toLowerCase();
+  }
+  return key;
+}
+
 function parseOnboardingStage(raw: string | null): OnboardingFilterStage {
   if (
     raw === 'ALL_INCOMPLETE' ||
@@ -129,12 +141,14 @@ export async function GET(req: Request) {
           ? {
               sent_at: String(lastSent.updated_at),
               template_id: String(lastSent.template_id),
+              template_display: onboardingTemplateDisplay(String(lastSent.template_id)),
             }
           : null,
         next_follow_up: nextPending
           ? {
               scheduled_for: String(nextPending.scheduled_for),
               template_id: String(nextPending.template_id),
+              template_display: onboardingTemplateDisplay(String(nextPending.template_id)),
             }
           : null,
       };
