@@ -179,7 +179,8 @@ function SignupConfirmInner() {
               placeholder="Add if resend without password fails"
             />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              We try email-only first. If that doesn’t work, enter the password you used at signup and resend.
+              For security, resend uses signup verification links (not magic links). If prompted, enter the password
+              you used at signup.
             </p>
           </div>
           <button

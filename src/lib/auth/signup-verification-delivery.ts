@@ -25,8 +25,6 @@ function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string
 /**
  * Builds a verification link via Admin API (does not trigger Supabase's built-in mailer),
  * then sends the message through Postmark.
- *
- * Order: magiclink (no password) → signup+password if provided and magiclink failed.
  */
 export async function sendSignupVerificationViaGenerateLink(
   admin: SupabaseClient,
@@ -34,23 +32,24 @@ export async function sendSignupVerificationViaGenerateLink(
   options: { password?: string; redirectTo?: string }
 ): Promise<{ error: Error | null }> {
   const redirect = options.redirectTo ?? getEmailRedirectToForSignupResend();
+  const password = String(options.password ?? '').trim();
 
-  let res = await admin.auth.admin.generateLink({
-    type: 'magiclink',
+  const res = await admin.auth.admin.generateLink({
+    type: 'signup',
     email,
+    ...(password ? { password } : {}),
     options: redirect ? { redirectTo: redirect } : undefined,
   });
 
-  if ((res.error || !res.data?.properties?.action_link) && options.password) {
-    res = await admin.auth.admin.generateLink({
-      type: 'signup',
-      email,
-      password: options.password,
-      options: redirect ? { redirectTo: redirect } : undefined,
-    });
-  }
-
   if (res.error) {
+    const msg = res.error.message.toLowerCase();
+    if (!password && (msg.includes('password') || msg.includes('required'))) {
+      return {
+        error: new Error(
+          'Please enter your signup password and try resend again. For security, signup resend uses signup verification links only.'
+        ),
+      };
+    }
     return { error: new Error(res.error.message) };
   }
 
