@@ -63,7 +63,20 @@ function stageTone(stage: OnboardingStage): 'active' | 'pending' | 'neutral' {
   return 'neutral';
 }
 
-/** e.g. `onboarding-login-no-onboarding-2h` → `Onboarding Login No Onboarding 2hrs.` */
+function formatFollowUpDurationSpaced(nStr: string, unitRaw: string): string {
+  const n = Number(nStr);
+  const u = unitRaw.toLowerCase();
+  if (!Number.isFinite(n)) return `${nStr}${unitRaw}`;
+  if (u === 'm') return `${n} min`;
+  if (u === 'h') return n === 1 ? `1 hr` : `${n} hrs`;
+  if (u === 'd') return n === 1 ? `1 day` : `${n} days`;
+  return `${nStr}${unitRaw}`;
+}
+
+/**
+ * Human label for follow-up template slug or env key.
+ * e.g. `onboarding-login-no-onboarding-2h` → `Login (no onboarding) — 2 hrs`
+ */
 function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): string {
   let slug = String(templateDisplayOrEnvKey ?? '').trim();
   if (!slug) return '';
@@ -72,6 +85,16 @@ function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): strin
   } else {
     slug = slug.replace(/_/g, '-').toLowerCase();
   }
+
+  const tail = slug.match(/^(.+)-(\d+)(m|h|d)$/i);
+  if (tail) {
+    const base = tail[1].toLowerCase();
+    const dur = formatFollowUpDurationSpaced(tail[2], tail[3]);
+    if (base === 'onboarding-login-no-onboarding') {
+      return `Login (no onboarding) — ${dur}`;
+    }
+  }
+
   const parts = slug.split('-').filter((p) => p.length > 0);
   if (parts.length === 0) return templateDisplayOrEnvKey;
 
@@ -82,14 +105,8 @@ function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): strin
 
   if (!duration) return titled;
 
-  const n = duration[1]!;
-  const u = duration[2]!.toLowerCase();
-  let suffix = last;
-  if (u === 'm') suffix = `${n}mins.`;
-  else if (u === 'h') suffix = `${n}hrs.`;
-  else if (u === 'd') suffix = `${n}days.`;
-
-  return titled ? `${titled} ${suffix}` : suffix;
+  const suffix = formatFollowUpDurationSpaced(duration[1]!, duration[2]!);
+  return titled ? `${titled} — ${suffix}` : suffix;
 }
 
 export function AdminAccountsOnboardingPanel() {
