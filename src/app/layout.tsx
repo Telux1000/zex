@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AppProviders } from '@/components/providers/app-providers';
 import { ThemeBootScript } from '@/components/theme/ThemeBootScript';
+import { warnIfProductionAppUrlMisconfigured } from '@/lib/config/app-url-startup-warning';
 import { getServerUserTheme } from '@/lib/theme/server';
 import './globals.css';
 
@@ -29,6 +30,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  warnIfProductionAppUrlMisconfigured();
   const serverTheme = await getServerUserTheme();
   const initialSurface = serverTheme === 'dark' ? '#0c111d' : '#f6f8fc';
   const initialScheme = serverTheme === 'dark' ? 'dark' : 'light';
