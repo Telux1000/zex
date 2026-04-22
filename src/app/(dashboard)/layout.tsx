@@ -22,6 +22,12 @@ import {
   trialDaysRemaining,
   trialUrgencyBannerDays,
 } from '@/lib/billing/subscription-access';
+import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
+import {
+  fetchAppSystemSettings,
+  getSystemModeMessage,
+  isInternalAdminRoleValue,
+} from '@/lib/system-access';
 export default async function DashboardLayout({
   children,
 }: {
@@ -44,15 +50,29 @@ export default async function DashboardLayout({
 
   const { data: profileRow } = await supabase
     .from('profiles')
-    .select('full_name, onboarding_completed_at, onboarding_pricing_completed_at')
+    .select('full_name, onboarding_completed_at, onboarding_pricing_completed_at, internal_admin_role, internal_admin_suspended_at')
     .eq('id', user.id)
     .maybeSingle();
   const profileTyped = profileRow as {
     full_name?: string | null;
     onboarding_completed_at?: string | null;
     onboarding_pricing_completed_at?: string | null;
+    internal_admin_role?: string | null;
+    internal_admin_suspended_at?: string | null;
   } | null;
   const profileFullName = profileTyped?.full_name ?? null;
+  const isInternalAdmin =
+    isInternalAdminRoleValue(profileTyped?.internal_admin_role) &&
+    !Boolean(profileTyped?.internal_admin_suspended_at);
+
+  const serviceAdmin = getSupabaseServiceAdmin();
+  const systemAccess = serviceAdmin ? await fetchAppSystemSettings(serviceAdmin) : null;
+  if (
+    systemAccess?.system_mode === 'EMERGENCY_LOCKDOWN' &&
+    (!isInternalAdmin || !systemAccess.emergency_admin_access_enabled)
+  ) {
+    redirect('/account-unavailable?reason=system_emergency_lockdown');
+  }
 
   let customerCount = 0;
   if (business?.id) {
@@ -101,14 +121,28 @@ export default async function DashboardLayout({
     }
   }
 
-  const profileBanner = showSetupCallout ? (
-    <DashboardCoreSetupCallout
-      progress={setupProgress}
-      onboardingDone={onboardingDone}
-      hasBusiness={Boolean(business)}
-      hasSelectedPlan={hasSelectedPlan}
-    />
-  ) : null;
+  const profileBanner = (
+    <>
+      {systemAccess?.system_mode === 'MAINTENANCE' && (
+        <div className="border-b border-amber-200 bg-amber-50/80 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {getSystemModeMessage(systemAccess.system_mode, systemAccess.system_message)}
+        </div>
+      )}
+      {systemAccess?.system_mode === 'READ_ONLY' && (
+        <div className="border-b border-indigo-200 bg-indigo-50/80 px-4 py-2 text-sm text-indigo-900 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200">
+          {getSystemModeMessage(systemAccess.system_mode, systemAccess.system_message)}
+        </div>
+      )}
+      {showSetupCallout ? (
+        <DashboardCoreSetupCallout
+          progress={setupProgress}
+          onboardingDone={onboardingDone}
+          hasBusiness={Boolean(business)}
+          hasSelectedPlan={hasSelectedPlan}
+        />
+      ) : null}
+    </>
+  );
 
   let subscriptionBanner: ReactNode = null;
   if (business?.ownerId) {

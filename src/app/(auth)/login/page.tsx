@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -19,6 +19,10 @@ function LoginPageContent() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [systemMode, setSystemMode] = useState<
+    'NORMAL' | 'MAINTENANCE' | 'READ_ONLY' | 'EMERGENCY_LOCKDOWN'
+  >('NORMAL');
+  const [systemMessage, setSystemMessage] = useState<string | null>(null);
 
   const supabase = createClient();
   const nextPath = safeNextPath(searchParams.get('next'));
@@ -26,6 +30,33 @@ function LoginPageContent() {
   const plan = searchParams.get('plan')?.trim() ?? '';
   const billing = normalizeBillingIntervalParam(searchParams.get('billing'));
   const isPricingIntent = plan === 'growth' || plan === 'professional' || plan === 'enterprise';
+
+  async function refreshLoginContext(): Promise<{
+    loginAllowed: boolean;
+    mode: 'NORMAL' | 'MAINTENANCE' | 'READ_ONLY' | 'EMERGENCY_LOCKDOWN';
+    message: string | null;
+  }> {
+    const res = await fetch('/api/auth/login-context', { cache: 'no-store' });
+    const json = (await res.json()) as {
+      login_allowed?: boolean;
+      system_mode?: string;
+      system_message?: string | null;
+    };
+    const modeRaw = String(json.system_mode ?? 'NORMAL').toUpperCase();
+    const mode =
+      modeRaw === 'MAINTENANCE' || modeRaw === 'READ_ONLY' || modeRaw === 'EMERGENCY_LOCKDOWN'
+        ? modeRaw
+        : 'NORMAL';
+    const msg = json.system_message ? String(json.system_message) : null;
+    setSystemMode(mode);
+    setSystemMessage(msg);
+    return { loginAllowed: Boolean(json.login_allowed ?? true), mode, message: msg };
+  }
+
+  useEffect(() => {
+    void refreshLoginContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const signupHref = (() => {
     const params = new URLSearchParams();
@@ -42,6 +73,19 @@ function LoginPageContent() {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
+    try {
+      const context = await refreshLoginContext();
+      if (!context.loginAllowed) {
+        setMessage({
+          type: 'error',
+          text: context.message ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+        });
+        return;
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Could not validate system access. Please try again.' });
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
@@ -59,6 +103,21 @@ function LoginPageContent() {
 
   async function signInWithGoogle() {
     setLoading(true);
+    try {
+      const context = await refreshLoginContext();
+      if (!context.loginAllowed) {
+        setLoading(false);
+        setMessage({
+          type: 'error',
+          text: context.message ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+        });
+        return;
+      }
+    } catch {
+      setLoading(false);
+      setMessage({ type: 'error', text: 'Could not validate system access. Please try again.' });
+      return;
+    }
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}` },
@@ -79,6 +138,24 @@ function LoginPageContent() {
         </div>
 
         <form onSubmit={signInWithEmail} className="space-y-4">
+          {systemMode === 'MAINTENANCE' && (
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              {systemMessage ??
+                'We’re performing maintenance. You can still sign in, but some features may be temporarily unavailable.'}
+            </p>
+          )}
+          {systemMode === 'READ_ONLY' && (
+            <p className="text-sm text-indigo-700 dark:text-indigo-300">
+              {systemMessage ??
+                'The system is temporarily in read-only mode while we perform updates. You can still access your account and view data.'}
+            </p>
+          )}
+          {systemMode === 'EMERGENCY_LOCKDOWN' && (
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              {systemMessage ??
+                'We’ve temporarily restricted access while we address a critical issue. Please try again later.'}
+            </p>
+          )}
           {searchParams.get('verified') === 'success' && !message && (
             <p className="text-sm text-emerald-600 dark:text-emerald-400">
               Email verified successfully. Please sign in to continue.
@@ -97,6 +174,12 @@ function LoginPageContent() {
           {searchParams.get('error') === 'auth' && !message && (
             <p className="text-sm text-red-600 dark:text-red-400">
               We couldn&apos;t complete sign-in from that link. Please sign in manually.
+            </p>
+          )}
+          {searchParams.get('notice') === 'system_lockdown' && !message && (
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              {searchParams.get('message')?.trim() ||
+                'We’ve temporarily restricted access while we address a critical issue. Please try again later.'}
             </p>
           )}
           <div>

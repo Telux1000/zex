@@ -4,6 +4,11 @@ import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
 import { fetchSignupSettings, normalizeSignupMode } from '@/lib/auth/signup-control';
+import {
+  fetchAppSystemSettings,
+  normalizeSystemMode,
+  SYSTEM_MODES,
+} from '@/lib/system-access';
 import { fetchInternalSecuritySettings } from '@/lib/admin/internal-security-settings';
 import {
   fetchAdminPlatformSettings,
@@ -77,6 +82,15 @@ const signupSectionSchema = z
   })
   .strict();
 
+const systemAccessSectionSchema = z
+  .object({
+    section: z.literal('system_access'),
+    system_mode: z.enum(SYSTEM_MODES).optional(),
+    system_message: z.union([z.string().max(2000), z.literal(''), z.null()]).optional(),
+    emergency_admin_access_enabled: z.boolean().optional(),
+  })
+  .strict();
+
 const patchSchema = z.discriminatedUnion('section', [
   platformSectionSchema,
   notificationsSectionSchema,
@@ -84,6 +98,7 @@ const patchSchema = z.discriminatedUnion('section', [
   aiSectionSchema,
   authenticationSectionSchema,
   signupSectionSchema,
+  systemAccessSectionSchema,
 ]);
 
 export async function GET() {
@@ -93,10 +108,11 @@ export async function GET() {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
 
-  const [platform, security, signup] = await Promise.all([
+  const [platform, security, signup, systemAccess] = await Promise.all([
     fetchAdminPlatformSettings(admin),
     fetchInternalSecuritySettings(admin),
     fetchSignupSettings(admin),
+    fetchAppSystemSettings(admin),
   ]);
 
   const environment = {
@@ -111,6 +127,7 @@ export async function GET() {
     platform,
     security,
     signup,
+    system_access: systemAccess,
     environment,
     can_edit: gate.adminRole === 'owner',
     can_edit_signup: gate.adminRole === 'owner' || gate.adminRole === 'admin',
@@ -194,6 +211,72 @@ export async function PATCH(req: Request) {
       signup: {
         signup_mode: nextMode,
         signup_message: nextMessage,
+      },
+    });
+  }
+  if (parsed.data.section === 'system_access') {
+    const current = await fetchAppSystemSettings(admin);
+    const nextMode = parsed.data.system_mode
+      ? normalizeSystemMode(parsed.data.system_mode)
+      : current.system_mode;
+    const nextMessage =
+      parsed.data.system_message === undefined
+        ? current.system_message
+        : parsed.data.system_message === null || parsed.data.system_message === ''
+          ? null
+          : String(parsed.data.system_message).trim().slice(0, 2000);
+    const nextEmergencyAdminAccessEnabled =
+      parsed.data.emergency_admin_access_enabled === undefined
+        ? current.emergency_admin_access_enabled
+        : Boolean(parsed.data.emergency_admin_access_enabled);
+
+    const nowIso = new Date().toISOString();
+    const { error: upErr } = await admin
+      .from('app_settings')
+      .update({
+        system_mode: nextMode,
+        system_message: nextMessage,
+        emergency_admin_access_enabled: nextEmergencyAdminAccessEnabled,
+        updated_at: nowIso,
+        updated_by: gate.user.id,
+      })
+      .eq('id', 'default');
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+
+    if (current.system_mode !== nextMode) {
+      await admin.from('app_system_mode_audit_logs').insert({
+        previous_mode: current.system_mode,
+        new_mode: nextMode,
+        changed_by: gate.user.id,
+      });
+    }
+
+    await logAdminAuditEvent({
+      supabase: gate.supabase,
+      actorUserId: gate.user.id,
+      actorRole: gate.adminRole,
+      action: 'admin_system_mode_changed',
+      targetType: 'app_settings',
+      targetId: 'default',
+      metadata: {
+        previous: {
+          system_mode: current.system_mode,
+          system_message: current.system_message,
+          emergency_admin_access_enabled: current.emergency_admin_access_enabled,
+        },
+        next: {
+          system_mode: nextMode,
+          system_message: nextMessage,
+          emergency_admin_access_enabled: nextEmergencyAdminAccessEnabled,
+        },
+      },
+    });
+
+    return NextResponse.json({
+      system_access: {
+        system_mode: nextMode,
+        system_message: nextMessage,
+        emergency_admin_access_enabled: nextEmergencyAdminAccessEnabled,
       },
     });
   }

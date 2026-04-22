@@ -17,6 +17,10 @@ const COPY: Record<string, { title: string; body: string }> = {
     title: 'Access disabled',
     body: 'Your access has been disabled by Zenzex. Contact support if you need assistance.',
   },
+  system_emergency_lockdown: {
+    title: 'Temporarily restricted access',
+    body: 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+  },
 };
 
 export default function AccountUnavailablePage({

@@ -83,6 +83,28 @@ function AuthCallbackContent() {
           /* non-blocking */
         }
 
+        try {
+          const policyRes = await fetch('/api/auth/login-context', { cache: 'no-store' });
+          const policyJson = (await policyRes.json()) as {
+            login_allowed?: boolean;
+            system_mode?: string;
+            system_message?: string | null;
+          };
+          if (!policyJson.login_allowed) {
+            await supabase.auth.signOut({ scope: 'local' });
+            const message = encodeURIComponent(
+              String(
+                policyJson.system_message ??
+                  'We’ve temporarily restricted access while we address a critical issue. Please try again later.'
+              )
+            );
+            router.replace(`/login?notice=system_lockdown&message=${message}`);
+            return;
+          }
+        } catch {
+          // If policy check fails, continue with standard callback redirect.
+        }
+
         router.replace(next);
         router.refresh();
       } catch (error) {

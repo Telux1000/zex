@@ -9,12 +9,22 @@ import { cn } from '@/lib/utils/cn';
 import type { AdminPlatformSettingsDTO } from '@/lib/admin/admin-platform-settings';
 import type { SignupSettings } from '@/lib/auth/signup-control';
 import type { InternalSecuritySettingsDTO } from '@/lib/admin/internal-security-settings';
+import type { AppSystemSettings } from '@/lib/system-access';
 
-type TabId = 'platform' | 'signup' | 'notifications' | 'authentication' | 'billing' | 'ai' | 'environment';
+type TabId =
+  | 'platform'
+  | 'system_access'
+  | 'signup'
+  | 'notifications'
+  | 'authentication'
+  | 'billing'
+  | 'ai'
+  | 'environment';
 
 type SettingsPayload = {
   platform: AdminPlatformSettingsDTO;
   signup: SignupSettings;
+  system_access: AppSystemSettings;
   security: InternalSecuritySettingsDTO;
   environment: {
     node_env: string;
@@ -29,6 +39,7 @@ type SettingsPayload = {
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'platform', label: 'Platform' },
+  { id: 'system_access', label: 'System Access' },
   { id: 'signup', label: 'Signup' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'authentication', label: 'Authentication & access' },
@@ -92,7 +103,9 @@ export function AdminSettingsPanel() {
   }, [load]);
 
   const saveSection = async (section: string, body: Record<string, unknown>) => {
-    if (!data?.can_edit) return;
+    if (!data) return;
+    if (section === 'signup' && !data.can_edit_signup) return;
+    if (section !== 'signup' && !data.can_edit) return;
     setSaving(true);
     setSaveMsg(null);
     try {
@@ -188,6 +201,13 @@ export function AdminSettingsPanel() {
             onSave={(patch) => void saveSection('platform', patch)}
           />
         )}
+        {tab === 'system_access' && (
+          <SystemAccessTab
+            systemAccess={data.system_access}
+            disabled={readOnly || saving}
+            onSave={(patch) => void saveSection('system_access', patch)}
+          />
+        )}
         {tab === 'signup' && (
           <SignupTab
             signup={signup}
@@ -244,6 +264,84 @@ export function AdminSettingsPanel() {
           .
         </p>
       </AdminContentCard>
+    </div>
+  );
+}
+
+function SystemAccessTab({
+  systemAccess,
+  disabled,
+  onSave,
+}: {
+  systemAccess: AppSystemSettings;
+  disabled: boolean;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [mode, setMode] = useState(systemAccess.system_mode);
+  const [message, setMessage] = useState(systemAccess.system_message ?? '');
+  const [emergencyAdminAccess, setEmergencyAdminAccess] = useState(
+    systemAccess.emergency_admin_access_enabled
+  );
+
+  useEffect(() => {
+    setMode(systemAccess.system_mode);
+    setMessage(systemAccess.system_message ?? '');
+    setEmergencyAdminAccess(systemAccess.emergency_admin_access_enabled);
+  }, [systemAccess]);
+
+  return (
+    <div className="mt-2">
+      <Field
+        label="System mode"
+        description="NORMAL keeps all access available. MAINTENANCE keeps login on. READ_ONLY blocks non-admin write actions. EMERGENCY_LOCKDOWN is for rare critical incidents."
+      >
+        <select
+          className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          value={mode}
+          disabled={disabled}
+          onChange={(e) => setMode(e.target.value as AppSystemSettings['system_mode'])}
+        >
+          <option value="NORMAL">Normal</option>
+          <option value="MAINTENANCE">Maintenance</option>
+          <option value="READ_ONLY">Read-only</option>
+          <option value="EMERGENCY_LOCKDOWN">Emergency lockdown</option>
+        </select>
+      </Field>
+      <Field
+        label="System message"
+        description="Optional user-facing message shown on sign-in and dashboard banners during maintenance, read-only mode, and emergency lockdown."
+      >
+        <textarea
+          className="min-h-[96px] w-full max-w-lg rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          maxLength={2000}
+          value={message}
+          disabled={disabled}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="We’re performing maintenance. You can still sign in, but some features may be temporarily unavailable."
+        />
+      </Field>
+      <Field
+        label="Allow admin emergency access during lockdown"
+        description="When enabled, internal admins can still sign in while EMERGENCY_LOCKDOWN blocks non-admin access."
+      >
+        <Toggle checked={emergencyAdminAccess} disabled={disabled} onChange={setEmergencyAdminAccess} />
+      </Field>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            onSave({
+              system_mode: mode,
+              system_message: message.trim() || null,
+              emergency_admin_access_enabled: emergencyAdminAccess,
+            })
+          }
+          className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Save system access
+        </button>
+      </div>
     </div>
   );
 }

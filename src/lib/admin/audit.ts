@@ -37,7 +37,8 @@ export type AdminAuditAction =
   | 'internal_security_policy_updated'
   | 'admin_platform_settings_updated'
   | 'admin_signup_invite_created'
-  | 'admin_signup_mode_changed';
+  | 'admin_signup_mode_changed'
+  | 'admin_system_mode_changed';
 
 export async function logAdminAuditEvent(params: {
   supabase: SupabaseClient;
