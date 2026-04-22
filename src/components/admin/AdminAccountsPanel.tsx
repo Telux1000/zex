@@ -7,6 +7,7 @@ import {
   allowedAccountLifecycleActions,
   type AccountLifecycleAction,
   type AccountLifecycleStatus,
+  type AccountLifecycleState,
 } from '@/lib/admin/account-lifecycle';
 import { AdminBadge } from '@/components/admin/AdminBadge';
 import { AdminConfirmDialog } from '@/components/admin/AdminConfirmDialog';
@@ -22,6 +23,13 @@ type AccountRow = {
   owner_email: string;
   current_plan: string;
   subscription_status: string;
+  lifecycle_state: AccountLifecycleState;
+  needs_attention: boolean;
+  email_verified_at: string | null;
+  last_sign_in_at: string | null;
+  onboarding_status: 'not_started' | 'in_progress' | 'completed';
+  onboarding_started_at: string | null;
+  onboarding_completed_at: string | null;
   trial_status: string;
   created_at: string;
   last_active_at: string | null;
@@ -70,12 +78,21 @@ function matchesAccountsDrilldown(
   return true;
 }
 
-function accountStatus(row: AccountRow): { label: string; tone: 'active' | 'pending' | 'suspended' } {
-  const s = row.subscription_status as AccountLifecycleStatus | string;
-  if (s === 'deactivated') return { label: 'Deactivated', tone: 'suspended' };
-  if (s === 'suspended') return { label: 'Suspended', tone: 'suspended' };
-  if (row.trial_status.toLowerCase().includes('in_trial')) return { label: 'Trial', tone: 'pending' };
+function lifecycleBadge(row: AccountRow): { label: string; tone: 'active' | 'pending' | 'suspended' } {
+  if (row.lifecycle_state === 'UNVERIFIED') return { label: 'Unverified', tone: 'pending' };
+  if (row.lifecycle_state === 'VERIFIED_NOT_SIGNED_IN') return { label: 'Verified, never signed in', tone: 'pending' };
+  if (row.lifecycle_state === 'SIGNED_IN_ONBOARDING_INCOMPLETE') return { label: 'Onboarding incomplete', tone: 'pending' };
   return { label: 'Active', tone: 'active' };
+}
+
+function verificationBadge(row: AccountRow): { label: string; tone: 'active' | 'pending' } {
+  return row.email_verified_at ? { label: 'Verified', tone: 'active' } : { label: 'Unverified', tone: 'pending' };
+}
+
+function onboardingBadge(row: AccountRow): { label: string; tone: 'active' | 'pending' } {
+  if (row.onboarding_status === 'completed') return { label: 'Completed', tone: 'active' };
+  if (row.onboarding_status === 'in_progress') return { label: 'In progress', tone: 'pending' };
+  return { label: 'Not started', tone: 'pending' };
 }
 
 function matchesQuery(row: AccountRow, q: string): boolean {
@@ -96,7 +113,9 @@ export function AdminAccountsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | AccountLifecycleStatus>('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState<
+    'all' | AccountLifecycleState | 'needs_attention'
+  >('all');
   const [planFilter, setPlanFilter] = useState<string>('all');
   const [confirm, setConfirm] = useState<{ accountId: string; action: AccountLifecycleAction } | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -136,12 +155,19 @@ export function AdminAccountsPanel() {
 
   const filtered = useMemo(() => {
     return rows.filter((a) => {
-      if (statusFilter !== 'all' && a.subscription_status !== statusFilter) return false;
+      if (lifecycleFilter === 'needs_attention' && !a.needs_attention) return false;
+      if (
+        lifecycleFilter !== 'all' &&
+        lifecycleFilter !== 'needs_attention' &&
+        a.lifecycle_state !== lifecycleFilter
+      ) {
+        return false;
+      }
       if (planFilter !== 'all' && a.current_plan !== planFilter) return false;
       if (!matchesAccountsDrilldown(a, drillActivity, drillUsage)) return false;
       return matchesQuery(a, search);
     });
-  }, [rows, search, statusFilter, planFilter, drillActivity, drillUsage]);
+  }, [rows, search, lifecycleFilter, planFilter, drillActivity, drillUsage]);
 
   const drillBanner = useMemo(() => {
     if (!drillActivity && !drillUsage) return null;
@@ -237,14 +263,20 @@ export function AdminAccountsPanel() {
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
             Status
             <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | AccountLifecycleStatus)}
+              value={lifecycleFilter}
+              onChange={(e) =>
+                setLifecycleFilter(
+                  e.target.value as 'all' | AccountLifecycleState | 'needs_attention'
+                )
+              }
               className="h-9 min-w-[8rem] rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
               <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="deactivated">Deactivated</option>
+              <option value="UNVERIFIED">Unverified</option>
+              <option value="VERIFIED_NOT_SIGNED_IN">Verified but never signed in</option>
+              <option value="SIGNED_IN_ONBOARDING_INCOMPLETE">Signed in, onboarding incomplete</option>
+              <option value="ACTIVE">Active</option>
+              <option value="needs_attention">Needs attention</option>
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
@@ -279,15 +311,20 @@ export function AdminAccountsPanel() {
               <AdminTh>Company</AdminTh>
               <AdminTh>Owner</AdminTh>
               <AdminTh>Plan</AdminTh>
-              <AdminTh>Status</AdminTh>
+              <AdminTh>Lifecycle</AdminTh>
+              <AdminTh>Email</AdminTh>
+              <AdminTh>Sign-in</AdminTh>
+              <AdminTh>Onboarding</AdminTh>
               <AdminTh>Users</AdminTh>
               <AdminTh>Created</AdminTh>
-              <AdminTh>Last active</AdminTh>
+              <AdminTh>Last activity</AdminTh>
               <AdminTh className="w-12 text-right"> </AdminTh>
             </AdminTableHead>
             <tbody>
               {filtered.map((a) => {
-                const status = accountStatus(a);
+                const status = lifecycleBadge(a);
+                const verification = verificationBadge(a);
+                const onboarding = onboardingBadge(a);
                 const ls = a.subscription_status as AccountLifecycleStatus;
                 const actions = buildAccountRowActions(a.id, ls);
                 return (
@@ -304,6 +341,20 @@ export function AdminAccountsPanel() {
                     <AdminTd>{a.current_plan}</AdminTd>
                     <AdminTd>
                       <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
+                      {a.needs_attention ? (
+                        <span className="ml-2">
+                          <AdminBadge tone="suspended">Needs attention</AdminBadge>
+                        </span>
+                      ) : null}
+                    </AdminTd>
+                    <AdminTd>
+                      <AdminBadge tone={verification.tone}>{verification.label}</AdminBadge>
+                    </AdminTd>
+                    <AdminTd className="text-zinc-600 dark:text-zinc-400">
+                      {a.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleString() : 'Never signed in'}
+                    </AdminTd>
+                    <AdminTd>
+                      <AdminBadge tone={onboarding.tone}>{onboarding.label}</AdminBadge>
                     </AdminTd>
                     <AdminTd>
                       <button
@@ -320,7 +371,9 @@ export function AdminAccountsPanel() {
                         </AdminBadge>
                       </button>
                     </AdminTd>
-                    <AdminTd className="whitespace-nowrap text-zinc-600">{new Date(a.created_at).toLocaleDateString()}</AdminTd>
+                    <AdminTd className="whitespace-nowrap text-zinc-600">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </AdminTd>
                     <AdminTd className="text-zinc-600 dark:text-zinc-400">
                       {a.last_active_at ? new Date(a.last_active_at).toLocaleString() : '—'}
                     </AdminTd>

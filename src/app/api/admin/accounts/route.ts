@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { deriveAccountLifecycleStatus, canManageSubscriberLifecycle } from '@/lib/admin/account-lifecycle';
+import {
+  deriveAccountLifecycleStatus,
+  deriveAccountLifecycle,
+  canManageSubscriberLifecycle,
+} from '@/lib/admin/account-lifecycle';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
 import {
@@ -15,6 +19,7 @@ import { maskEmail, maskText } from '@/lib/admin/privacy';
 
 const ACCOUNTS_LIMIT = 250;
 const DAY_MS = 1000 * 60 * 60 * 24;
+const AUTH_CHUNK = 30;
 
 async function loadSubscriptionRows(admin: NonNullable<ReturnType<typeof getSupabaseServiceAdmin>>) {
   const candidates = ['subscriptions', 'billing_subscriptions'];
@@ -62,6 +67,8 @@ export async function GET() {
             email: string | null;
             billing_plan: string | null;
             created_at: string | null;
+          onboarding_pricing_completed_at?: string | null;
+          onboarding_completed_at?: string | null;
             subscriber_admin_suspended_at?: string | null;
             subscriber_admin_deactivated_at?: string | null;
           }[],
@@ -70,12 +77,34 @@ export async function GET() {
       : await admin
           .from('profiles')
           .select(
-            'id, full_name, email, billing_plan, created_at, subscriber_admin_suspended_at, subscriber_admin_deactivated_at'
+            'id, full_name, email, billing_plan, created_at, onboarding_pricing_completed_at, onboarding_completed_at, subscriber_admin_suspended_at, subscriber_admin_deactivated_at'
           )
           .in('id', ownerIdList);
   const subscriptionsProbe = await loadSubscriptionRows(admin);
 
   if (ownerProfilesRes.error) return NextResponse.json({ error: ownerProfilesRes.error.message }, { status: 500 });
+
+  const ownerAuthById = new Map<
+    string,
+    {
+      created_at: string | null;
+      email_confirmed_at: string | null;
+      last_sign_in_at: string | null;
+    }
+  >();
+  for (let i = 0; i < ownerIdList.length; i += AUTH_CHUNK) {
+    const chunk = ownerIdList.slice(i, i + AUTH_CHUNK);
+    const results = await Promise.all(chunk.map((id) => admin.auth.admin.getUserById(id)));
+    results.forEach((res, idx) => {
+      const authUser = res.data?.user;
+      if (!authUser) return;
+      ownerAuthById.set(chunk[idx], {
+        created_at: authUser.created_at ?? null,
+        email_confirmed_at: authUser.email_confirmed_at ?? null,
+        last_sign_in_at: authUser.last_sign_in_at ?? null,
+      });
+    });
+  }
 
   const [invoiceRes, activityRes, aiRes, reminderRes, membersRes] = await Promise.all([
     admin
@@ -178,10 +207,18 @@ export async function GET() {
 
   const accounts = businesses.map((business) => {
     const owner = owners.get(String(business.owner_id));
+    const ownerAuth = ownerAuthById.get(String(business.owner_id));
     const plan = owner?.billing_plan ?? 'starter';
     const lifecycle = deriveAccountLifecycleStatus({
       admin_suspended_at: business.admin_suspended_at,
       admin_deactivated_at: business.admin_deactivated_at,
+    });
+    const accountLifecycle = deriveAccountLifecycle({
+      created_at: ownerAuth?.created_at ?? owner?.created_at ?? business.created_at,
+      email_verified_at: ownerAuth?.email_confirmed_at ?? null,
+      last_sign_in_at: ownerAuth?.last_sign_in_at ?? null,
+      onboarding_started_at: owner?.onboarding_pricing_completed_at ?? owner?.onboarding_completed_at ?? null,
+      onboarding_completed_at: owner?.onboarding_completed_at ?? null,
     });
     const totalUsers = (memberCountByBusiness.get(String(business.id)) ?? 0) + 1;
     const subscriptionSnapshot = subscriptionsByBusiness.get(String(business.id)) ?? null;
@@ -207,6 +244,13 @@ export async function GET() {
       owner_email: maskEmail(owner?.email ?? ''),
       current_plan: plan,
       subscription_status: lifecycle,
+      lifecycle_state: accountLifecycle.lifecycle_state,
+      needs_attention: accountLifecycle.needs_attention,
+      email_verified_at: accountLifecycle.email_verified_at,
+      last_sign_in_at: accountLifecycle.last_sign_in_at,
+      onboarding_status: accountLifecycle.onboarding_status,
+      onboarding_started_at: accountLifecycle.onboarding_started_at,
+      onboarding_completed_at: accountLifecycle.onboarding_completed_at,
       trial_status: trialFromSubscription ? 'in_trial' : 'trial_ended',
       created_at: business.created_at,
       last_active_at: lastActiveByBusiness.get(String(business.id)) ?? null,

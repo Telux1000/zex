@@ -26,6 +26,7 @@ export type AdminAuditAction =
   | 'admin_subscriber_user_reactivated'
   | 'admin_subscriber_user_deactivated'
   | 'admin_subscriber_password_reset_sent'
+  | 'admin_subscriber_verification_resent'
   | 'internal_staff_invite_created'
   | 'internal_staff_invite_resent'
   | 'internal_staff_invite_revoked'
