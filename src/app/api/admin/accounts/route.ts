@@ -84,53 +84,80 @@ export async function GET(req: Request) {
     const sortBy = parseOnboardingSort(url.searchParams.get('sort'));
     const sortDir = parseSortDirection(url.searchParams.get('dir'));
 
-    const profilesRes = await admin
-      .from('profiles')
-      .select(
-        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at'
-      )
-      .is('internal_admin_role', null)
-      .order('created_at', { ascending: false })
-      .limit(5000);
-    if (profilesRes.error) return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
-    const profiles = (profilesRes.data ?? []).filter((p) => String(p.id ?? '').length > 0);
-    const profileIds = profiles.map((p) => String(p.id));
-
-    const [businessesRes, activityRes] = await Promise.all([
-      profileIds.length === 0
-        ? Promise.resolve({ data: [] as { id: string; name: string | null; owner_id: string; created_at: string }[], error: null })
-        : admin.from('businesses').select('id, name, owner_id, created_at').in('owner_id', profileIds),
-      admin
-        .from('activity_events')
-        .select('business_id, created_at')
-        .gte('created_at', new Date(Date.now() - 180 * DAY_MS).toISOString())
-        .order('created_at', { ascending: false })
-        .limit(50_000),
-    ]);
-    if (businessesRes.error) return NextResponse.json({ error: businessesRes.error.message }, { status: 500 });
-    if (activityRes.error) return NextResponse.json({ error: activityRes.error.message }, { status: 500 });
-
-    const authByOwner = new Map<
-      string,
-      { created_at: string | null; last_sign_in_at: string | null; email_confirmed_at: string | null; email: string | null }
-    >();
-    const AUTH_CHUNK = 30;
-    for (let i = 0; i < profileIds.length; i += AUTH_CHUNK) {
-      const chunk = profileIds.slice(i, i + AUTH_CHUNK);
-      const results = await Promise.all(chunk.map((id) => admin.auth.admin.getUserById(id)));
-      for (let j = 0; j < chunk.length; j += 1) {
-        const authUser = results[j].data?.user;
-        authByOwner.set(chunk[j], {
-          created_at: authUser?.created_at ?? null,
-          last_sign_in_at: authUser?.last_sign_in_at ?? null,
-          email_confirmed_at: authUser?.email_confirmed_at ?? null,
-          email: authUser?.email ?? null,
-        });
+    const authUsers: {
+      id: string;
+      email: string | null;
+      created_at: string | null;
+      last_sign_in_at: string | null;
+      email_confirmed_at: string | null;
+      full_name: string | null;
+    }[] = [];
+    const AUTH_PER_PAGE = 200;
+    const AUTH_MAX_USERS = 5000;
+    for (let authPage = 1; authUsers.length < AUTH_MAX_USERS; authPage += 1) {
+      const authRes = await admin.auth.admin.listUsers({ page: authPage, perPage: AUTH_PER_PAGE });
+      if (authRes.error) {
+        return NextResponse.json({ error: authRes.error.message }, { status: 500 });
       }
+      const pageUsers = authRes.data?.users ?? [];
+      for (const u of pageUsers) {
+        const userMeta = (u.user_metadata ?? {}) as Record<string, unknown>;
+        const fullNameFromMeta =
+          (typeof userMeta.full_name === 'string' ? userMeta.full_name : null) ??
+          (typeof userMeta.name === 'string' ? userMeta.name : null);
+        authUsers.push({
+          id: String(u.id),
+          email: u.email ?? null,
+          created_at: u.created_at ?? null,
+          last_sign_in_at: u.last_sign_in_at ?? null,
+          email_confirmed_at: u.email_confirmed_at ?? null,
+          full_name: fullNameFromMeta,
+        });
+        if (authUsers.length >= AUTH_MAX_USERS) break;
+      }
+      if (pageUsers.length < AUTH_PER_PAGE) break;
     }
 
+    const authUserIds = authUsers.map((u) => u.id);
+    const CHUNK = 400;
+    const profiles: {
+      id: string;
+      full_name: string | null;
+      email: string | null;
+      created_at: string | null;
+      internal_admin_role: string | null;
+      onboarding_completed_at: string | null;
+      onboarding_pricing_completed_at: string | null;
+    }[] = [];
+    const businesses: { id: string; name: string | null; owner_id: string; created_at: string }[] = [];
+    for (let i = 0; i < authUserIds.length; i += CHUNK) {
+      const chunk = authUserIds.slice(i, i + CHUNK);
+      const [profileChunkRes, businessChunkRes] = await Promise.all([
+        admin
+          .from('profiles')
+          .select(
+            'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at'
+          )
+          .in('id', chunk),
+        admin.from('businesses').select('id, name, owner_id, created_at').in('owner_id', chunk),
+      ]);
+      if (profileChunkRes.error) return NextResponse.json({ error: profileChunkRes.error.message }, { status: 500 });
+      if (businessChunkRes.error) return NextResponse.json({ error: businessChunkRes.error.message }, { status: 500 });
+      profiles.push(...(profileChunkRes.data ?? []));
+      businesses.push(...(businessChunkRes.data ?? []));
+    }
+
+    const activityRes = await admin
+      .from('activity_events')
+      .select('business_id, created_at')
+      .gte('created_at', new Date(Date.now() - 180 * DAY_MS).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50_000);
+    if (activityRes.error) return NextResponse.json({ error: activityRes.error.message }, { status: 500 });
+
+    const profileById = new Map(profiles.map((p) => [String(p.id), p]));
     const businessByOwner = new Map<string, { id: string; name: string | null; created_at: string }>();
-    for (const business of businessesRes.data ?? []) {
+    for (const business of businesses) {
       const ownerId = String(business.owner_id ?? '');
       if (!ownerId || businessByOwner.has(ownerId)) continue;
       businessByOwner.set(ownerId, {
@@ -146,13 +173,14 @@ export async function GET(req: Request) {
       lastActivityByBusiness.set(businessId, String(event.created_at));
     }
 
-    const onboardingRows = profiles.map((profile) => {
-      const profileId = String(profile.id);
-      const business = businessByOwner.get(profileId) ?? null;
-      const auth = authByOwner.get(profileId);
-      const createdAt = auth?.created_at ?? profile.created_at ?? business?.created_at ?? null;
-      const emailVerifiedAt = auth?.email_confirmed_at ?? null;
-      const firstSignedInAt = auth?.last_sign_in_at ?? null;
+    const onboardingRows = authUsers
+      .map((auth) => {
+      const profile = profileById.get(auth.id) ?? null;
+      if (profile?.internal_admin_role) return null;
+      const business = businessByOwner.get(auth.id) ?? null;
+      const createdAt = auth.created_at ?? profile?.created_at ?? business?.created_at ?? null;
+      const emailVerifiedAt = auth.email_confirmed_at ?? null;
+      const firstSignedInAt = auth.last_sign_in_at ?? null;
       const onboardingStartedAt = profile?.onboarding_pricing_completed_at ?? null;
       const onboardingCompletedAt = profile?.onboarding_completed_at ?? null;
       const onboardingStage = deriveAccountOnboardingStage({
@@ -170,16 +198,16 @@ export async function GET(req: Request) {
         onboarding_started_at: onboardingStartedAt,
         onboarding_completed_at: onboardingCompletedAt,
       });
-      const name = (profile?.full_name ?? '').trim() || business?.name || '—';
-      const email = (profile?.email ?? auth?.email ?? '').trim();
+      const name = (profile?.full_name ?? auth.full_name ?? '').trim() || business?.name || '—';
+      const email = (profile?.email ?? auth.email ?? '').trim();
       const lastActivityAt = business ? (lastActivityByBusiness.get(String(business.id)) ?? firstSignedInAt ?? null) : firstSignedInAt;
 
       return {
-        id: profileId,
+        id: auth.id,
         account_id: business?.id ?? null,
         name,
         email,
-        created_at: createdAt ?? profile.created_at,
+        created_at: createdAt ?? new Date(0).toISOString(),
         email_verified_at: emailVerifiedAt,
         first_signed_in_at: firstSignedInAt,
         onboarding_started_at: onboardingStartedAt,
@@ -189,7 +217,8 @@ export async function GET(req: Request) {
         stuck_reason: stuckReason,
         days_stuck: daysStuck,
       };
-    });
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
 
     const filtered = onboardingRows
       .filter((row) => {
