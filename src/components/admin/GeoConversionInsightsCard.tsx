@@ -78,8 +78,15 @@ function SortableHeader({
   );
 }
 
-export function GeoConversionInsightsCard() {
-  const [days, setDays] = useState<number>(30);
+export function GeoConversionInsightsCard({
+  selectedDays,
+  onDaysChange,
+}: {
+  selectedDays?: number;
+  onDaysChange?: (days: number) => void;
+}) {
+  const [localDays, setLocalDays] = useState<number>(30);
+  const days = selectedDays ?? localDays;
   const [sortBy, setSortBy] = useState<GeoSortBy>('revenue_total');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState<boolean>(true);
@@ -150,7 +157,7 @@ export function GeoConversionInsightsCard() {
             <button
               key={option.days}
               type="button"
-              onClick={() => setDays(option.days)}
+              onClick={() => (onDaysChange ? onDaysChange(option.days) : setLocalDays(option.days))}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition',
                 days === option.days

@@ -12,8 +12,14 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
+import { ActivationTimeToValueCard } from '@/components/admin/ActivationTimeToValueCard';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
+import { ConversionFunnelCard } from '@/components/admin/ConversionFunnelCard';
+import { CustomerEngagementCard } from '@/components/admin/CustomerEngagementCard';
 import { GeoConversionInsightsCard } from '@/components/admin/GeoConversionInsightsCard';
+import { PlanPerformanceCard } from '@/components/admin/PlanPerformanceCard';
+import { RetentionChurnCard } from '@/components/admin/RetentionChurnCard';
+import { TrialHealthCard } from '@/components/admin/TrialHealthCard';
 import { ANALYTICS_DRILLDOWN } from '@/lib/admin/analytics-drilldown';
 import { cn } from '@/lib/utils/cn';
 
@@ -335,6 +341,7 @@ type SectionSortKey = 'visits' | 'delta' | 'users' | 'pct' | 'label';
 type FeatureSortKey = 'count' | 'delta' | 'label';
 
 export function AdminAnalyticsPanel() {
+  const [selectedDays, setSelectedDays] = useState<number>(30);
   const [data, setData] = useState<AnalyticsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -459,6 +466,13 @@ export function AdminAnalyticsPanel() {
 
   return (
     <div className="space-y-8">
+      <ConversionFunnelCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <ActivationTimeToValueCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <CustomerEngagementCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <TrialHealthCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <RetentionChurnCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+      <PlanPerformanceCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
+
       {data.meta?.activity_sample_capped || data.meta?.ever_activity_sample_capped ? (
         <AdminContentCard className="border-amber-200/80 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20">
           <p className="text-xs text-amber-900 dark:text-amber-200">
@@ -770,7 +784,7 @@ export function AdminAnalyticsPanel() {
         </AdminContentCard>
       ) : null}
 
-      <GeoConversionInsightsCard />
+      <GeoConversionInsightsCard selectedDays={selectedDays} onDaysChange={setSelectedDays} />
 
       {/* D. Revenue / subscription */}
       <AdminContentCard>
