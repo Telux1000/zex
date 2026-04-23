@@ -332,9 +332,9 @@ export function AdminAccountsPanel() {
               <AdminTh>Owner</AdminTh>
               <AdminTh>Plan</AdminTh>
               <AdminTh>Status</AdminTh>
-              <AdminTh>Expire</AdminTh>
               <AdminTh>Users</AdminTh>
               <AdminTh>Created</AdminTh>
+              <AdminTh>Expire</AdminTh>
               <AdminTh>Last active</AdminTh>
               <AdminTh className="w-12 text-right"> </AdminTh>
             </AdminTableHead>
@@ -358,9 +358,6 @@ export function AdminAccountsPanel() {
                     <AdminTd>
                       <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
                     </AdminTd>
-                    <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                      {a.subscription_expire_at ? new Date(a.subscription_expire_at).toLocaleDateString() : '—'}
-                    </AdminTd>
                     <AdminTd>
                       <button
                         type="button"
@@ -377,6 +374,9 @@ export function AdminAccountsPanel() {
                       </button>
                     </AdminTd>
                     <AdminTd className="whitespace-nowrap text-zinc-600">{new Date(a.created_at).toLocaleDateString()}</AdminTd>
+                    <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+                      {a.subscription_expire_at ? new Date(a.subscription_expire_at).toLocaleDateString() : '—'}
+                    </AdminTd>
                     <AdminTd className="text-zinc-600 dark:text-zinc-400">
                       {a.last_active_at ? new Date(a.last_active_at).toLocaleString() : '—'}
                     </AdminTd>
