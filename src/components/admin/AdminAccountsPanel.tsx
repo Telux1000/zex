@@ -40,6 +40,13 @@ type AccountRow = {
 
 const MS_DAY = 86_400_000;
 
+function formatDateDMonY(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function lastEventWithinDays(iso: string | null, days: number): boolean {
   if (!iso) return false;
   const t = new Date(iso).getTime();
@@ -373,12 +380,12 @@ export function AdminAccountsPanel() {
                         </AdminBadge>
                       </button>
                     </AdminTd>
-                    <AdminTd className="whitespace-nowrap text-zinc-600">{new Date(a.created_at).toLocaleDateString()}</AdminTd>
+                    <AdminTd className="whitespace-nowrap text-zinc-600">{formatDateDMonY(a.created_at)}</AdminTd>
                     <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                      {a.subscription_expire_at ? new Date(a.subscription_expire_at).toLocaleDateString() : '—'}
+                      {formatDateDMonY(a.subscription_expire_at)}
                     </AdminTd>
                     <AdminTd className="text-zinc-600 dark:text-zinc-400">
-                      {a.last_active_at ? new Date(a.last_active_at).toLocaleString() : '—'}
+                      {formatDateDMonY(a.last_active_at)}
                     </AdminTd>
                     <AdminTd className="text-right" onClick={(e) => e.stopPropagation()}>
                       {actions.length > 0 ? <AdminRowActions items={actions} /> : null}
