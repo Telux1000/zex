@@ -11,6 +11,7 @@ import {
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { fetchAdminPlatformSettings, pricingPlansWithPlatformOverrides } from '@/lib/admin/admin-platform-settings';
 import { PRICING_TRIAL_DAYS, pricingPlans } from '@/lib/billing/plans';
+import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 
 /**
  * Full business row for settings-style forms, or null if the user has no primary business yet.
@@ -36,15 +37,13 @@ export async function GET() {
 
   const { data: profileRow } = await supabase
     .from('profiles')
-    .select('full_name, onboarding_pricing_completed_at')
+    .select('full_name')
     .eq('id', user.id)
     .maybeSingle();
   const profileFullName = (profileRow as { full_name?: string | null } | null)?.full_name ?? null;
-  const pricingComplete = Boolean(
-    (profileRow as { onboarding_pricing_completed_at?: string | null } | null)?.onboarding_pricing_completed_at
-  );
 
   const primary = await getPrimaryBusinessForUser(user.id);
+  const onboardingEntry = await fetchOnboardingEntryState(supabase, user.id, primary);
   let customerCount = 0;
   if (primary?.id) {
     const { count } = await supabase
@@ -74,7 +73,8 @@ export async function GET() {
       geoCountryCode,
       requestLocaleCountryCode,
       suggestedCountryCode,
-      pricingComplete,
+      pricingComplete: onboardingEntry.onboarding_ready,
+      onboardingEntry,
       planCatalog,
       trialDaysConfigured,
     });
@@ -108,7 +108,8 @@ export async function GET() {
     geoCountryCode,
     requestLocaleCountryCode,
     suggestedCountryCode,
-    pricingComplete,
+    pricingComplete: onboardingEntry.onboarding_ready,
+    onboardingEntry,
     planCatalog,
     trialDaysConfigured,
   });

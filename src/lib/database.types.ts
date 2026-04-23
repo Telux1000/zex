@@ -70,6 +70,20 @@ export interface Profile {
   onboarding_completed_at?: string | null;
   /** Set when the owner completes the signup pricing step (before workspace setup). */
   onboarding_pricing_completed_at?: string | null;
+  /** First-login plan selection state machine for onboarding entry. */
+  plan_selection_status?:
+    | 'NOT_SELECTED'
+    | 'FREE_SELECTED'
+    | 'TRIAL_SELECTED'
+    | 'PAID_PENDING_CHECKOUT'
+    | 'PAID_ACTIVE'
+    | null;
+  /** Latest plan selection timestamp for onboarding. */
+  selected_plan_at?: string | null;
+  /** Incomplete paid checkout provider, if any. */
+  pending_checkout_provider?: 'paddle' | null;
+  /** Paid plan selected but checkout not yet completed. */
+  pending_checkout_plan?: 'starter' | 'growth' | 'professional' | 'enterprise' | null;
   /** Internal admin control: when set, automated onboarding follow-ups are paused. */
   onboarding_follow_ups_paused_at?: string | null;
   /** Admin used "Cancel pending follow-ups"; UI shows Cancelled instead of Paused. */

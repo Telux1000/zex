@@ -14,6 +14,7 @@ import {
   isOnboardingComplete,
   onboardingResumeStep,
 } from '@/lib/onboarding/completion';
+import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 
 export default async function SettingsPage() {
   const suggestedCountryCode = getSuggestedCountryCodeFromRequestHeaders(headers());
@@ -22,6 +23,7 @@ export default async function SettingsPage() {
   if (!user) redirect('/login');
 
   const primary = await getPrimaryBusinessForUser(user.id);
+  const entryState = await fetchOnboardingEntryState(supabase, user.id, primary);
   const { data: profileGate } = await supabase
     .from('profiles')
     .select('full_name, onboarding_completed_at, onboarding_pricing_completed_at')
@@ -40,7 +42,7 @@ export default async function SettingsPage() {
       .eq('business_id', primary.id);
     gateCustomerCount = count ?? 0;
   }
-  if (!primary && !profileForGate?.onboarding_pricing_completed_at) {
+  if (entryState.should_show_plan_selection) {
     redirect('/onboarding?step=pricing');
   }
   if (!isOnboardingComplete(profileForGate, primary, gateCustomerCount)) {

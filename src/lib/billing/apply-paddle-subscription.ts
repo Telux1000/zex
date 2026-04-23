@@ -69,10 +69,25 @@ export async function applyPaddleSubscriptionNotification(
 
   const billing_plan = planFromSubscription(sub);
   const subscription_status = mapPaddleStatusToProfile(sub.status);
+  const paidActive =
+    subscription_status === 'active' || subscription_status === 'trialing';
+  const nowIso = new Date().toISOString();
 
   await admin
     .from('profiles')
-    .update({ subscription_status, billing_plan })
+    .update({
+      subscription_status,
+      billing_plan,
+      ...(paidActive
+        ? {
+            plan_selection_status: 'PAID_ACTIVE',
+            onboarding_pricing_completed_at: nowIso,
+            pending_checkout_provider: null,
+            pending_checkout_plan: null,
+            selected_plan_at: nowIso,
+          }
+        : {}),
+    })
     .eq('id', ownerUserId);
 
   return { ok: true };

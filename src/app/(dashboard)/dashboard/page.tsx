@@ -71,6 +71,7 @@ import {
 } from '@/components/dashboard/DashboardQuickActionsPanel';
 import { DashboardInsightsCard } from '@/components/dashboard/DashboardInsightsCard';
 import { DashboardActivityCard } from '@/components/dashboard/DashboardActivityCard';
+import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -185,18 +186,10 @@ export default async function DashboardPage({
   const { supabase, user } = await getServerSupabaseUser();
   if (!user) return null;
 
-  const { data: profilePricing } = await supabase
-    .from('profiles')
-    .select('onboarding_pricing_completed_at')
-    .eq('id', user.id)
-    .maybeSingle();
-  const pricingSignupDone = Boolean(
-    (profilePricing as { onboarding_pricing_completed_at?: string | null } | null)?.onboarding_pricing_completed_at
-  );
-
   const business = await getPrimaryBusinessForUser(user.id);
+  const entryState = await fetchOnboardingEntryState(supabase, user.id, business);
   if (!business) {
-    if (!pricingSignupDone) {
+    if (entryState.should_show_plan_selection) {
       redirect('/onboarding?step=pricing');
     }
     return (

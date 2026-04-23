@@ -137,6 +137,7 @@ export async function GET() {
       email: user.email ?? null,
       full_name: initialFullNameFromUser(user),
       billing_plan,
+      plan_selection_status: 'NOT_SELECTED',
       ...trial,
     })
     .select('*')
@@ -289,6 +290,7 @@ export async function PATCH(req: Request) {
           ? String(updates.full_name)
           : initialFullNameFromUser(user) ?? '',
       billing_plan,
+      plan_selection_status: 'NOT_SELECTED',
       ...(isThemeMode(updates.theme) ? { theme: updates.theme } : {}),
       ...(updates.onboarding_completed_at
         ? { onboarding_completed_at: updates.onboarding_completed_at }

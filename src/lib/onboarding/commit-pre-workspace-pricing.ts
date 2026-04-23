@@ -54,6 +54,7 @@ export async function commitPreWorkspacePricingSelection(
   const platform = admin ? await fetchAdminPlatformSettings(admin) : null;
   const trialDays = platform?.trial_days ?? PRICING_TRIAL_DAYS;
   const trial = pricing.isFree ? null : newAccountTrialFields(new Date(), trialDays);
+  const selectedAt = new Date().toISOString();
 
   const { error } = await supabase
     .from('profiles')
@@ -62,6 +63,10 @@ export async function commitPreWorkspacePricingSelection(
       billing_interval,
       selected_stripe_price_id: pricing.isFree ? null : catalogPriceId,
       onboarding_pricing_completed_at: new Date().toISOString(),
+      selected_plan_at: selectedAt,
+      plan_selection_status: pricing.isFree ? 'FREE_SELECTED' : 'TRIAL_SELECTED',
+      pending_checkout_provider: null,
+      pending_checkout_plan: null,
       trial_started_at: trial ? trial.trial_started_at : null,
       trial_ends_at: trial ? trial.trial_ends_at : null,
       subscription_status: trial ? trial.subscription_status : 'active',

@@ -7,12 +7,28 @@ const PADDLE_SCRIPT_SRC = 'https://cdn.paddle.com/paddle/v2/paddle.js';
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 export type PaddleCheckoutItem = { priceId: string; quantity: number };
+export type PaddleCheckoutEventData = {
+  name?: string;
+  data?: {
+    status?: string;
+    id?: string;
+    transaction_id?: string;
+    subscription_id?: string;
+    [key: string]: unknown;
+  };
+};
 
 export interface PaddleJs {
   Environment: { set: (env: 'sandbox' | 'production') => void };
   Initialize: (options: { token: string }) => void;
   Checkout: {
-    open: (options: { items: PaddleCheckoutItem[]; customer?: { email?: string } }) => void;
+    open: (options: {
+      items: PaddleCheckoutItem[];
+      customer?: { email?: string };
+      settings?: { displayMode?: 'overlay' | 'inline' };
+      customData?: Record<string, unknown>;
+      eventCallback?: (event: PaddleCheckoutEventData) => void;
+    }) => void;
   };
 }
 
@@ -145,7 +161,14 @@ export function ensurePaddleReady(): Promise<void> {
   return paddleReadyPromise;
 }
 
-export function openPaddleCheckout(priceId: string, customerEmail?: string): Promise<void> {
+export function openPaddleCheckout(
+  priceId: string,
+  customerEmail?: string,
+  options?: {
+    customData?: Record<string, unknown>;
+    onEvent?: (event: PaddleCheckoutEventData) => void;
+  }
+): Promise<void> {
   const trimmedPriceId = priceId.trim();
   if (!trimmedPriceId) {
     console.error('[Paddle] Cannot open checkout: missing priceId.');
@@ -170,6 +193,8 @@ export function openPaddleCheckout(priceId: string, customerEmail?: string): Pro
     Paddle.Checkout.open({
       items: [{ priceId: trimmedPriceId, quantity: 1 }],
       ...(email ? { customer: { email } } : {}),
+      ...(options?.customData ? { customData: options.customData } : {}),
+      ...(options?.onEvent ? { eventCallback: options.onEvent } : {}),
     });
   });
 }

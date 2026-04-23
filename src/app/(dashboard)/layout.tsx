@@ -13,7 +13,6 @@ import { DashboardCoreSetupCallout } from '@/components/dashboard/DashboardCoreS
 import { computeSetupProgress } from '@/lib/onboarding/setup-progress';
 import { isOnboardingComplete, onboardingResumeStep } from '@/lib/onboarding/completion';
 import { shouldShowDashboardSetupCallout } from '@/lib/onboarding/unified-setup-banner';
-import { hasSelectedPlanForSetupCallout } from '@/lib/onboarding/pricing-selection-for-callout';
 import { DashboardSubscriptionBanner } from '@/components/billing/DashboardSubscriptionBanner';
 import {
   computeEffectiveSubscription,
@@ -28,6 +27,7 @@ import {
   getSystemModeMessage,
   isInternalAdminRoleValue,
 } from '@/lib/system-access';
+import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 export default async function DashboardLayout({
   children,
 }: {
@@ -86,11 +86,8 @@ export default async function DashboardLayout({
   const setupProgress = computeSetupProgress({ profileFullName, business, customerCount });
   const onboardingDone = isOnboardingComplete(profileTyped, business, customerCount);
   const resumeStep = onboardingResumeStep(profileTyped, business, customerCount);
-
-  const hasSelectedPlan = hasSelectedPlanForSetupCallout({
-    onboardingPricingCompletedAt: profileTyped?.onboarding_pricing_completed_at,
-    hasBusinessWorkspace: Boolean(business),
-  });
+  const onboardingEntry = await fetchOnboardingEntryState(supabase, user.id, business);
+  const hasSelectedPlan = !onboardingEntry.should_show_plan_selection;
 
   const showSetupCallout = shouldShowDashboardSetupCallout({ coreSetupComplete: onboardingDone });
 

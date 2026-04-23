@@ -11,6 +11,7 @@ import { guessBaseCurrencyFromBrowser } from '@/lib/currency/guess-from-locale';
 import type { PricingPlan } from '@/lib/billing/plans';
 import { pricingPlans as defaultPricingPlans } from '@/lib/billing/plans';
 import { OnboardingPricingStep } from '@/components/onboarding/OnboardingPricingStep';
+import type { OnboardingEntryState } from '@/lib/onboarding/entry-state';
 
 const FORM_PROFILE = 'onboarding-step-profile';
 const FORM_BUSINESS = 'onboarding-step-business';
@@ -37,6 +38,7 @@ export function OnboardingWizard() {
   const [hydrated, setHydrated] = useState(false);
   const [pricingComplete, setPricingComplete] = useState(false);
   const [planCatalog, setPlanCatalog] = useState<PricingPlan[] | null>(null);
+  const [onboardingEntry, setOnboardingEntry] = useState<OnboardingEntryState | null>(null);
   const [trialDaysConfigured, setTrialDaysConfigured] = useState(14);
   const [business, setBusiness] = useState<Business | null>(null);
   const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function OnboardingWizard() {
           pricingComplete?: boolean;
           planCatalog?: PricingPlan[];
           trialDaysConfigured?: number;
+          onboardingEntry?: OnboardingEntryState;
         };
         if (cancelled) return;
         if (data.error) {
@@ -80,6 +83,7 @@ export function OnboardingWizard() {
         }
         setPricingComplete(data.pricingComplete === true);
         setPlanCatalog(Array.isArray(data.planCatalog) ? data.planCatalog : null);
+        setOnboardingEntry(data.onboardingEntry ?? null);
         setTrialDaysConfigured(
           typeof data.trialDaysConfigured === 'number' && data.trialDaysConfigured > 0
             ? data.trialDaysConfigured
@@ -276,8 +280,7 @@ export function OnboardingWizard() {
 
   const onPricingCompleted = useCallback(() => {
     setPricingComplete(true);
-    router.replace('/dashboard');
-    router.refresh();
+    router.replace('/onboarding?step=1');
   }, [router]);
 
   const effectivePlans = planCatalog?.length ? planCatalog : defaultPricingPlans;
@@ -298,6 +301,7 @@ export function OnboardingWizard() {
             <OnboardingPricingStep
               plans={effectivePlans}
               trialDays={trialDaysConfigured}
+              initialEntryState={onboardingEntry}
               onCompleted={onPricingCompleted}
             />
           </div>
