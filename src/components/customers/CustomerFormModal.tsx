@@ -703,6 +703,7 @@ export default function CustomerFormModal({
                         update('country', isoCode);
                         update('state', '');
                       }}
+                      clearable
                       className={inputClass + ' h-11'}
                     />
                   </div>

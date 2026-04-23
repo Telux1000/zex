@@ -19,6 +19,7 @@ type CountrySelectProps = {
   className?: string;
   ariaLabel?: string;
   disabled?: boolean;
+  clearable?: boolean;
 };
 
 /**
@@ -33,6 +34,7 @@ export function CountrySelect({
   className = '',
   ariaLabel = 'Country',
   disabled = false,
+  clearable = false,
 }: CountrySelectProps) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,51 +104,75 @@ export function CountrySelect({
     setOpen(false);
   };
 
+  const canClear = clearable && !disabled && !!value;
+
   return (
     <div ref={wrapRef} className="relative min-w-0 w-full max-w-full overflow-visible">
-      <button
-        id={id}
-        type="button"
-        role="combobox"
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        aria-controls={listboxId}
-        aria-haspopup="listbox"
-        disabled={disabled}
-        onClick={() => {
-          if (disabled) return;
-          if (open) {
-            setOpen(false);
-            setSearchTerm(displayLabel || '');
-            setHighlightedIndex(0);
-            return;
-          }
-          setSearchTerm(displayLabel || '');
-          setHighlightedIndex(0);
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (disabled) return;
-          if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
+      <div className="relative">
+        <button
+          id={id}
+          type="button"
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-haspopup="listbox"
+          disabled={disabled}
+          onClick={() => {
+            if (disabled) return;
+            if (open) {
+              setOpen(false);
+              setSearchTerm(displayLabel || '');
+              setHighlightedIndex(0);
+              return;
+            }
             setSearchTerm(displayLabel || '');
             setHighlightedIndex(0);
             setOpen(true);
-          }
-        }}
-        className={`${className} flex items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60`}
-      >
-        <span className={`min-w-0 flex-1 truncate ${displayLabel ? '' : 'text-slate-400 dark:text-slate-500'}`}>
-          {displayLabel || placeholder}
-        </span>
-        <svg className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </button>
+          }}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSearchTerm(displayLabel || '');
+              setHighlightedIndex(0);
+              setOpen(true);
+            }
+          }}
+          className={`${className} flex items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+            canClear ? 'pr-16' : ''
+          }`}
+        >
+          <span className={`min-w-0 flex-1 truncate ${displayLabel ? '' : 'text-slate-400 dark:text-slate-500'}`}>
+            {displayLabel || placeholder}
+          </span>
+          <svg className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+        {canClear ? (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('');
+              setSearchTerm('');
+              setHighlightedIndex(0);
+              setOpen(false);
+            }}
+            className="absolute right-8 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+            aria-label="Clear country selection"
+            title="Clear selection"
+          >
+            <span aria-hidden>&times;</span>
+          </button>
+        ) : null}
+      </div>
 
       {open && (
         <div
