@@ -729,7 +729,7 @@ export default function CustomerFormModal({
                   <label className="mt-3 flex cursor-pointer items-center gap-2">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 bg-white text-indigo-600 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] dark:border-slate-600 dark:bg-slate-900"
+                      className="h-4 w-4 rounded border-slate-300 bg-white text-indigo-600 focus:ring-2 focus:ring-[var(--ring)] dark:border-slate-600 dark:bg-slate-900"
                       checked={form.automatic_reminders}
                       onChange={(e) => setForm((f) => ({ ...f, automatic_reminders: e.target.checked }))}
                     />
