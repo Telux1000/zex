@@ -90,7 +90,7 @@ export default function CustomerFormModal({
   const isEdit = !!customer?.id && !readOnly;
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormData, string>>>({});
-  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
+  const companyInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -142,7 +142,7 @@ export default function CustomerFormModal({
   useEffect(() => {
     if (!open || readOnly) return;
     const id = window.requestAnimationFrame(() => {
-      nameInputRef.current?.focus();
+      companyInputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(id);
   }, [open, readOnly]);
@@ -152,9 +152,10 @@ export default function CustomerFormModal({
     setFieldErrors((prev) => {
       const next = { ...prev };
       delete next[key];
-      if (key === 'email' || key === 'phone') {
+      if (key === 'email' || key === 'phone' || key === 'company') {
         delete next.email;
         delete next.phone;
+        delete next.company;
       }
       return next;
     });
@@ -166,8 +167,8 @@ export default function CustomerFormModal({
       const next = value.trim();
       let message: string | undefined;
 
-      if (key === 'name' && !next) {
-        message = 'Full name is required.';
+      if (key === 'company' && !next) {
+        message = 'Company or client name is required.';
       }
       if (key === 'email') {
         if (!next) {
@@ -195,8 +196,8 @@ export default function CustomerFormModal({
       const company = form.company.trim();
       const email = form.email.trim();
       const errors: Partial<Record<keyof FormData, string>> = {};
-      if (!name) {
-        errors.name = 'Full name is required.';
+      if (!company) {
+        errors.company = 'Company or client name is required.';
       }
       if (!email) {
         errors.email = 'Email address is required.';
@@ -516,26 +517,26 @@ export default function CustomerFormModal({
           )}
           <div className="space-y-4">
             <div>
-              <label htmlFor="customer-name" className={labelClass}>
-                Full Name <span className="text-red-500" aria-hidden>*</span>
+              <label htmlFor="customer-company" className={labelClass}>
+                Company / Client Name <span className="text-red-500" aria-hidden>*</span>
               </label>
               <input
-                ref={nameInputRef}
-                id="customer-name"
+                ref={companyInputRef}
+                id="customer-company"
                 type="text"
                 required
-                className={fieldErrors.name ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
-                value={form.name}
-                onChange={(e) => update('name', e.target.value)}
-                onBlur={(e) => validateField('name', e.target.value)}
-                placeholder="Jane Doe"
+                className={fieldErrors.company ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
+                value={form.company}
+                onChange={(e) => update('company', e.target.value)}
+                onBlur={(e) => validateField('company', e.target.value)}
+                placeholder="Acme Inc."
                 aria-required="true"
-                aria-invalid={!!fieldErrors.name}
-                aria-describedby={fieldErrors.name ? 'customer-name-error' : undefined}
+                aria-invalid={!!fieldErrors.company}
+                aria-describedby={fieldErrors.company ? 'customer-company-error' : undefined}
               />
-              {fieldErrors.name && (
-                <p id="customer-name-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                  {fieldErrors.name}
+              {fieldErrors.company && (
+                <p id="customer-company-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+                  {fieldErrors.company}
                 </p>
               )}
             </div>
@@ -565,16 +566,30 @@ export default function CustomerFormModal({
             </div>
 
             <div>
-              <label htmlFor="customer-company" className={labelClass}>
-                Company Name <span className="text-slate-400">(optional)</span>
+              <label htmlFor="customer-phone" className={labelClass}>
+                Phone <span className="text-slate-400">(optional)</span>
               </label>
               <input
-                id="customer-company"
+                id="customer-phone"
+                type="tel"
+                className={inputClass}
+                value={form.phone}
+                onChange={(e) => update('phone', e.target.value)}
+                placeholder="+1 234 567 8900"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="customer-name" className={labelClass}>
+                Contact Person <span className="text-slate-400">(optional)</span>
+              </label>
+              <input
+                id="customer-name"
                 type="text"
                 className={inputClass}
-                value={form.company}
-                onChange={(e) => update('company', e.target.value)}
-                placeholder="Acme Inc."
+                value={form.name}
+                onChange={(e) => update('name', e.target.value)}
+                placeholder="Jane Doe"
               />
             </div>
           </div>
@@ -594,18 +609,6 @@ export default function CustomerFormModal({
             </button>
             {showMoreDetails ? (
               <div id="customer-more-details" className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <div>
-                  <label htmlFor="customer-phone" className={labelClass}>Phone</label>
-                  <input
-                    id="customer-phone"
-                    type="tel"
-                    className={inputClass}
-                    value={form.phone}
-                    onChange={(e) => update('phone', e.target.value)}
-                    placeholder="+1 234 567 8900"
-                  />
-                </div>
-
                 <div>
                   <label htmlFor="customer-pref-currency" className={labelClass}>
                     Preferred invoice currency
