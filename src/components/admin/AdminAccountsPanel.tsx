@@ -47,6 +47,19 @@ function formatDateDMonY(iso: string | null | undefined): string {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function formatDateTimeDMonY(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function lastEventWithinDays(iso: string | null, days: number): boolean {
   if (!iso) return false;
   const t = new Date(iso).getTime();
@@ -385,7 +398,7 @@ export function AdminAccountsPanel() {
                       {formatDateDMonY(a.subscription_expire_at)}
                     </AdminTd>
                     <AdminTd className="text-zinc-600 dark:text-zinc-400">
-                      {formatDateDMonY(a.last_active_at)}
+                      {formatDateTimeDMonY(a.last_active_at)}
                     </AdminTd>
                     <AdminTd className="text-right" onClick={(e) => e.stopPropagation()}>
                       {actions.length > 0 ? <AdminRowActions items={actions} /> : null}
