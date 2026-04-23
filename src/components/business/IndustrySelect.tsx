@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { INDUSTRY_OPTIONS, getIndustryLabelFromKey } from '@/lib/business/industry-options';
 
 type IndustrySelectProps = {
@@ -25,7 +26,10 @@ export function IndustrySelect({
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const portalRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const listboxId = id ? `${id}-listbox` : undefined;
 
@@ -40,6 +44,55 @@ export function IndustrySelect({
   }, [searchTerm]);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const pad = 8;
+    const width = Math.max(r.width, 280);
+    let left = r.left;
+    left = Math.min(left, window.innerWidth - width - pad);
+    left = Math.max(pad, left);
+    setMenuPos({
+      top: r.bottom + 4,
+      left,
+      width: Math.min(width, window.innerWidth - pad * 2),
+    });
+  }, [open, searchTerm, filtered.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onScrollOrResize = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const pad = 8;
+      const width = Math.max(r.width, 280);
+      let left = r.left;
+      left = Math.min(left, window.innerWidth - width - pad);
+      left = Math.max(pad, left);
+      setMenuPos({
+        top: r.bottom + 4,
+        left,
+        width: Math.min(width, window.innerWidth - pad * 2),
+      });
+    };
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (disabled && open) setOpen(false);
   }, [disabled, open]);
 
@@ -48,6 +101,7 @@ export function IndustrySelect({
     const onPointerDown = (ev: MouseEvent | TouchEvent) => {
       const target = ev.target;
       if (!wrapRef.current || !(target instanceof Node)) return;
+      if (portalRef.current?.contains(target)) return;
       if (!wrapRef.current.contains(target)) {
         setOpen(false);
         setSearchTerm(displayLabel || '');
@@ -173,11 +227,19 @@ export function IndustrySelect({
         </span>
       </button>
 
-      {open && (
+      {mounted && open && menuPos
+        ? createPortal(
         <div
-          className="absolute left-0 right-0 top-full z-40 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
+          ref={portalRef}
+          className="fixed z-[110] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
           role="dialog"
           aria-label="Industry selector"
+          style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            maxHeight: 'min(20rem, calc(100vh - 1rem))',
+          }}
         >
           <div className="border-b border-slate-200 p-2 dark:border-slate-700">
             <input
@@ -249,8 +311,10 @@ export function IndustrySelect({
               })
             )}
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+        : null}
     </div>
   );
 }
