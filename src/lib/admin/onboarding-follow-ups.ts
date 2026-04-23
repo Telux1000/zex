@@ -106,6 +106,11 @@ export function isStuckOnboardingStage(stage: AccountOnboardingStage): boolean {
   return STUCK_STAGE_SET.has(stage);
 }
 
+/** True when admin turned automation off (Pause or Cancel), including display-only "Cancelled". */
+export function isFollowUpAutomationOff(snapshot: OnboardingUserSnapshot): boolean {
+  return Boolean(snapshot.follow_ups_paused_at || snapshot.follow_ups_canceled_at);
+}
+
 export async function listOnboardingSnapshots() {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return [] as OnboardingUserSnapshot[];
@@ -157,13 +162,22 @@ export async function listOnboardingSnapshots() {
   const chunk = 400;
   for (let i = 0; i < authUserIds.length; i += chunk) {
     const ids = authUserIds.slice(i, i + chunk);
-    const profileRes = await admin
-      .from('profiles')
-      .select(
-        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at'
-      )
-      .in('id', ids);
-    if (profileRes.error) continue;
+    const fullSelect =
+      'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at';
+    let profileRes = await admin.from('profiles').select(fullSelect).in('id', ids);
+    if (profileRes.error) {
+      const baseSelect =
+        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at';
+      profileRes = await admin.from('profiles').select(baseSelect).in('id', ids);
+      if (profileRes.error) continue;
+      for (const row of profileRes.data ?? []) {
+        profileRows.push({
+          ...row,
+          onboarding_follow_ups_canceled_at: null,
+        } as (typeof profileRows)[number]);
+      }
+      continue;
+    }
     profileRows.push(...(profileRes.data ?? []));
   }
   const profileById = new Map(profileRows.map((p) => [String(p.id), p]));
@@ -239,7 +253,7 @@ export async function reconcileFollowUpsForSnapshot(snapshot: OnboardingUserSnap
     await cancelPendingFollowUpsForUser(snapshot.user_id, 'stage_not_stuck');
     return;
   }
-  if (snapshot.follow_ups_paused_at) {
+  if (isFollowUpAutomationOff(snapshot)) {
     await cancelPendingFollowUpsForUser(snapshot.user_id, 'paused_by_admin');
     return;
   }
@@ -363,7 +377,7 @@ async function sendFollowUpRow(row: FollowUpRow, snapshot: OnboardingUserSnapsho
     await markFollowUpCanceled(row.id, 'user_not_stuck');
     return;
   }
-  if (snapshot.follow_ups_paused_at) {
+  if (isFollowUpAutomationOff(snapshot)) {
     await markFollowUpCanceled(row.id, 'paused_by_admin');
     return;
   }
@@ -439,15 +453,28 @@ export async function runOnboardingFollowUpProcessor() {
 
   const due = dueRows ?? [];
   const dueUserIds = [...new Set(due.map((r) => String(r.user_id)))].filter(Boolean);
-  const followUpsPausedByUser = new Map<string, string | null>();
+  const followUpAutomationOffUserIds = new Set<string>();
   if (dueUserIds.length > 0) {
-    const { data: profPause } = await admin
+    let { data: profRows, error: profErr } = await admin
       .from('profiles')
-      .select('id, onboarding_follow_ups_paused_at')
+      .select('id, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at')
       .in('id', dueUserIds);
-    for (const p of profPause ?? []) {
-      const row = p as { id: string; onboarding_follow_ups_paused_at: string | null };
-      followUpsPausedByUser.set(String(row.id), row.onboarding_follow_ups_paused_at ?? null);
+    if (profErr) {
+      const fallback = await admin
+        .from('profiles')
+        .select('id, onboarding_follow_ups_paused_at')
+        .in('id', dueUserIds);
+      profRows = fallback.data ?? [];
+    }
+    for (const p of profRows ?? []) {
+      const row = p as {
+        id: string;
+        onboarding_follow_ups_paused_at: string | null;
+        onboarding_follow_ups_canceled_at?: string | null;
+      };
+      if (row.onboarding_follow_ups_paused_at || row.onboarding_follow_ups_canceled_at) {
+        followUpAutomationOffUserIds.add(String(row.id));
+      }
     }
   }
 
@@ -461,7 +488,7 @@ export async function runOnboardingFollowUpProcessor() {
       template_id: String(raw.template_id),
       step_key: String(raw.step_key),
     };
-    const followsPaused = Boolean(followUpsPausedByUser.get(row.user_id));
+    const followsPaused = followUpAutomationOffUserIds.has(row.user_id);
     if (followsPaused) {
       await markFollowUpCanceled(row.id, 'paused_by_admin');
       canceled += 1;
@@ -507,33 +534,58 @@ export async function setFollowUpsPaused(
 
   let wasAlreadyPaused = false;
   if (paused) {
-    const { data: prePause } = await admin
+    let preRes = await admin
       .from('profiles')
-      .select('onboarding_follow_ups_paused_at')
+      .select('onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at')
       .eq('id', userId)
       .maybeSingle();
-    wasAlreadyPaused = Boolean(
-      (prePause as { onboarding_follow_ups_paused_at?: string | null } | null)?.onboarding_follow_ups_paused_at
-    );
+    if (preRes.error) {
+      preRes = await admin
+        .from('profiles')
+        .select('onboarding_follow_ups_paused_at')
+        .eq('id', userId)
+        .maybeSingle();
+    }
+    const p = preRes.data as
+      | { onboarding_follow_ups_paused_at?: string | null; onboarding_follow_ups_canceled_at?: string | null }
+      | null;
+    wasAlreadyPaused = Boolean(p?.onboarding_follow_ups_paused_at || p?.onboarding_follow_ups_canceled_at);
   }
 
   const pausedAt = paused ? new Date().toISOString() : null;
-  const canceledAtForRow = paused && opts?.fromCancelAction ? pausedAt : null;
+  const canceledDisplayAt = paused && opts?.fromCancelAction ? pausedAt : null;
 
-  const { data: updatedRow, error: updateErr } = await admin
+  if (!paused) {
+    const { error: resumeErr } = await admin
+      .from('profiles')
+      .update({ onboarding_follow_ups_paused_at: null, onboarding_follow_ups_canceled_at: null })
+      .eq('id', userId)
+      .select('id')
+      .maybeSingle();
+    if (resumeErr) return { ok: false, error: resumeErr.message };
+    const snapshots = await listOnboardingSnapshots();
+    const snapshot = snapshots.find((s) => s.user_id === userId);
+    if (snapshot) {
+      await reconcileFollowUpsForSnapshot({
+        ...snapshot,
+        follow_ups_paused_at: null,
+        follow_ups_canceled_at: null,
+      });
+    }
+    return { ok: true, wasAlreadyPaused: false, pendingCanceled: 0 };
+  }
+
+  // paused === true: persist automation gate first, then display-only "Cancelled" flag (migration 094).
+  const { data: updatedRow, error: pauseGateErr } = await admin
     .from('profiles')
-    .update({
-      onboarding_follow_ups_paused_at: pausedAt,
-      // Pause clears "Cancelled" display; cancel sets it; resume clears both (pausedAt is null)
-      onboarding_follow_ups_canceled_at: paused ? canceledAtForRow : null,
-    })
+    .update({ onboarding_follow_ups_paused_at: pausedAt })
     .eq('id', userId)
     .select('id')
     .maybeSingle();
 
-  if (updateErr) return { ok: false, error: updateErr.message };
+  if (pauseGateErr) return { ok: false, error: pauseGateErr.message };
 
-  if (!updatedRow && paused) {
+  if (!updatedRow) {
     const { data: authData, error: authErr } = await admin.auth.admin.getUserById(userId);
     if (authErr) return { ok: false, error: authErr.message };
     if (!authData.user) return { ok: false, error: 'User not found' };
@@ -544,37 +596,41 @@ export async function setFollowUpsPaused(
       email: u.email ?? null,
       full_name: fullNameFromAuthUserMetadata(u),
       onboarding_follow_ups_paused_at: pausedAt,
-      onboarding_follow_ups_canceled_at: opts?.fromCancelAction ? pausedAt : null,
+      onboarding_follow_ups_canceled_at: canceledDisplayAt,
     });
     if (insertErr) {
       if (insertErr.code === '23505') {
-        const { error: againErr } = await admin
+        const { error: racePause } = await admin
           .from('profiles')
-          .update({
-            onboarding_follow_ups_paused_at: pausedAt,
-            onboarding_follow_ups_canceled_at: canceledAtForRow,
-          })
-          .eq('id', userId)
-          .select('id')
-          .maybeSingle();
-        if (againErr) return { ok: false, error: againErr.message };
+          .update({ onboarding_follow_ups_paused_at: pausedAt })
+          .eq('id', userId);
+        if (racePause) return { ok: false, error: racePause.message };
+        const { error: displayErrRace } = await admin
+          .from('profiles')
+          .update({ onboarding_follow_ups_canceled_at: canceledDisplayAt })
+          .eq('id', userId);
+        if (displayErrRace) {
+          console.warn('[setFollowUpsPaused] follow-up cancel display update skipped:', displayErrRace.message);
+        }
       } else {
         return { ok: false, error: insertErr.message };
       }
     }
+  } else {
+    const { error: displayErr } = await admin
+      .from('profiles')
+      .update({ onboarding_follow_ups_canceled_at: canceledDisplayAt })
+      .eq('id', userId);
+    if (displayErr) {
+      // Column missing (migration 094) or other non-fatal: automation still paused from first update.
+      console.warn('[setFollowUpsPaused] follow-up cancel display update skipped:', displayErr.message);
+    }
   }
 
-  if (paused) {
-    const reason = (opts?.pendingCancelReason ?? 'paused_by_admin').trim() || 'paused_by_admin';
-    const canceled = await cancelPendingFollowUpsForUser(userId, reason);
-    if (!canceled.ok) return { ok: false, error: canceled.error };
-    return { ok: true, wasAlreadyPaused, pendingCanceled: canceled.canceledCount };
-  }
-
-  const snapshots = await listOnboardingSnapshots();
-  const snapshot = snapshots.find((s) => s.user_id === userId);
-  if (snapshot) await reconcileFollowUpsForSnapshot({ ...snapshot, follow_ups_paused_at: null });
-  return { ok: true, wasAlreadyPaused: false, pendingCanceled: 0 };
+  const reason = (opts?.pendingCancelReason ?? 'paused_by_admin').trim() || 'paused_by_admin';
+  const canceled = await cancelPendingFollowUpsForUser(userId, reason);
+  if (!canceled.ok) return { ok: false, error: canceled.error };
+  return { ok: true, wasAlreadyPaused, pendingCanceled: canceled.canceledCount };
 }
 
 export async function sendManualOnboardingFollowUp(input: {
