@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
@@ -39,6 +38,8 @@ type DetailPayload = {
     owner: { id: string; name: string; email: string };
     plan: string;
     lifecycle_status: AccountLifecycleStatus;
+    trial_status?: string;
+    status_days_left?: number | null;
     created_at: string;
     users_count: number;
   };
@@ -76,6 +77,14 @@ function statusBadgeTone(
 
 function formatStatusLabel(s: string): string {
   return s.slice(0, 1).toUpperCase() + s.slice(1);
+}
+
+function formatAccountStatusBadgeLabel(account: DetailPayload['account']): string {
+  const days = account.status_days_left;
+  const suffix =
+    typeof days === 'number' && days >= 0 ? ` . ${days} day${days === 1 ? '' : 's'} Left` : '';
+  if (account.trial_status?.toLowerCase().includes('in_trial')) return `Trial${suffix}`;
+  return `${formatStatusLabel(account.lifecycle_status)}${suffix}`;
 }
 
 /** Match server: no reset for deactivated subscriber users; pending/active/suspended OK. */
@@ -392,14 +401,6 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
 
   return (
     <div className="space-y-6">
-      <nav className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500" aria-label="Account breadcrumb">
-        <Link href="/admin/accounts" className="hover:text-zinc-800 dark:hover:text-zinc-300">
-          Accounts
-        </Link>
-        <span className="text-zinc-300 dark:text-zinc-600">/</span>
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">{data.account.name}</span>
-      </nav>
-
       <AdminContentCard>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -407,7 +408,7 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Owner: {data.account.owner.name} ({data.account.owner.email})</p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <AdminBadge tone="neutral">Plan: {data.account.plan}</AdminBadge>
-              <AdminBadge tone={statusBadgeTone(ls)}>{formatStatusLabel(ls)}</AdminBadge>
+              <AdminBadge tone={statusBadgeTone(ls)}>{formatAccountStatusBadgeLabel(data.account)}</AdminBadge>
               <AdminBadge tone="neutral">{data.account.users_count} users</AdminBadge>
             </div>
           </div>

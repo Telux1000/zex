@@ -3,6 +3,15 @@ import { NextResponse } from 'next/server';
 import { dbRoleToAdminRole } from '@/lib/admin/account-member-roles';
 import { deriveAccountLifecycleStatus, deriveMemberUserStatus, deriveOwnerUserStatus, canManageSubscriberLifecycle } from '@/lib/admin/account-lifecycle';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
+import {
+  ceilingDaysLeftUntil,
+  computeDerivedTrialEndsAt,
+  isSubscriptionCancelled,
+  isSubscriptionTrialing,
+  isTrialEndInFuture,
+  normalizeSubscriptionStatus,
+  pickLatestSubscriptionByBusiness,
+} from '@/lib/admin/billing-subscription-status';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 const AUTH_CHUNK = 30;
@@ -42,6 +51,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ account
   if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
   if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 });
 
+  const subscriptionsProbe = await admin.from('subscriptions').select('*').eq('business_id', accountId).limit(500);
+  const subscriptionRows =
+    subscriptionsProbe.error && subscriptionsProbe.error.code === '42P01'
+      ? ((await admin.from('billing_subscriptions').select('*').eq('business_id', accountId).limit(500)).data ??
+        []) as Record<string, unknown>[]
+      : ((subscriptionsProbe.data ?? []) as Record<string, unknown>[]);
+
   const userIds = [String(business.owner_id), ...(members ?? []).map((m) => String(m.user_id))];
   const uniqueUserIds = Array.from(new Set(userIds));
 
@@ -72,6 +88,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ account
     admin_suspended_at: business.admin_suspended_at,
     admin_deactivated_at: business.admin_deactivated_at,
   });
+  const subscriptionsByBusiness = pickLatestSubscriptionByBusiness(subscriptionRows);
+  const subscriptionSnapshot = subscriptionsByBusiness.get(String(business.id)) ?? null;
+  const cancelled = Boolean(
+    business.admin_deactivated_at ||
+      ownerProfile?.subscriber_admin_deactivated_at ||
+      (subscriptionSnapshot ? isSubscriptionCancelled(subscriptionSnapshot) : false)
+  );
+  const suspended = Boolean(business.admin_suspended_at || ownerProfile?.subscriber_admin_suspended_at);
+  const trialEnd = subscriptionSnapshot?.trialEndIso ?? computeDerivedTrialEndsAt(ownerAuth?.created_at ?? business.created_at);
+  const trialFromDate = isTrialEndInFuture(trialEnd);
+  const trialFromStatus = normalizeSubscriptionStatus(subscriptionSnapshot?.status ?? null) === 'trialing';
+  const trialFromSubscription =
+    !cancelled &&
+    !suspended &&
+    (trialFromDate ||
+      trialFromStatus ||
+      (subscriptionSnapshot ? isSubscriptionTrialing(subscriptionSnapshot) : false));
+  const statusDaysLeft =
+    accountLifecycle === 'active' && !suspended
+      ? trialFromSubscription
+        ? ceilingDaysLeftUntil(trialEnd)
+        : ceilingDaysLeftUntil(subscriptionSnapshot?.currentPeriodEndIso ?? null)
+      : null;
 
   const ownerStatus = deriveOwnerUserStatus({
     subscriber_admin_suspended_at: ownerProfile?.subscriber_admin_suspended_at ?? null,
@@ -138,6 +177,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ account
       },
       plan: ownerProfile?.billing_plan ?? 'starter',
       lifecycle_status: accountLifecycle,
+      trial_status: trialFromSubscription ? 'in_trial' : 'trial_ended',
+      status_days_left: statusDaysLeft,
       created_at: business.created_at,
       users_count: users.length,
     },
