@@ -196,28 +196,7 @@ export async function getAccountCustomerDetail(
   const { data: row, error } = await admin
     .from('customers')
     .select(
-      [
-        'id',
-        'business_id',
-        'account_number',
-        'name',
-        'email',
-        'company',
-        'preferred_currency_code',
-        'address_line1',
-        'address_line2',
-        'city',
-        'state',
-        'postal_code',
-        'country',
-        'country_code',
-        'phone',
-        'notes',
-        'archived_at',
-        'anonymized_at',
-        'created_at',
-        'updated_at',
-      ].join(', ')
+      'id, business_id, account_number, name, email, company, preferred_currency_code, address_line1, address_line2, city, state, postal_code, country, country_code, phone, notes, archived_at, anonymized_at, created_at, updated_at'
     )
     .eq('id', params.customerId)
     .eq('business_id', params.accountId)
