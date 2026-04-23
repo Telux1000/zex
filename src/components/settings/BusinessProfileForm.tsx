@@ -142,10 +142,14 @@ export function BusinessProfileForm({
       phone,
       industry_key: industryKey || null,
       industry_other_text: industryOtherText,
-      address_line1: addressLine1,
-      city,
-      state,
-      country,
+      ...(onboarding
+        ? {}
+        : {
+            address_line1: addressLine1,
+            city,
+            state,
+            country,
+          }),
     });
     onCanSubmitChange(v.valid);
   }, [
@@ -158,6 +162,7 @@ export function BusinessProfileForm({
     city,
     state,
     country,
+    onboarding,
     onCanSubmitChange,
   ]);
 
@@ -370,10 +375,14 @@ export function BusinessProfileForm({
       phone,
       industry_key: industryKey || null,
       industry_other_text: industryOtherText,
-      address_line1: addressLine1,
-      city,
-      state,
-      country,
+      ...(onboarding
+        ? {}
+        : {
+            address_line1: addressLine1,
+            city,
+            state,
+            country,
+          }),
     });
     if (!v.valid) {
       setProfileFieldErrors(v.fieldErrors);
@@ -455,12 +464,16 @@ export function BusinessProfileForm({
           industry_other_text:
             industryKey === INDUSTRY_OTHER_KEY ? (industryOtherText.trim() || null) : null,
           website: website || null,
-          address_line1: addressLine1 || null,
-          address_line2: addressLine2 || null,
-          city: city || null,
-          state: state || null,
-          postal_code: postalCode || null,
-          country: country || null,
+          ...(onboarding
+            ? {}
+            : {
+                address_line1: addressLine1 || null,
+                address_line2: addressLine2 || null,
+                city: city || null,
+                state: state || null,
+                postal_code: postalCode || null,
+                country: country || null,
+              }),
           tax_id: taxId || null,
           registration_number: registrationNumber || null,
         }),
@@ -495,8 +508,8 @@ export function BusinessProfileForm({
         </>
       ) : (
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Enter what appears on your invoices: business name, contact, and address. Add logo, website,
-          and tax IDs later in{' '}
+          Enter what appears on your invoices: business name and contact details. Add address, logo,
+          website, and tax IDs later in{' '}
           <a
             href="/settings?section=business-profile"
             className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
@@ -769,169 +782,169 @@ export function BusinessProfileForm({
           />
         </div>
         ) : null}
-        <div id={BUSINESS_PROFILE_FIELD_IDS.address_line1}>
-          <label className={labelClass} htmlFor="business-profile-field-address-line1-input">
-            Business address{' '}
-            <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
-          </label>
-          <input
-            id="business-profile-field-address-line1-input"
-            type="text"
-            value={addressLine1}
-            aria-invalid={Boolean(profileFieldErrors.address_line1)}
-            aria-describedby={
-              profileFieldErrors.address_line1 ? 'business-profile-field-address-line1-err' : undefined
-            }
-            onChange={(e) => {
-              setAddressLine1(e.target.value);
-              clearProfileField('address_line1');
-              setProfileSummary(null);
-            }}
-            className={inputClassFor('address_line1')}
-          />
-          {profileFieldErrors.address_line1 ? (
-            <p
-              id="business-profile-field-address-line1-err"
-              className="mt-1 text-xs text-red-600 dark:text-red-400"
-            >
-              {profileFieldErrors.address_line1}
-            </p>
-          ) : onboarding ? (
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Add anytime — it appears on invoices and PDFs when provided.
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleAutoFillAddress}
-            className="app-btn-secondary mt-2 !px-3 !py-1.5 !text-xs"
-          >
-            Auto-fill address details
-          </button>
-        </div>
-        <div>
-          <label className={labelClass}>Address line 2</label>
-          <input
-            type="text"
-            value={addressLine2}
-            onChange={(e) => setAddressLine2(e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-4">
-          <div id={BUSINESS_PROFILE_FIELD_IDS.city} className="min-w-0">
-            <label className={labelClass} htmlFor="business-profile-field-city-input">
-              City <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
-            </label>
-            <input
-              id="business-profile-field-city-input"
-              type="text"
-              value={city}
-              aria-invalid={Boolean(profileFieldErrors.city)}
-              aria-describedby={profileFieldErrors.city ? 'business-profile-field-city-err' : undefined}
-              onChange={(e) => {
-                setCity(e.target.value);
-                clearProfileField('city');
-                setProfileSummary(null);
-              }}
-              className={inputClassFor('city')}
-            />
-            {profileFieldErrors.city ? (
-              <p id="business-profile-field-city-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                {profileFieldErrors.city}
-              </p>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,13fr)_minmax(0,7fr)] md:items-start">
-            <div id={BUSINESS_PROFILE_FIELD_IDS.state} className="min-w-0">
-              <label className={labelClass} htmlFor="business-profile-field-state-input">
-                State / Region
-                <span className="font-normal text-slate-500 dark:text-slate-400"> (optional)</span>
-              </label>
-              {getStates(country).length > 0 ? (
-                <select
-                  id="business-profile-field-state-input"
-                  value={state}
-                  aria-invalid={Boolean(profileFieldErrors.state)}
-                  aria-describedby={profileFieldErrors.state ? 'business-profile-field-state-err' : undefined}
-                  autoComplete="address-level1"
-                  onChange={(e) => {
-                    setState(e.target.value);
-                    clearProfileField('state');
-                    setProfileSummary(null);
-                  }}
-                  className={inputClassFor('state')}
-                >
-                  <option value="">Select…</option>
-                  {getStates(country).map((s) => (
-                    <option key={s.code} value={s.code}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  id="business-profile-field-state-input"
-                  type="text"
-                  value={state}
-                  onChange={(e) => {
-                    setState(e.target.value);
-                    clearProfileField('state');
-                    setProfileSummary(null);
-                  }}
-                  className={inputClassFor('state')}
-                  placeholder="State or region"
-                  autoComplete="address-level1"
-                />
-              )}
-              {profileFieldErrors.state ? (
-                <p id="business-profile-field-state-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {profileFieldErrors.state}
-                </p>
-              ) : null}
-            </div>
-            <div className="min-w-0">
-              <label className={labelClass} htmlFor="business-profile-field-postal-input">
-                Postal Code{' '}
+        {!onboarding ? (
+          <>
+            <div id={BUSINESS_PROFILE_FIELD_IDS.address_line1}>
+              <label className={labelClass} htmlFor="business-profile-field-address-line1-input">
+                Business address{' '}
                 <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
               </label>
               <input
-                id="business-profile-field-postal-input"
+                id="business-profile-field-address-line1-input"
                 type="text"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
+                value={addressLine1}
+                aria-invalid={Boolean(profileFieldErrors.address_line1)}
+                aria-describedby={
+                  profileFieldErrors.address_line1 ? 'business-profile-field-address-line1-err' : undefined
+                }
+                onChange={(e) => {
+                  setAddressLine1(e.target.value);
+                  clearProfileField('address_line1');
+                  setProfileSummary(null);
+                }}
+                className={inputClassFor('address_line1')}
+              />
+              {profileFieldErrors.address_line1 ? (
+                <p
+                  id="business-profile-field-address-line1-err"
+                  className="mt-1 text-xs text-red-600 dark:text-red-400"
+                >
+                  {profileFieldErrors.address_line1}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleAutoFillAddress}
+                className="app-btn-secondary mt-2 !px-3 !py-1.5 !text-xs"
+              >
+                Auto-fill address details
+              </button>
+            </div>
+            <div>
+              <label className={labelClass}>Address line 2</label>
+              <input
+                type="text"
+                value={addressLine2}
+                onChange={(e) => setAddressLine2(e.target.value)}
                 className={inputClass}
-                placeholder=""
-                autoComplete="postal-code"
               />
             </div>
-          </div>
-        </div>
-        <div id={BUSINESS_PROFILE_FIELD_IDS.country}>
-          <label className={labelClass} htmlFor="business-profile-country">
-            Country <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
-          </label>
-          <CountrySelect
-            id="business-profile-country"
-            ariaLabel="Business country"
-            value={country}
-            onChange={(code) => {
-              setCountryFromUser(code);
-              if (getStates(code).length > 0) {
-                setState('');
-              }
-              clearProfileField('country');
-              clearProfileField('state');
-              setProfileSummary(null);
-            }}
-            className={cn(inputClass, profileFieldErrors.country && 'border-red-500 dark:border-red-500')}
-          />
-          {profileFieldErrors.country ? (
-            <p id="business-profile-field-country-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {profileFieldErrors.country}
-            </p>
-          ) : null}
-        </div>
+            <div className="space-y-4">
+              <div id={BUSINESS_PROFILE_FIELD_IDS.city} className="min-w-0">
+                <label className={labelClass} htmlFor="business-profile-field-city-input">
+                  City <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
+                </label>
+                <input
+                  id="business-profile-field-city-input"
+                  type="text"
+                  value={city}
+                  aria-invalid={Boolean(profileFieldErrors.city)}
+                  aria-describedby={profileFieldErrors.city ? 'business-profile-field-city-err' : undefined}
+                  onChange={(e) => {
+                    setCity(e.target.value);
+                    clearProfileField('city');
+                    setProfileSummary(null);
+                  }}
+                  className={inputClassFor('city')}
+                />
+                {profileFieldErrors.city ? (
+                  <p id="business-profile-field-city-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {profileFieldErrors.city}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,13fr)_minmax(0,7fr)] md:items-start">
+                <div id={BUSINESS_PROFILE_FIELD_IDS.state} className="min-w-0">
+                  <label className={labelClass} htmlFor="business-profile-field-state-input">
+                    State / Region
+                    <span className="font-normal text-slate-500 dark:text-slate-400"> (optional)</span>
+                  </label>
+                  {getStates(country).length > 0 ? (
+                    <select
+                      id="business-profile-field-state-input"
+                      value={state}
+                      aria-invalid={Boolean(profileFieldErrors.state)}
+                      aria-describedby={profileFieldErrors.state ? 'business-profile-field-state-err' : undefined}
+                      autoComplete="address-level1"
+                      onChange={(e) => {
+                        setState(e.target.value);
+                        clearProfileField('state');
+                        setProfileSummary(null);
+                      }}
+                      className={inputClassFor('state')}
+                    >
+                      <option value="">Select…</option>
+                      {getStates(country).map((s) => (
+                        <option key={s.code} value={s.code}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="business-profile-field-state-input"
+                      type="text"
+                      value={state}
+                      onChange={(e) => {
+                        setState(e.target.value);
+                        clearProfileField('state');
+                        setProfileSummary(null);
+                      }}
+                      className={inputClassFor('state')}
+                      placeholder="State or region"
+                      autoComplete="address-level1"
+                    />
+                  )}
+                  {profileFieldErrors.state ? (
+                    <p id="business-profile-field-state-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {profileFieldErrors.state}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0">
+                  <label className={labelClass} htmlFor="business-profile-field-postal-input">
+                    Postal Code{' '}
+                    <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
+                  </label>
+                  <input
+                    id="business-profile-field-postal-input"
+                    type="text"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    className={inputClass}
+                    placeholder=""
+                    autoComplete="postal-code"
+                  />
+                </div>
+              </div>
+            </div>
+            <div id={BUSINESS_PROFILE_FIELD_IDS.country}>
+              <label className={labelClass} htmlFor="business-profile-country">
+                Country <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
+              </label>
+              <CountrySelect
+                id="business-profile-country"
+                ariaLabel="Business country"
+                value={country}
+                onChange={(code) => {
+                  setCountryFromUser(code);
+                  if (getStates(code).length > 0) {
+                    setState('');
+                  }
+                  clearProfileField('country');
+                  clearProfileField('state');
+                  setProfileSummary(null);
+                }}
+                className={cn(inputClass, profileFieldErrors.country && 'border-red-500 dark:border-red-500')}
+              />
+              {profileFieldErrors.country ? (
+                <p id="business-profile-field-country-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {profileFieldErrors.country}
+                </p>
+              ) : null}
+            </div>
+          </>
+        ) : null}
         {onboarding ? (
           <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
             Optional later: add your logo in Settings → Business Profile to personalize invoices and PDFs.
