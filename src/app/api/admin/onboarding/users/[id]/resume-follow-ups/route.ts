@@ -24,5 +24,5 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     metadata: { operation: 'resume_follow_ups' },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, resumed: true });
 }

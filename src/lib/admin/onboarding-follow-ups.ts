@@ -208,7 +208,7 @@ export async function cancelPendingFollowUpsForUser(
   userId: string,
   reason: string,
   opts?: { stage?: AccountOnboardingStage }
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; canceledCount: number } | { ok: false; error: string }> {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return { ok: false, error: 'Server misconfigured' };
   let q = admin
@@ -221,9 +221,9 @@ export async function cancelPendingFollowUpsForUser(
     .eq('user_id', userId)
     .eq('status', 'PENDING');
   if (opts?.stage) q = q.eq('onboarding_stage_at_schedule', opts.stage);
-  const { error } = await q;
+  const { data, error } = await q.select('id');
   if (error) return { ok: false, error: error.message };
-  return { ok: true };
+  return { ok: true, canceledCount: (data ?? []).length };
 }
 
 export async function reconcileFollowUpsForSnapshot(snapshot: OnboardingUserSnapshot) {
@@ -489,13 +489,30 @@ function fullNameFromAuthUserMetadata(user: { user_metadata?: Record<string, unk
   );
 }
 
+export type SetFollowUpsPausedResult =
+  | { ok: false; error: string }
+  | { ok: true; wasAlreadyPaused: boolean; pendingCanceled: number };
+
 export async function setFollowUpsPaused(
   userId: string,
   paused: boolean,
   opts?: { pendingCancelReason?: string }
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<SetFollowUpsPausedResult> {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return { ok: false, error: 'Server misconfigured' };
+
+  let wasAlreadyPaused = false;
+  if (paused) {
+    const { data: prePause } = await admin
+      .from('profiles')
+      .select('onboarding_follow_ups_paused_at')
+      .eq('id', userId)
+      .maybeSingle();
+    wasAlreadyPaused = Boolean(
+      (prePause as { onboarding_follow_ups_paused_at?: string | null } | null)?.onboarding_follow_ups_paused_at
+    );
+  }
+
   const pausedAt = paused ? new Date().toISOString() : null;
 
   const { data: updatedRow, error: updateErr } = await admin
@@ -538,12 +555,13 @@ export async function setFollowUpsPaused(
     const reason = (opts?.pendingCancelReason ?? 'paused_by_admin').trim() || 'paused_by_admin';
     const canceled = await cancelPendingFollowUpsForUser(userId, reason);
     if (!canceled.ok) return { ok: false, error: canceled.error };
-  } else {
-    const snapshots = await listOnboardingSnapshots();
-    const snapshot = snapshots.find((s) => s.user_id === userId);
-    if (snapshot) await reconcileFollowUpsForSnapshot({ ...snapshot, follow_ups_paused_at: null });
+    return { ok: true, wasAlreadyPaused, pendingCanceled: canceled.canceledCount };
   }
-  return { ok: true };
+
+  const snapshots = await listOnboardingSnapshots();
+  const snapshot = snapshots.find((s) => s.user_id === userId);
+  if (snapshot) await reconcileFollowUpsForSnapshot({ ...snapshot, follow_ups_paused_at: null });
+  return { ok: true, wasAlreadyPaused: false, pendingCanceled: 0 };
 }
 
 export async function sendManualOnboardingFollowUp(input: {

@@ -77,6 +77,22 @@ function formatFollowUpDurationSpaced(nStr: string, unitRaw: string): string {
  * Human label for follow-up template slug or env key.
  * e.g. `onboarding-login-no-onboarding-2h` → `Login (no onboarding) — 2 hrs`
  */
+/** Success copy for Pause / Cancel pending (API returns was_already_paused, pending_canceled). */
+function followUpPauseOrCancelMessage(body: Record<string, unknown>): string {
+  const wasAlready = body.was_already_paused === true;
+  const n = typeof body.pending_canceled === 'number' ? body.pending_canceled : 0;
+  if (wasAlready) {
+    if (n > 0) {
+      return `Canceled ${n} pending follow-up(s). Automation remains paused.`;
+    }
+    return 'No pending follow-ups. Automation is already paused.';
+  }
+  if (n > 0) {
+    return `Paused automation and canceled ${n} pending follow-up(s).`;
+  }
+  return 'Automation is paused. There were no follow-ups waiting in the queue.';
+}
+
 function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): string {
   let slug = String(templateDisplayOrEnvKey ?? '').trim();
   if (!slug) return '';
@@ -112,20 +128,20 @@ function humanizeOnboardingFollowUpLabel(templateDisplayOrEnvKey: string): strin
 async function postAdminOnboardingAction(
   url: string,
   init?: RequestInit
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; error: string }> {
   try {
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'include',
       ...init,
     });
-    const json = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: string; code?: string };
     if (!res.ok) {
-      const base = json.error ?? `Request failed (${res.status})`;
-      const code = json.code ? ` [${json.code}]` : '';
+      const base = (typeof json.error === 'string' ? json.error : null) ?? `Request failed (${res.status})`;
+      const code = json.code != null ? ` [${String(json.code)}]` : '';
       return { ok: false, error: `${base}${code}` };
     }
-    return { ok: true };
+    return { ok: true, body: json };
   } catch {
     return { ok: false, error: 'Network error.' };
   }
@@ -171,7 +187,10 @@ export function AdminAccountsOnboardingPanel() {
         page: String(page),
         page_size: '25',
       });
-      const res = await fetch(`/api/admin/onboarding/users?${params.toString()}`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/onboarding/users?${params.toString()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
       const json = (await res.json()) as {
         error?: string;
         accounts?: OnboardingAccountRow[];
@@ -446,14 +465,19 @@ export function AdminAccountsOnboardingPanel() {
                             label: row.follow_up_status === 'paused' ? 'Resume follow-ups' : 'Pause follow-ups',
                             onClick: async () => {
                               setProcessorMessage(null);
-                              const endpoint =
-                                row.follow_up_status === 'paused'
-                                  ? `/api/admin/onboarding/users/${row.id}/resume-follow-ups`
-                                  : `/api/admin/onboarding/users/${row.id}/pause-follow-ups`;
+                              const resuming = row.follow_up_status === 'paused';
+                              const endpoint = resuming
+                                ? `/api/admin/onboarding/users/${row.id}/resume-follow-ups`
+                                : `/api/admin/onboarding/users/${row.id}/pause-follow-ups`;
                               const out = await postAdminOnboardingAction(endpoint);
                               if (!out.ok) {
                                 setProcessorMessage(`Error: ${out.error}`);
                                 return;
+                              }
+                              if (resuming) {
+                                setProcessorMessage('Follow-ups resumed.');
+                              } else {
+                                setProcessorMessage(followUpPauseOrCancelMessage(out.body));
                               }
                               await load();
                             },
@@ -469,6 +493,7 @@ export function AdminAccountsOnboardingPanel() {
                                 setProcessorMessage(`Error: ${out.error}`);
                                 return;
                               }
+                              setProcessorMessage(followUpPauseOrCancelMessage(out.body));
                               await load();
                             },
                           },
@@ -492,6 +517,7 @@ export function AdminAccountsOnboardingPanel() {
                                       setProcessorMessage(`Error: ${out.error}`);
                                       return;
                                     }
+                                    setProcessorMessage('Follow-up email sent.');
                                     await load();
                                   },
                                 },

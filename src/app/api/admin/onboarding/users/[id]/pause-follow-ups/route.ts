@@ -24,5 +24,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     metadata: { operation: 'pause_follow_ups' },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    was_already_paused: result.wasAlreadyPaused,
+    pending_canceled: result.pendingCanceled,
+  });
 }

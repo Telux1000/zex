@@ -26,5 +26,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     targetId: userId,
     metadata: { operation: 'cancel_pending_follow_ups' },
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    was_already_paused: cancelResult.wasAlreadyPaused,
+    pending_canceled: cancelResult.pendingCanceled,
+  });
 }
