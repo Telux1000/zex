@@ -27,7 +27,9 @@ export function IndustrySelect({
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mounted, setMounted] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; openUp: boolean } | null>(
+    null
+  );
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const portalRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -61,9 +63,10 @@ export function IndustrySelect({
     left = Math.min(left, window.innerWidth - width - pad);
     left = Math.max(pad, left);
     setMenuPos({
-      top: r.bottom + 4,
+      top: r.top - 4,
       left,
       width: Math.min(width, window.innerWidth - pad * 2),
+      openUp: true,
     });
   }, [open, searchTerm, filtered.length]);
 
@@ -79,9 +82,10 @@ export function IndustrySelect({
       left = Math.min(left, window.innerWidth - width - pad);
       left = Math.max(pad, left);
       setMenuPos({
-        top: r.bottom + 4,
+        top: r.top - 4,
         left,
         width: Math.min(width, window.innerWidth - pad * 2),
+        openUp: true,
       });
     };
     window.addEventListener('scroll', onScrollOrResize, true);
@@ -239,6 +243,7 @@ export function IndustrySelect({
             left: menuPos.left,
             width: menuPos.width,
             maxHeight: 'min(20rem, calc(100vh - 1rem))',
+            transform: menuPos.openUp ? 'translateY(-100%)' : undefined,
           }}
         >
           <div className="border-b border-slate-200 p-2 dark:border-slate-700">
