@@ -409,6 +409,7 @@ function SignupTab({
           <span className="font-mono">{environment.supabase_host?.trim() || 'unknown'}</span>
           {' · '}Updated:{' '}
           {signup.updated_at ? new Date(signup.updated_at).toLocaleString() : 'unknown'}
+          {' · '}Updated by: {signup.updated_by ?? 'unknown'}
         </p>
       </div>
       <Field
