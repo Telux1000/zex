@@ -3,6 +3,7 @@ import { fetchSignupSettings } from '@/lib/auth/signup-control';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function parseSupabaseHost(): string | null {
   const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim() || '';
@@ -14,12 +15,19 @@ function parseSupabaseHost(): string | null {
   }
 }
 
-export async function GET(req: Request) {
+async function readSignupContext(req: Request) {
   const admin = getSupabaseServiceAdmin();
   if (!admin) {
     return NextResponse.json(
       { error: 'Service temporarily unavailable.' },
-      { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      {
+        status: 503,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
     );
   }
   const isDebug = new URL(req.url).searchParams.get('debug') === '1';
@@ -35,17 +43,39 @@ export async function GET(req: Request) {
                 supabase_host: parseSupabaseHost(),
                 node_env: process.env.NODE_ENV ?? 'development',
                 updated_at: settings.updated_at,
+                generated_at: new Date().toISOString(),
               },
             }
           : {}),
       },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
     );
   } catch (error) {
     console.error('[signup-context] failed to load signup settings', error);
     return NextResponse.json(
       { error: 'Could not load signup availability settings.' },
-      { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      {
+        status: 503,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
     );
   }
+}
+
+export async function GET(req: Request) {
+  return readSignupContext(req);
+}
+
+export async function POST(req: Request) {
+  return readSignupContext(req);
 }

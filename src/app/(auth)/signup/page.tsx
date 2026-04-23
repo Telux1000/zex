@@ -53,7 +53,11 @@ function SignupPageInner() {
 
   useEffect(() => {
     let active = true;
-    fetch('/api/auth/signup-context', { cache: 'no-store' })
+    fetch('/api/auth/signup-context', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+    })
       .then(async (r) => {
         const json = (await r.json().catch(() => ({}))) as {
           signup_mode?: string;
