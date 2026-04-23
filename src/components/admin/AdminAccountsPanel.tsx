@@ -23,6 +23,8 @@ type AccountRow = {
   owner_email: string;
   current_plan: string;
   subscription_status: string;
+  /** Full days left in trial or current billing period; omitted when unknown. */
+  status_days_left?: number | null;
   trial_status: string;
   created_at: string;
   last_active_at: string | null;
@@ -73,10 +75,12 @@ function matchesAccountsDrilldown(
 
 function accountStatus(row: AccountRow): { label: string; tone: 'active' | 'pending' | 'suspended' } {
   const s = row.subscription_status as AccountLifecycleStatus | string;
+  const days = row.status_days_left;
+  const suffix = typeof days === 'number' && days >= 0 ? `.${days}` : '';
   if (s === 'deactivated') return { label: 'Deactivated', tone: 'suspended' };
   if (s === 'suspended') return { label: 'Suspended', tone: 'suspended' };
-  if (row.trial_status.toLowerCase().includes('in_trial')) return { label: 'Trial', tone: 'pending' };
-  return { label: 'Active', tone: 'active' };
+  if (row.trial_status.toLowerCase().includes('in_trial')) return { label: `Trial${suffix}`, tone: 'pending' };
+  return { label: `Active${suffix}`, tone: 'active' };
 }
 
 function matchesQuery(row: AccountRow, q: string): boolean {

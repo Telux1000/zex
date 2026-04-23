@@ -1,14 +1,27 @@
 type GenericRow = Record<string, unknown>;
 
+const DAY_MS = 86_400_000;
+
 export type NormalizedSubscriptionSnapshot = {
   businessId: string;
   status: string | null;
   trialEndIso: string | null;
+  currentPeriodEndIso: string | null;
   cancelledAtIso: string | null;
   isTrialFlag: boolean;
   updatedAtIso: string | null;
   raw: GenericRow;
 };
+
+/** Full calendar days remaining until the instant (ceil); 0 on/after end; null if unknown. */
+export function ceilingDaysLeftUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const end = new Date(iso).getTime();
+  if (Number.isNaN(end)) return null;
+  const diffMs = end - Date.now();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / DAY_MS);
+}
 
 export type ResolveBusinessIdFn = (row: GenericRow) => string | null;
 
@@ -113,9 +126,10 @@ export function pickLatestSubscriptionByBusiness(
       businessId,
       status: firstString(row, ['status', 'subscription_status']),
       trialEndIso: firstDateString(row, ['trial_end', 'trial_ends_at', 'trial_end_at']),
+      currentPeriodEndIso: firstDateString(row, ['current_period_end', 'current_period_ends_at', 'period_end', 'renews_at']),
       cancelledAtIso: firstDateString(row, ['canceled_at', 'cancelled_at', 'cancel_at', 'ended_at']),
       isTrialFlag: firstBoolean(row, ['is_trial', 'on_trial']),
-      updatedAtIso: firstDateString(row, ['updated_at', 'created_at', 'current_period_end']),
+      updatedAtIso: firstDateString(row, ['updated_at', 'created_at']),
       raw: row,
     };
 

@@ -9,6 +9,7 @@ import { deriveAccountLifecycleStatus, canManageSubscriberLifecycle } from '@/li
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
 import {
+  ceilingDaysLeftUntil,
   computeDerivedTrialEndsAt,
   isSubscriptionCancelled,
   isSubscriptionTrialing,
@@ -442,6 +443,19 @@ export async function GET(req: Request) {
       (trialFromDate ||
         trialFromStatus ||
         (subscriptionSnapshot ? isSubscriptionTrialing(subscriptionSnapshot) : false));
+
+    let statusDaysLeft: number | null = null;
+    if (lifecycle === 'active' && !suspended) {
+      if (trialFromSubscription) {
+        statusDaysLeft = ceilingDaysLeftUntil(trialEnd);
+      } else {
+        const periodEnd = subscriptionSnapshot?.currentPeriodEndIso ?? null;
+        if (periodEnd) {
+          statusDaysLeft = ceilingDaysLeftUntil(periodEnd);
+        }
+      }
+    }
+
     return {
       id: business.id,
       name: business.name,
@@ -449,6 +463,7 @@ export async function GET(req: Request) {
       owner_email: maskEmail(owner?.email ?? ''),
       current_plan: plan,
       subscription_status: lifecycle,
+      status_days_left: statusDaysLeft,
       trial_status: trialFromSubscription ? 'in_trial' : 'trial_ended',
       created_at: business.created_at,
       last_active_at: lastActiveByBusiness.get(String(business.id)) ?? null,
