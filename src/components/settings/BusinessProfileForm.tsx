@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import {
   countries as locationCountries,
   getStates,
-  hasStates,
   logCountryPrefillDebug,
   normalizeCountryCode,
   resolveOnboardingUnsavedCountryPrefill,
@@ -14,11 +13,17 @@ import {
 } from '@/lib/location';
 import type { Business } from '@/lib/database.types';
 import { CountrySelect } from '@/components/location/CountrySelect';
+import { IndustrySelect } from '@/components/business/IndustrySelect';
 import {
   BUSINESS_PROFILE_FIELD_IDS,
   validateBusinessProfileInput,
   type BusinessProfileFieldKey,
 } from '@/lib/business/profile';
+import {
+  INDUSTRY_OTHER_KEY,
+  getIndustryLabelFromKey,
+  isKnownIndustryKey,
+} from '@/lib/business/industry-options';
 import { cn } from '@/lib/utils/cn';
 
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300';
@@ -105,6 +110,12 @@ export function BusinessProfileForm({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [email, setEmail] = useState(business.email ?? '');
   const [phone, setPhone] = useState(() => sanitizeBusinessPhoneInput(String(business.phone ?? '')));
+  const [industryKey, setIndustryKey] = useState(() =>
+    isKnownIndustryKey(business.industry_key ?? null) ? String(business.industry_key) : ''
+  );
+  const [industryOtherText, setIndustryOtherText] = useState(
+    String(business.industry_other_text ?? '').trim()
+  );
   const [website, setWebsite] = useState(business.website ?? '');
   const [addressLine1, setAddressLine1] = useState(business.address_line1 ?? '');
   const [addressLine2, setAddressLine2] = useState(business.address_line2 ?? '');
@@ -129,6 +140,8 @@ export function BusinessProfileForm({
       name,
       email,
       phone,
+      industry_key: industryKey || null,
+      industry_other_text: industryOtherText,
       address_line1: addressLine1,
       city,
       state,
@@ -139,6 +152,8 @@ export function BusinessProfileForm({
     name,
     email,
     phone,
+    industryKey,
+    industryOtherText,
     addressLine1,
     city,
     state,
@@ -353,6 +368,8 @@ export function BusinessProfileForm({
       name,
       email,
       phone,
+      industry_key: industryKey || null,
+      industry_other_text: industryOtherText,
       address_line1: addressLine1,
       city,
       state,
@@ -433,6 +450,10 @@ export function BusinessProfileForm({
           logo_url: nextLogoUrl,
           email: email || null,
           phone: phone || null,
+          industry_key: industryKey || null,
+          industry_label: getIndustryLabelFromKey(industryKey) ?? null,
+          industry_other_text:
+            industryKey === INDUSTRY_OTHER_KEY ? (industryOtherText.trim() || null) : null,
           website: website || null,
           address_line1: addressLine1 || null,
           address_line2: addressLine2 || null,
@@ -675,6 +696,67 @@ export function BusinessProfileForm({
             ) : null}
           </div>
         </div>
+        <div id={BUSINESS_PROFILE_FIELD_IDS.industry_key}>
+          <label className={labelClass} htmlFor="business-profile-industry">
+            Industry
+          </label>
+          <IndustrySelect
+            id="business-profile-industry"
+            ariaLabel="Business industry"
+            value={industryKey}
+            onChange={(key) => {
+              setIndustryKey(key);
+              if (key !== INDUSTRY_OTHER_KEY) {
+                setIndustryOtherText('');
+                clearProfileField('industry_other_text');
+              }
+              clearProfileField('industry_key');
+              setProfileSummary(null);
+            }}
+            placeholder="Select your industry"
+            className={cn(inputClass, profileFieldErrors.industry_key && 'border-red-500 dark:border-red-500')}
+          />
+          {profileFieldErrors.industry_key ? (
+            <p id="business-profile-field-industry-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
+              {profileFieldErrors.industry_key}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Help us tailor your setup and recommendations.
+            </p>
+          )}
+        </div>
+        {industryKey === INDUSTRY_OTHER_KEY ? (
+          <div id={BUSINESS_PROFILE_FIELD_IDS.industry_other_text}>
+            <label className={labelClass} htmlFor="business-profile-industry-other-input">
+              Tell us your industry
+            </label>
+            <input
+              id="business-profile-industry-other-input"
+              type="text"
+              value={industryOtherText}
+              onChange={(e) => {
+                setIndustryOtherText(e.target.value);
+                clearProfileField('industry_other_text');
+                setProfileSummary(null);
+              }}
+              aria-invalid={Boolean(profileFieldErrors.industry_other_text)}
+              aria-describedby={
+                profileFieldErrors.industry_other_text ? 'business-profile-field-industry-other-err' : undefined
+              }
+              className={inputClassFor('industry_other_text')}
+              placeholder="e.g. Construction"
+            />
+            {profileFieldErrors.industry_other_text ? (
+              <p
+                id="business-profile-field-industry-other-err"
+                className="mt-1 text-xs text-red-600 dark:text-red-400"
+              >
+                {profileFieldErrors.industry_other_text}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {!onboarding ? (
         <div>
           <label className={labelClass}>Website</label>

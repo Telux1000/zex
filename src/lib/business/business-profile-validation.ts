@@ -2,6 +2,8 @@ export const BUSINESS_PROFILE_FIELD_KEYS = [
   'name',
   'email',
   'phone',
+  'industry_key',
+  'industry_other_text',
   'address_line1',
   'city',
   'state',
@@ -15,6 +17,8 @@ export const BUSINESS_PROFILE_FIELD_IDS: Record<BusinessProfileFieldKey, string>
   name: 'business-profile-field-name',
   email: 'business-profile-field-email',
   phone: 'business-profile-field-phone',
+  industry_key: 'business-profile-field-industry',
+  industry_other_text: 'business-profile-field-industry-other',
   address_line1: 'business-profile-field-address-line1',
   city: 'business-profile-field-city',
   state: 'business-profile-field-state',
@@ -26,6 +30,8 @@ export const BUSINESS_PROFILE_FIELD_ORDER: BusinessProfileFieldKey[] = [
   'name',
   'email',
   'phone',
+  'industry_key',
+  'industry_other_text',
   'address_line1',
   'city',
   'state',
@@ -36,6 +42,8 @@ export type BusinessProfileValidationInput = {
   name?: string | null;
   email?: string | null;
   phone?: string | null;
+  industry_key?: string | null;
+  industry_other_text?: string | null;
   address_line1?: string | null;
   city?: string | null;
   state?: string | null;
@@ -55,6 +63,8 @@ const MESSAGES: Record<BusinessProfileFieldKey, string> = {
   name: 'Legal or business name is required.',
   email: 'Business email is required.',
   phone: 'Business phone is required.',
+  industry_key: 'Please select an industry.',
+  industry_other_text: 'Tell us your industry.',
   address_line1: 'Business address is required.',
   city: 'City is required.',
   state: 'Select or enter a state or region for this country.',
@@ -86,6 +96,9 @@ export function validateBusinessProfileInput(
   if (!hasValue(input.name)) fieldErrors.name = MESSAGES.name;
   if (!hasValue(input.email)) fieldErrors.email = MESSAGES.email;
   if (!hasValue(input.phone)) fieldErrors.phone = MESSAGES.phone;
+  if (String(input.industry_key ?? '').trim().toLowerCase() === 'other' && !hasValue(input.industry_other_text)) {
+    fieldErrors.industry_other_text = MESSAGES.industry_other_text;
+  }
 
   const firstInvalidField =
     BUSINESS_PROFILE_FIELD_ORDER.find((k) => fieldErrors[k] != null) ?? null;
@@ -102,6 +115,8 @@ export function businessRowToValidationInput(row: {
   name?: string | null;
   email?: string | null;
   phone?: string | null;
+  industry_key?: string | null;
+  industry_other_text?: string | null;
   address_line1?: string | null;
   city?: string | null;
   state?: string | null;
@@ -112,6 +127,8 @@ export function businessRowToValidationInput(row: {
     name: row.name ?? null,
     email: row.email ?? null,
     phone: row.phone ?? null,
+    industry_key: row.industry_key ?? null,
+    industry_other_text: row.industry_other_text ?? null,
     address_line1: row.address_line1 ?? null,
     city: row.city ?? null,
     state: row.state ?? null,

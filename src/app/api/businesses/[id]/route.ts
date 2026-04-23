@@ -5,6 +5,11 @@ import { getBusinessBaseCurrency } from '@/lib/business/base-currency';
 import { businessHasFinancialRecords } from '@/lib/business/financial-guard';
 import { mergeFinanceSettings, normalizeAllowedCurrencies } from '@/lib/business/finance-settings';
 import { wallTimeToUtcIso } from '@/lib/invoices/scheduled-send-time';
+import {
+  INDUSTRY_OTHER_KEY,
+  getIndustryLabelFromKey,
+  isKnownIndustryKey,
+} from '@/lib/business/industry-options';
 
 function stripDefaultCurrencyFromInvoiceSettings(settings: unknown): unknown {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return settings;
@@ -50,6 +55,9 @@ export async function PATCH(
     'tax_name',
     'email',
     'phone',
+    'industry_key',
+    'industry_label',
+    'industry_other_text',
     'website',
     'registration_number',
     'payment_settings',
@@ -60,6 +68,41 @@ export async function PATCH(
   const updates: Record<string, unknown> = {};
   for (const k of simpleKeys) {
     if (body[k] !== undefined) updates[k] = body[k];
+  }
+
+  if (body.industry_key !== undefined) {
+    const nextIndustryKey = String(body.industry_key ?? '').trim();
+    if (!nextIndustryKey) {
+      updates.industry_key = null;
+      updates.industry_label = null;
+      updates.industry_other_text = null;
+    } else {
+      if (!isKnownIndustryKey(nextIndustryKey)) {
+        return NextResponse.json({ error: 'Invalid industry.' }, { status: 400 });
+      }
+      const canonicalLabel = getIndustryLabelFromKey(nextIndustryKey);
+      if (!canonicalLabel) {
+        return NextResponse.json({ error: 'Invalid industry.' }, { status: 400 });
+      }
+      updates.industry_key = nextIndustryKey;
+      updates.industry_label = canonicalLabel;
+      if (nextIndustryKey !== INDUSTRY_OTHER_KEY) {
+        updates.industry_other_text = null;
+      }
+    }
+  }
+
+  if (body.industry_other_text !== undefined) {
+    const other = String(body.industry_other_text ?? '').trim();
+    const effectiveIndustryKey =
+      updates.industry_key !== undefined
+        ? String(updates.industry_key ?? '').trim()
+        : String(body.industry_key ?? '').trim();
+    if (effectiveIndustryKey === INDUSTRY_OTHER_KEY) {
+      updates.industry_other_text = other || null;
+    } else {
+      updates.industry_other_text = null;
+    }
   }
 
   if (body.timezone !== undefined) {

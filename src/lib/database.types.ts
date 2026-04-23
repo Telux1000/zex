@@ -197,6 +197,12 @@ export interface Business {
   /** Public / customer-facing business email (invoices, Reply-To on outbound mail) */
   email?: string | null;
   phone?: string | null;
+  /** Stable industry taxonomy key for segmentation/personalization. */
+  industry_key?: string | null;
+  /** Human label snapshot for display/analytics compatibility. */
+  industry_label?: string | null;
+  /** Free-text fallback when industry_key is `other`. */
+  industry_other_text?: string | null;
   website?: string | null;
   registration_number?: string | null;
   invoice_settings?: InvoiceSettings | null;
