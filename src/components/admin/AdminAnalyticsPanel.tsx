@@ -13,6 +13,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
+import { GeoConversionInsightsCard } from '@/components/admin/GeoConversionInsightsCard';
 import { ANALYTICS_DRILLDOWN } from '@/lib/admin/analytics-drilldown';
 import { cn } from '@/lib/utils/cn';
 
@@ -713,6 +714,8 @@ export function AdminAnalyticsPanel() {
           </div>
         </AdminContentCard>
       ) : null}
+
+      <GeoConversionInsightsCard />
 
       {/* D. Revenue / subscription */}
       <AdminContentCard>
