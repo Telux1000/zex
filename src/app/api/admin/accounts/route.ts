@@ -287,7 +287,9 @@ export async function GET(req: Request) {
    */
   const businessRes = await admin
     .from('businesses')
-    .select('id, name, owner_id, created_at, admin_suspended_at, admin_deactivated_at')
+    .select(
+      'id, name, owner_id, created_at, admin_suspended_at, admin_deactivated_at, industry_label, industry_other_text'
+    )
     .order('created_at', { ascending: false })
     .limit(ACCOUNTS_LIMIT);
 
@@ -459,6 +461,7 @@ export async function GET(req: Request) {
     return {
       id: business.id,
       name: business.name,
+      industry: business.industry_label?.trim() || business.industry_other_text?.trim() || null,
       owner_name: maskText(owner?.full_name ?? '—'),
       owner_email: maskEmail(owner?.email ?? ''),
       current_plan: plan,
