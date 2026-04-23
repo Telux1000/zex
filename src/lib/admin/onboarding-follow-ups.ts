@@ -232,11 +232,11 @@ export async function reconcileFollowUpsForSnapshot(snapshot: OnboardingUserSnap
   const stage = snapshot.onboarding_stage;
   const isStuck = isStuckOnboardingStage(stage);
   if (!isStuck || stage === 'ONBOARDING_COMPLETED') {
-    void cancelPendingFollowUpsForUser(snapshot.user_id, 'stage_not_stuck');
+    await cancelPendingFollowUpsForUser(snapshot.user_id, 'stage_not_stuck');
     return;
   }
   if (snapshot.follow_ups_paused_at) {
-    void cancelPendingFollowUpsForUser(snapshot.user_id, 'paused_by_admin');
+    await cancelPendingFollowUpsForUser(snapshot.user_id, 'paused_by_admin');
     return;
   }
 
@@ -359,6 +359,10 @@ async function sendFollowUpRow(row: FollowUpRow, snapshot: OnboardingUserSnapsho
     await markFollowUpCanceled(row.id, 'user_not_stuck');
     return;
   }
+  if (snapshot.follow_ups_paused_at) {
+    await markFollowUpCanceled(row.id, 'paused_by_admin');
+    return;
+  }
   if (await templateInCooldown(row.user_id, row.template_id, nowIso)) {
     await markFollowUpCanceled(row.id, 'template_cooldown');
     return;
@@ -429,9 +433,23 @@ export async function runOnboardingFollowUpProcessor() {
     .order('scheduled_for', { ascending: true })
     .limit(200);
 
+  const due = dueRows ?? [];
+  const dueUserIds = [...new Set(due.map((r) => String(r.user_id)))].filter(Boolean);
+  const followUpsPausedByUser = new Map<string, string | null>();
+  if (dueUserIds.length > 0) {
+    const { data: profPause } = await admin
+      .from('profiles')
+      .select('id, onboarding_follow_ups_paused_at')
+      .in('id', dueUserIds);
+    for (const p of profPause ?? []) {
+      const row = p as { id: string; onboarding_follow_ups_paused_at: string | null };
+      followUpsPausedByUser.set(String(row.id), row.onboarding_follow_ups_paused_at ?? null);
+    }
+  }
+
   let sent = 0;
   let canceled = 0;
-  for (const raw of dueRows ?? []) {
+  for (const raw of due) {
     const row: FollowUpRow = {
       id: String(raw.id),
       user_id: String(raw.user_id),
@@ -439,6 +457,12 @@ export async function runOnboardingFollowUpProcessor() {
       template_id: String(raw.template_id),
       step_key: String(raw.step_key),
     };
+    const followsPaused = Boolean(followUpsPausedByUser.get(row.user_id));
+    if (followsPaused) {
+      await markFollowUpCanceled(row.id, 'paused_by_admin');
+      canceled += 1;
+      continue;
+    }
     const snapshot = snapshotByUserId.get(row.user_id);
     if (!snapshot) {
       await markFollowUpCanceled(row.id, 'user_not_found');
