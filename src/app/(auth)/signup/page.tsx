@@ -24,6 +24,7 @@ function SignupPageInner() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signupMode, setSignupMode] = useState<'OPEN' | 'CLOSED' | 'INVITE_ONLY'>('OPEN');
   const [signupMessage, setSignupMessage] = useState<string | null>(null);
+  const [signupContextError, setSignupContextError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState('');
   const [contextLoaded, setContextLoaded] = useState(false);
 
@@ -53,13 +54,39 @@ function SignupPageInner() {
   useEffect(() => {
     let active = true;
     fetch('/api/auth/signup-context', { cache: 'no-store' })
-      .then((r) => r.json())
+      .then(async (r) => {
+        const json = (await r.json().catch(() => ({}))) as {
+          signup_mode?: string;
+          signup_message?: string | null;
+          error?: string;
+        };
+        if (!r.ok) {
+          throw new Error(
+            typeof json.error === 'string' && json.error.trim()
+              ? json.error.trim()
+              : 'Could not verify signup availability.'
+          );
+        }
+        return json;
+      })
       .then((json) => {
         if (!active) return;
+        setSignupContextError(null);
         const mode = String(json?.signup_mode ?? 'OPEN').toUpperCase();
         const normalized = mode === 'CLOSED' || mode === 'INVITE_ONLY' ? mode : 'OPEN';
         setSignupMode(normalized);
         setSignupMessage(json?.signup_message ? String(json.signup_message) : null);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const message =
+          err instanceof Error && err.message.trim()
+            ? err.message.trim()
+            : 'Could not verify signup availability.';
+        // Fail closed when signup policy cannot be loaded.
+        setSignupMode('CLOSED');
+        setSignupMessage(message);
+        setSignupContextError(message);
       })
       .finally(() => {
         if (active) setContextLoaded(true);
@@ -121,6 +148,10 @@ function SignupPageInner() {
 
         {!contextLoaded ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">Checking signup availability…</p>
+        ) : signupContextError ? (
+          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
+            <p className="font-medium">{signupContextError}</p>
+          </div>
         ) : signupMode === 'CLOSED' ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
             <p className="font-medium">{signupMessage ?? CLOSED_SIGNUP_DEFAULT_MESSAGE}</p>

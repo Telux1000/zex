@@ -45,7 +45,10 @@ export function mergeSignupSettingsRow(row: Record<string, unknown> | null): Sig
 }
 
 export async function fetchSignupSettings(admin: SupabaseClient): Promise<SignupSettings> {
-  const { data } = await admin.from('app_settings').select('*').eq('id', 'default').maybeSingle();
+  const { data, error } = await admin.from('app_settings').select('*').eq('id', 'default').maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load signup settings: ${error.message}`);
+  }
   return mergeSignupSettingsRow((data ?? null) as Record<string, unknown> | null);
 }
 

@@ -61,7 +61,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Service temporarily unavailable.' }, { status: 503 });
   }
 
-  const signupSettings = await fetchSignupSettings(admin);
+  let signupSettings;
+  try {
+    signupSettings = await fetchSignupSettings(admin);
+  } catch (e) {
+    console.error('[signup-email] failed to load signup settings', e);
+    return NextResponse.json(
+      { ok: false, error: 'Could not verify signup availability. Please try again shortly.' },
+      { status: 503 }
+    );
+  }
   const access = await validateSignupAccess({
     admin,
     mode: signupSettings.signup_mode,
