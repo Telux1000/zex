@@ -592,6 +592,27 @@ export default function CustomerFormModal({
                 placeholder="Jane Doe"
               />
             </div>
+
+            <div>
+              <label htmlFor="customer-pref-currency" className={labelClass}>
+                Preferred invoice currency
+              </label>
+              <p className={helperClass}>
+                Defaults to company base ({companyBaseCurrency ?? 'USD'}).
+              </p>
+              <CurrencySelect
+                id="customer-pref-currency"
+                allowEmpty
+                emptyLabel={
+                  companyBaseCurrency
+                    ? `Use company base (${companyBaseCurrency})`
+                    : 'Use company base currency'
+                }
+                value={form.preferred_currency}
+                onChange={(code) => update('preferred_currency', code)}
+                className={inputClass}
+              />
+            </div>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/30">
@@ -609,27 +630,6 @@ export default function CustomerFormModal({
             </button>
             {showMoreDetails ? (
               <div id="customer-more-details" className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <div>
-                  <label htmlFor="customer-pref-currency" className={labelClass}>
-                    Preferred invoice currency
-                  </label>
-                  <p className={helperClass}>
-                    Defaults to company base ({companyBaseCurrency ?? '—'}).
-                  </p>
-                  <CurrencySelect
-                    id="customer-pref-currency"
-                    allowEmpty
-                    emptyLabel={
-                      companyBaseCurrency
-                        ? `Use company base (${companyBaseCurrency})`
-                        : 'Use company base currency'
-                    }
-                    value={form.preferred_currency}
-                    onChange={(code) => update('preferred_currency', code)}
-                    className={inputClass}
-                  />
-                </div>
-
                 <div>
                   <label htmlFor="customer-address" className={labelClass}>Billing address</label>
                   <input
