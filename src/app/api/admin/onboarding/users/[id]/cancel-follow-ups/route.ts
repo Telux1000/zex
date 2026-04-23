@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
-import { cancelPendingFollowUpsForUser } from '@/lib/admin/onboarding-follow-ups';
+import { setFollowUpsPaused } from '@/lib/admin/onboarding-follow-ups';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const gate = await requireAdminApiAccess();
@@ -11,7 +11,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const userId = String(params.id ?? '').trim();
   if (!userId) return NextResponse.json({ error: 'Missing user id' }, { status: 400 });
 
-  const cancelResult = await cancelPendingFollowUpsForUser(userId, 'canceled_by_admin');
+  // Also persist automation stop (same as pause). Otherwise the follow-up processor’s
+  // `reconcileFollowUpsForSnapshot` re-queues PENDING rows on the next run.
+  const cancelResult = await setFollowUpsPaused(userId, true, { pendingCancelReason: 'canceled_by_admin' });
   if (!cancelResult.ok) {
     return NextResponse.json({ error: cancelResult.error }, { status: 500 });
   }

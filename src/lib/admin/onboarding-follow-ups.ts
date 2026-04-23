@@ -465,7 +465,11 @@ function fullNameFromAuthUserMetadata(user: { user_metadata?: Record<string, unk
   );
 }
 
-export async function setFollowUpsPaused(userId: string, paused: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function setFollowUpsPaused(
+  userId: string,
+  paused: boolean,
+  opts?: { pendingCancelReason?: string }
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return { ok: false, error: 'Server misconfigured' };
   const pausedAt = paused ? new Date().toISOString() : null;
@@ -507,7 +511,8 @@ export async function setFollowUpsPaused(userId: string, paused: boolean): Promi
   }
 
   if (paused) {
-    const canceled = await cancelPendingFollowUpsForUser(userId, 'paused_by_admin');
+    const reason = (opts?.pendingCancelReason ?? 'paused_by_admin').trim() || 'paused_by_admin';
+    const canceled = await cancelPendingFollowUpsForUser(userId, reason);
     if (!canceled.ok) return { ok: false, error: canceled.error };
   } else {
     const snapshots = await listOnboardingSnapshots();
