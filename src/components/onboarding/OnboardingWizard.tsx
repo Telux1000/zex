@@ -420,10 +420,6 @@ export function OnboardingWizard() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                 Complete your business profile
               </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Legal name, email, and phone to continue. Country and street address are optional — add
-                them before sending invoices if you want them on PDFs.
-              </p>
             </div>
             <BusinessProfileForm
               key={business.id}

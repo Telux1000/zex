@@ -506,19 +506,7 @@ export function BusinessProfileForm({
             personal profile under Profile).
           </p>
         </>
-      ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Enter what appears on your invoices: business name and contact details. Add address, logo,
-          website, and tax IDs later in{' '}
-          <a
-            href="/settings?section=business-profile"
-            className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-          >
-            Settings → Business Profile
-          </a>
-          .
-        </p>
-      )}
+      ) : null}
       {profileSummary ? (
         <div
           className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
