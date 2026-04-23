@@ -742,7 +742,7 @@ export default function CustomerFormModal({
                           type="number"
                           min={0}
                           max={365}
-                          className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          className={inputClass + ' mt-0 w-20 px-2 py-1.5 text-sm'}
                           value={row.days}
                           onChange={(e) => {
                             const v = e.target.value;
@@ -757,7 +757,7 @@ export default function CustomerFormModal({
                         />
                         <span className="text-sm text-slate-600 dark:text-slate-400">days</span>
                         <select
-                          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          className={inputClass + ' mt-0 w-auto px-2 py-1.5 text-sm'}
                           value={row.relativeTo}
                           onChange={(e) => {
                             const rel = e.target.value === 'after_due' ? 'after_due' : 'before_due';
