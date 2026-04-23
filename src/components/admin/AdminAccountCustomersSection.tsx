@@ -26,6 +26,32 @@ type CustomersResponse = {
   error?: string;
 };
 
+type CustomerDetail = {
+  id: string;
+  account_id: string;
+  name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  status: 'active' | 'archived' | 'anonymized';
+  created_at: string;
+  last_activity_at: string | null;
+  account_number: string | null;
+  company: string | null;
+  preferred_currency_code: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  country_code: string | null;
+  notes: string | null;
+  archived_at: string | null;
+  anonymized_at: string | null;
+  error?: string;
+};
+
 function statusTone(status: CustomerRow['status']): 'active' | 'pending' | 'suspended' {
   if (status === 'active') return 'active';
   return 'suspended';
@@ -52,6 +78,10 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -93,6 +123,33 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
   useEffect(() => {
     void loadCustomers();
   }, [loadCustomers]);
+
+  const loadCustomerDetail = useCallback(
+    async (customerId: string) => {
+      setSelectedCustomerId(customerId);
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const res = await fetch(`/api/admin/accounts/${accountId}/customers/${customerId}`);
+        const data = (await res.json()) as CustomerDetail;
+        if (!res.ok) throw new Error(data.error ?? 'Unable to load customer details.');
+        setCustomerDetail(data);
+      } catch (e) {
+        setCustomerDetail(null);
+        setDetailError(e instanceof Error ? e.message : 'Unable to load customer details.');
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [accountId]
+  );
+
+  const closeDetail = useCallback(() => {
+    setSelectedCustomerId(null);
+    setDetailError(null);
+    setCustomerDetail(null);
+    setDetailLoading(false);
+  }, []);
 
   const emptyMessage = useMemo(() => {
     if (search) return 'No matching customers found.';
@@ -150,7 +207,7 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
               <AdminTh>Status</AdminTh>
               <AdminTh>Created At</AdminTh>
               <AdminTh>Last Activity</AdminTh>
-              <AdminTh className="text-right">Open</AdminTh>
+              <AdminTh className="text-right">View</AdminTh>
             </AdminTableHead>
             <tbody>
               {rows.map((row) => (
@@ -165,12 +222,15 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
                     {formatDateTime(row.last_activity_at)}
                   </AdminTd>
                   <AdminTd className="text-right">
-                    <Link
-                      href={`/dashboard/customers/${row.id}`}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void loadCustomerDetail(row.id);
+                      }}
                       className="text-xs font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
                     >
-                      Open
-                    </Link>
+                      View
+                    </button>
                   </AdminTd>
                 </AdminTr>
               ))}
@@ -217,6 +277,197 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
               Next
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {selectedCustomerId ? (
+        <div className="fixed inset-0 z-[90] flex justify-end">
+          <button
+            type="button"
+            onClick={closeDetail}
+            className="h-full flex-1 bg-zinc-950/35"
+            aria-label="Close customer details"
+          />
+          <aside
+            className="h-full w-full max-w-xl overflow-y-auto border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Customer details"
+          >
+            <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white/95 px-5 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Customer details</h4>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Inspect the full customer record without leaving this account.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDetail}
+                  className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-5 px-5 py-4">
+              {detailLoading ? (
+                <div className="space-y-2 py-4">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className="h-10 animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-800" />
+                  ))}
+                  <p className="text-sm text-zinc-500">Loading customer details…</p>
+                </div>
+              ) : detailError ? (
+                <p
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300"
+                  role="alert"
+                >
+                  {detailError || 'Unable to load customer details.'}
+                </p>
+              ) : !customerDetail ? (
+                <p className="text-sm text-zinc-500">No additional customer information available.</p>
+              ) : (
+                <>
+                  <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Profile
+                    </h5>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Display name</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.name}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Full name</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.full_name || '—'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Email</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.email || '—'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Phone</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.phone || '—'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Status</dt>
+                        <dd className="text-right">
+                          <AdminBadge tone={statusTone(customerDetail.status)}>
+                            {statusLabel(customerDetail.status)}
+                          </AdminBadge>
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Account relationship
+                    </h5>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Account ID</dt>
+                        <dd className="break-all text-right text-zinc-900 dark:text-zinc-100">
+                          {customerDetail.account_id}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Customer account #</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                          {customerDetail.account_number || '—'}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Company</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.company || '—'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Preferred currency</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                          {customerDetail.preferred_currency_code || '—'}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Timeline
+                    </h5>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Created At</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                          {formatDateTime(customerDetail.created_at)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-zinc-500">Last Activity</dt>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                          {formatDateTime(customerDetail.last_activity_at)}
+                        </dd>
+                      </div>
+                      {customerDetail.archived_at ? (
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-zinc-500">Archived At</dt>
+                          <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                            {formatDateTime(customerDetail.archived_at)}
+                          </dd>
+                        </div>
+                      ) : null}
+                      {customerDetail.anonymized_at ? (
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-zinc-500">Anonymized At</dt>
+                          <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                            {formatDateTime(customerDetail.anonymized_at)}
+                          </dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </section>
+
+                  <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Contact details
+                    </h5>
+                    <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">
+                      {[
+                        customerDetail.address_line1,
+                        customerDetail.address_line2,
+                        customerDetail.city,
+                        customerDetail.state,
+                        customerDetail.postal_code,
+                        customerDetail.country,
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || '—'}
+                    </p>
+                  </section>
+
+                  <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Notes
+                    </h5>
+                    <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                      {customerDetail.notes || 'No additional customer information available.'}
+                    </p>
+                  </section>
+
+                  <div className="flex justify-end">
+                    <Link
+                      href={`/dashboard/customers/${customerDetail.id}`}
+                      className="text-sm font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+                    >
+                      Open full profile
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
+          </aside>
         </div>
       ) : null}
     </AdminContentCard>

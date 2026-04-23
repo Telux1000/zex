@@ -15,6 +15,32 @@ export type AccountCustomerListItem = {
   last_activity_at: string | null;
 };
 
+export type AccountCustomerDetail = {
+  id: string;
+  account_id: string;
+  name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  status: 'active' | 'archived' | 'anonymized';
+  created_at: string;
+  updated_at: string;
+  last_activity_at: string | null;
+  account_number: string | null;
+  preferred_currency_code: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  country_code: string | null;
+  notes: string | null;
+  archived_at: string | null;
+  anonymized_at: string | null;
+};
+
 export type ListAccountCustomersParams = {
   accountId: string;
   search?: string;
@@ -70,6 +96,33 @@ function latestIso(a: string | null, b: string | null): string | null {
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
+async function loadLastActivityByCustomerId(
+  admin: SupabaseClient,
+  accountId: string,
+  customerIds: string[]
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (customerIds.length === 0) return result;
+
+  const { data: auditRows, error: auditErr } = await admin
+    .from('audit_logs')
+    .select('entity_id, created_at')
+    .eq('business_id', accountId)
+    .eq('entity_type', 'customer')
+    .in('entity_id', customerIds)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(customerIds.length * 5, 50));
+  if (auditErr) throw new Error(auditErr.message);
+
+  for (const row of auditRows ?? []) {
+    const key = String(row.entity_id ?? '');
+    const ts = row.created_at ? String(row.created_at) : '';
+    if (!key || !ts || result.has(key)) continue;
+    result.set(key, ts);
+  }
+  return result;
+}
+
 export async function listAccountCustomers(
   admin: SupabaseClient,
   params: ListAccountCustomersParams
@@ -108,24 +161,7 @@ export async function listAccountCustomers(
   const rows = data ?? [];
   const ids = rows.map((row) => String(row.id));
 
-  let auditLastByCustomer = new Map<string, string>();
-  if (ids.length > 0) {
-    const { data: auditRows, error: auditErr } = await admin
-      .from('audit_logs')
-      .select('entity_id, created_at')
-      .eq('business_id', params.accountId)
-      .eq('entity_type', 'customer')
-      .in('entity_id', ids)
-      .order('created_at', { ascending: false })
-      .limit(Math.max(pageSize * 5, 50));
-    if (auditErr) throw new Error(auditErr.message);
-    for (const row of auditRows ?? []) {
-      const key = String(row.entity_id ?? '');
-      const ts = row.created_at ? String(row.created_at) : '';
-      if (!key || !ts || auditLastByCustomer.has(key)) continue;
-      auditLastByCustomer.set(key, ts);
-    }
-  }
+  const auditLastByCustomer = await loadLastActivityByCustomerId(admin, params.accountId, ids);
 
   const customers: AccountCustomerListItem[] = rows.map((row) => {
     const id = String(row.id);
@@ -150,5 +186,74 @@ export async function listAccountCustomers(
     page_size: pageSize,
     total_pages: Math.max(1, Math.ceil(totalCount / pageSize)),
     customers,
+  };
+}
+
+export async function getAccountCustomerDetail(
+  admin: SupabaseClient,
+  params: { accountId: string; customerId: string }
+): Promise<AccountCustomerDetail | null> {
+  const { data: row, error } = await admin
+    .from('customers')
+    .select(
+      [
+        'id',
+        'business_id',
+        'account_number',
+        'name',
+        'email',
+        'company',
+        'preferred_currency_code',
+        'address_line1',
+        'address_line2',
+        'city',
+        'state',
+        'postal_code',
+        'country',
+        'country_code',
+        'phone',
+        'notes',
+        'archived_at',
+        'anonymized_at',
+        'created_at',
+        'updated_at',
+      ].join(', ')
+    )
+    .eq('id', params.customerId)
+    .eq('business_id', params.accountId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return null;
+
+  const auditLastByCustomer = await loadLastActivityByCustomerId(admin, params.accountId, [params.customerId]);
+  const updatedAt = row.updated_at ? String(row.updated_at) : null;
+  const lastAuditAt = auditLastByCustomer.get(params.customerId) ?? null;
+  const fullName = String(row.name ?? '').trim();
+  const company = row.company ? String(row.company) : null;
+
+  return {
+    id: String(row.id),
+    account_id: String(row.business_id),
+    name: company || fullName || 'Unnamed customer',
+    full_name: fullName || '—',
+    email: row.email ? String(row.email) : null,
+    phone: row.phone ? String(row.phone) : null,
+    company,
+    status: deriveCustomerStatus(row),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    last_activity_at: latestIso(updatedAt, lastAuditAt),
+    account_number: row.account_number ? String(row.account_number) : null,
+    preferred_currency_code: row.preferred_currency_code ? String(row.preferred_currency_code) : null,
+    address_line1: row.address_line1 ? String(row.address_line1) : null,
+    address_line2: row.address_line2 ? String(row.address_line2) : null,
+    city: row.city ? String(row.city) : null,
+    state: row.state ? String(row.state) : null,
+    postal_code: row.postal_code ? String(row.postal_code) : null,
+    country: row.country ? String(row.country) : null,
+    country_code: row.country_code ? String(row.country_code) : null,
+    notes: row.notes ? String(row.notes) : null,
+    archived_at: row.archived_at ? String(row.archived_at) : null,
+    anonymized_at: row.anonymized_at ? String(row.anonymized_at) : null,
   };
 }
