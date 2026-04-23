@@ -9,9 +9,9 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-geist-sans' });
 
 export const metadata: Metadata = {
-  title: 'Zenzex – AI-Powered Invoicing & Business Intelligence',
+  title: 'Zenzex – Invoicing, payments, and cash flow visibility',
   description:
-    'Run your business conversationally. Create invoices via chat, voice, or screenshots. Your personal AI CFO.',
+    'Create invoices in seconds from text, voice, or uploads. Track payments in real time, automate reminders, and stay on top of revenue—without spreadsheets.',
   icons: {
     icon: [{ url: '/zenzex-mark.png', type: 'image/png' }],
     shortcut: '/zenzex-mark.png',

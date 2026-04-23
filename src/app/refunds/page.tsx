@@ -4,11 +4,8 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Refund Policy | Zenzex',
   description:
-    'Refund Policy for Zenzex. Payments and refunds are processed by Paddle, the merchant of record.',
+    'How refunds and subscription cancellations work for Zenzex—clear, simple, and fair.',
 };
-
-const PADDLE_BUYER_TERMS = 'https://www.paddle.com/legal/buyer-terms';
-const PADDLE_REFUND_POLICY = 'https://www.paddle.com/legal/refund-policy';
 
 export default function RefundPolicyPage() {
   return (
@@ -19,111 +16,93 @@ export default function RefundPolicyPage() {
             Refund Policy
           </h1>
           <p className="mt-4 text-slate-600 dark:text-slate-400">
-            How refunds work for Zenzex purchases billed through Paddle.
+            Billing should be easy to understand. Here is how refunds and cancellations work if you need
+            them.
           </p>
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-500">Last updated: April 20, 2026</p>
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-500">Last updated: April 23, 2026</p>
         </header>
 
-        <div className="space-y-8 text-slate-700 dark:text-slate-300">
+        <div className="space-y-10 text-slate-700 dark:text-slate-300">
           <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">1. Merchant of record</h2>
-            <p className="mt-2">
-              Zenzex uses Paddle as its merchant of record. All payments, refunds, and transactions are
-              processed and managed by Paddle.
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">14-day refund window</h2>
+            <p className="mt-2 leading-relaxed">
+              For paid subscriptions, you may request a <strong className="font-semibold text-slate-900 dark:text-white">full refund</strong> within{' '}
+              <strong className="font-semibold text-slate-900 dark:text-white">14 days</strong> of your initial
+              charge (or the first charge after you upgrade to a new paid plan). The refund applies to that
+              charge only—not to earlier or later billing periods.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              2. Paddle policy and consumer protection
-            </h2>
-            <p className="mt-2">
-              All purchases are subject to Paddle&apos;s refund policy and applicable consumer protection
-              laws.
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Subscriptions</h2>
+            <p className="mt-2 leading-relaxed">
+              Cancel anytime from your account. You keep full access until the{' '}
+              <strong className="font-semibold text-slate-900 dark:text-white">end of your current billing period</strong>, and you are not charged again after
+              that.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">3. Refund eligibility</h2>
-            <p className="mt-2">
-              All purchases are eligible for a full refund if requested within 14 days of the transaction
-              date.
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">After a refund</h2>
+            <p className="mt-2 leading-relaxed">
+              Once we process your refund, the subscription linked to that payment ends and paid features
+              are turned off. You may not be able to use or export some data that was only available while
+              that subscription was active.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">4. Access after a refund</h2>
-            <p className="mt-2">
-              Upon processing a refund, access to the product or service will be terminated.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">5. How to request a refund</h2>
-            <p className="mt-2">
-              To request a refund, customers must use the Paddle receipt, billing, or support links
-              provided with their purchase, or email{' '}
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">How to request a refund</h2>
+            <p className="mt-2 leading-relaxed">
+              Email{' '}
               <a
                 href="mailto:refunds@zenzex.com"
                 className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
               >
                 refunds@zenzex.com
-              </a>
-              .
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">6. Subscription cancellation</h2>
-            <p className="mt-2">
-              Subscriptions can be cancelled at any time to prevent future billing. Cancellation takes
-              effect at the end of the current billing period.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">7. Governing terms</h2>
-            <p className="mt-2">
-              This refund policy is governed by{' '}
-              <a
-                href={PADDLE_BUYER_TERMS}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-              >
-                Paddle&apos;s Buyer Terms
               </a>{' '}
-              and{' '}
-              <a
-                href={PADDLE_REFUND_POLICY}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-              >
-                Refund Policy
-              </a>
-              . In case of conflict, Paddle&apos;s terms prevail.
+              from the address on your Zenzex account. Include your workspace or account name and the date
+              of the charge. We typically confirm within <strong className="font-semibold text-slate-900 dark:text-white">1–2 business days</strong>; refunds are
+              issued to your original payment method once approved.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">8. Terms and privacy</h2>
-            <p className="mt-2">
-              See also our{' '}
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Fair use</h2>
+            <p className="mt-2 leading-relaxed">
+              We treat refund requests in good faith. We may decline a refund if we see clear signs of
+              abuse—for example, repeated subscribe-and-refund cycles or use that conflicts with normal
+              product use. If something is unclear, we will reach out before making a final decision.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Changes to this policy</h2>
+            <p className="mt-2 leading-relaxed">
+              We may update this page occasionally and will change the &quot;Last updated&quot; date when we do. New
+              charges follow the version you see here at the time you pay. For past charges, the version that
+              applied when you were billed still describes your refund options.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Terms and privacy</h2>
+            <p className="mt-2 leading-relaxed">
+              Our{' '}
               <Link
                 href="/terms"
                 className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
               >
                 Terms of Service
               </Link>{' '}
-              and{' '}
+              describe how you use Zenzex overall. Our{' '}
               <Link
                 href="/privacy"
                 className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
               >
                 Privacy Policy
-              </Link>
-              .
+              </Link>{' '}
+              explains how we handle personal information.
             </p>
           </section>
         </div>

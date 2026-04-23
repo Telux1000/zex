@@ -71,10 +71,10 @@ export function LandingPricingSection() {
       <div className="mx-auto max-w-6xl px-4">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-            Simple, transparent pricing
+            Predictable pricing
           </h2>
           <p className="mt-3 text-slate-600 dark:text-slate-400">
-            Fixed prices, no surprises. Choose a plan and get started in minutes.
+            Straightforward plans with clear limits. Upgrade when you need more automation and scale.
           </p>
           <div className="mx-auto mt-5 max-w-lg rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-4 py-3 dark:border-indigo-500/30 dark:bg-indigo-950/40">
             <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
@@ -118,7 +118,7 @@ export function LandingPricingSection() {
         </div>
 
         <p className="mt-10 text-center text-xs text-slate-500 dark:text-slate-500">
-          All plans are self-serve. Taxes may apply by region.
+          Self-serve checkout. Taxes may apply by region. Cancel or change plans before your trial ends.
         </p>
       </div>
     </section>

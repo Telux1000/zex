@@ -65,7 +65,7 @@ export function pricingPromoBannerHeadline(trialDays: number = PRICING_TRIAL_DAY
 export function pricingCardPrimaryCtaLabel(planId: BillingPlan): string {
   switch (planId) {
     case 'starter':
-      return 'Start Free';
+      return 'Start free';
     case 'growth':
       return 'Start Growth';
     case 'professional':
@@ -77,9 +77,9 @@ export function pricingCardPrimaryCtaLabel(planId: BillingPlan): string {
   }
 }
 
-/** Secondary trial CTA under the primary button (e.g. “Start 14-day trial” when trial is 14 days). */
+/** Secondary trial CTA under the primary button (e.g. “14-day free trial”). */
 export function pricingCardSecondaryTrialCtaLabel(trialDays: number = PRICING_TRIAL_DAYS): string {
-  return `Start ${trialDays}-day trial`;
+  return `${trialDays}-day free trial`;
 }
 
 export const pricingPlans: PricingPlan[] = [
@@ -93,9 +93,9 @@ export const pricingPlans: PricingPlan[] = [
     isFree: true,
     showTrialCTA: false,
     priceDisplay: '$0',
-    features: ['Free forever', 'Basic invoicing', 'Limited usage each month'],
+    features: ['Free forever', 'Core invoicing', 'Monthly usage limits'],
     popular: false,
-    marketingDescription: 'Learn the basics at no cost.',
+    marketingDescription: 'Solid foundation for occasional billing.',
   },
   {
     id: 'growth',
@@ -109,12 +109,12 @@ export const pricingPlans: PricingPlan[] = [
     isFree: false,
     showTrialCTA: true,
     features: [
-      'Everything in Starter, more room to grow',
-      'Reminders on autopilot',
-      'Schedule when invoices send',
+      'Everything in Starter with higher limits',
+      'Automated payment reminders',
+      'Scheduled invoice delivery',
     ],
     popular: false,
-    marketingDescription: 'Automation for regular billing.',
+    marketingDescription: 'For teams that invoice on a steady cadence.',
   },
   {
     id: 'professional',
@@ -132,15 +132,13 @@ export const pricingPlans: PricingPlan[] = [
     isFree: false,
     showTrialCTA: true,
     features: [
-      'AI assistant',
-      'Chat to invoice',
-      'Voice and screenshot to invoice',
-      'Advanced reporting',
-      'Full automation',
+      'Intelligent invoice creation (text, voice, uploads)',
+      'Advanced reporting and built-in insights',
+      'Full automation across reminders and delivery',
       'Priority support',
     ],
     popular: true,
-    marketingDescription: 'AI and depth for serious operators.',
+    marketingDescription: 'Complete visibility and automation for growing revenue.',
   },
   {
     id: 'enterprise',
@@ -155,13 +153,13 @@ export const pricingPlans: PricingPlan[] = [
     showTrialCTA: true,
     features: [
       'Everything in Professional',
-      'Higher limits',
-      'Deeper reporting',
+      'Higher usage limits',
+      'Expanded reporting',
       'Priority support',
-      'Team features as they ship',
+      'Team capabilities as they ship',
     ],
     popular: false,
-    marketingDescription: 'Maximum headroom on one bill.',
+    marketingDescription: 'Extra capacity and support for larger volumes.',
   },
 ];
 

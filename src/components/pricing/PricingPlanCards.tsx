@@ -45,7 +45,7 @@ export function PricingPlanCards({
               <div className="absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2">
                 {plan.popular ? (
                   <span className="whitespace-nowrap rounded-full bg-indigo-600 px-3.5 py-1 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-indigo-500">
-                    ⭐ Most popular
+                    Recommended
                   </span>
                 ) : null}
                 {current ? (
@@ -97,7 +97,7 @@ export function PricingPlanCards({
                 <div
                   className={cn(
                     'mt-8 flex w-full flex-col gap-2.5',
-                    // Keep CTA labels (e.g. “Start Free”) on one line in narrow desktop columns
+                    // Keep CTA labels (e.g. “Start free”) on one line in narrow desktop columns
                     '[&_button]:inline-flex [&_button]:whitespace-nowrap [&_a]:inline-flex [&_a]:whitespace-nowrap'
                   )}
                 >

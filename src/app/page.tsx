@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Bell, Bot, CreditCard, FileText } from 'lucide-react';
+import { BarChart3, Bell, CreditCard, FileText } from 'lucide-react';
 import { LandingPricingSection } from '@/components/pricing/LandingPricingSection';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
 
@@ -37,7 +37,7 @@ export default function LandingPage() {
               Log in
             </Link>
             <Link href="/signup" className="app-btn-primary">
-              Get started
+              Start free
             </Link>
           </div>
         </div>
@@ -47,24 +47,18 @@ export default function LandingPage() {
         {/* Hero */}
         <section className="mx-auto max-w-6xl px-4 pb-16 pt-16 text-center sm:pb-20 sm:pt-20 md:pt-24">
           <p className="text-sm font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
-            AI-powered invoicing
+            Smart invoicing
           </p>
           <h1 className="mt-4 text-balance text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-5xl md:text-6xl">
-            Get paid faster. Run your business smarter.
+            Get paid faster with simple, automated invoicing
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-slate-600 dark:text-slate-400">
-            Create invoices by chat, voice, or screenshot. Track payments, automate reminders, and ask
-            your AI assistant what matters—cash flow, overdue balances, and what to do next.
+            Create invoices in seconds from text, voice, or uploads. Track payments in real time, automate
+            follow-ups, and see clear summaries of revenue and outstanding balances without spreadsheets.
           </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+          <div className="mt-10 flex justify-center">
             <Link href="/signup" className="app-btn-primary-lg inline-flex items-center justify-center">
               Start free
-            </Link>
-            <Link
-              href="/dashboard-mockup"
-              className="app-btn-secondary-lg inline-flex items-center justify-center"
-            >
-              Try demo
             </Link>
           </div>
         </section>
@@ -74,10 +68,11 @@ export default function LandingPage() {
           <div className="mx-auto max-w-6xl px-4">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                Everything you need to stay on top of revenue
+                Invoicing, payments, and visibility in one place
               </h2>
               <p className="mt-3 text-slate-600 dark:text-slate-400">
-                Focused tools that work together—no clutter, no steep learning curve.
+                Structured workflows and automation so you spend less time on admin and more time on work
+                that pays.
               </p>
             </div>
             <ul className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -85,18 +80,19 @@ export default function LandingPage() {
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
                   <FileText className="h-5 w-5" aria-hidden />
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Smart invoicing</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Smart invoice creation</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Draft invoices from natural language, voice, or uploads—formatted and ready to send.
+                  Turn text, voice, or uploaded screenshots into professional invoices, ready to send in
+                  seconds.
                 </p>
               </li>
               <li className="app-card-surface app-card-surface-hover flex flex-col p-6">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
                   <CreditCard className="h-5 w-5" aria-hidden />
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Payment tracking</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Real-time payment tracking</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  See what&apos;s paid, partial, or overdue at a glance—no spreadsheet gymnastics.
+                  See what&apos;s paid, partial, or overdue at a glance. One clear view of your receivables.
                 </p>
               </li>
               <li className="app-card-surface app-card-surface-hover flex flex-col p-6">
@@ -105,16 +101,18 @@ export default function LandingPage() {
                 </span>
                 <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Automated reminders</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Nudge customers before and after due dates so nothing slips through the cracks.
+                  Send polite, timely follow-ups before and after due dates, with less manual chasing and
+                  steadier cash flow.
                 </p>
               </li>
               <li className="app-card-surface app-card-surface-hover flex flex-col p-6">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
-                  <Bot className="h-5 w-5" aria-hidden />
+                  <BarChart3 className="h-5 w-5" aria-hidden />
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">AI assistant</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Built-in insights</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Ask questions, get summaries, and surface insights like a CFO in your pocket.
+                  Clear summaries and reporting so you can see revenue trends and outstanding balances at a
+                  glance.
                 </p>
               </li>
             </ul>
@@ -129,7 +127,7 @@ export default function LandingPage() {
                 How it works
               </h2>
               <p className="mt-3 text-slate-600 dark:text-slate-400">
-                From first login to first payment in three steps.
+                Set up in minutes, send your first invoice, then let automation handle the rest.
               </p>
             </div>
             <ol className="mx-auto mt-12 grid max-w-4xl gap-8 md:grid-cols-3 md:gap-10">
@@ -142,7 +140,8 @@ export default function LandingPage() {
                 </span>
                 <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Create your workspace</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Sign up and add your business details—takes minutes, not days.
+                  Sign up, add your business profile, and connect how you bill, without an implementation
+                  project.
                 </p>
               </li>
               <li className="relative text-center md:text-left">
@@ -152,9 +151,10 @@ export default function LandingPage() {
                 >
                   2
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Invoice your way</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Issue invoices quickly</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Use chat, voice, or uploads to generate polished invoices instantly.
+                  Build line items from text, voice, or uploads, and intelligent formatting keeps every
+                  invoice consistent.
                 </p>
               </li>
               <li className="relative text-center md:text-left">
@@ -163,9 +163,10 @@ export default function LandingPage() {
                 >
                   3
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Collect &amp; stay ahead</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Collect and stay current</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Track payments, send reminders, and ask the assistant what to prioritize next.
+                  Monitor status in real time, run automated reminder workflows, and review summaries when
+                  you reconcile.
                 </p>
               </li>
             </ol>
@@ -178,21 +179,24 @@ export default function LandingPage() {
         <section className="border-t border-[var(--sidebar-border)] py-16 sm:py-24">
           <div className="mx-auto max-w-3xl px-4 text-center">
             <h2 className="text-balance text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Ready to simplify invoicing?
+              Start invoicing with confidence
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-pretty text-slate-600 dark:text-slate-400">
-              Join teams using Zenzex to invoice faster, get paid on time, and understand their numbers
-              without another complicated tool.
+              Zenzex helps you issue invoices faster, track payments clearly, and reduce manual follow-up, so
+              you always know where revenue stands.
+            </p>
+            <p className="mx-auto mt-3 max-w-xl text-sm text-slate-500 dark:text-slate-500">
+              No credit card required to get started.
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               <Link href="/signup" className="app-btn-primary-lg inline-flex items-center justify-center">
-                Create your free account
+                Create free account
               </Link>
               <Link
                 href="/login"
                 className="text-sm font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
               >
-                Already have an account? Sign in
+                Sign in
               </Link>
             </div>
           </div>
