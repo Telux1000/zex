@@ -164,13 +164,13 @@ export async function listOnboardingSnapshots() {
     const ids = authUserIds.slice(i, i + chunk);
     const fullSelect =
       'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at';
-    let profileRes = await admin.from('profiles').select(fullSelect).in('id', ids);
+    const profileRes = await admin.from('profiles').select(fullSelect).in('id', ids);
     if (profileRes.error) {
       const baseSelect =
         'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at';
-      profileRes = await admin.from('profiles').select(baseSelect).in('id', ids);
-      if (profileRes.error) continue;
-      for (const row of profileRes.data ?? []) {
+      const fallbackRes = await admin.from('profiles').select(baseSelect).in('id', ids);
+      if (fallbackRes.error) continue;
+      for (const row of fallbackRes.data ?? []) {
         profileRows.push({
           ...row,
           onboarding_follow_ups_canceled_at: null,
@@ -455,23 +455,38 @@ export async function runOnboardingFollowUpProcessor() {
   const dueUserIds = [...new Set(due.map((r) => String(r.user_id)))].filter(Boolean);
   const followUpAutomationOffUserIds = new Set<string>();
   if (dueUserIds.length > 0) {
-    let { data: profRows, error: profErr } = await admin
+    type ProfPauseRow = {
+      id: string;
+      onboarding_follow_ups_paused_at: string | null;
+      onboarding_follow_ups_canceled_at: string | null;
+    };
+    const profRes = await admin
       .from('profiles')
       .select('id, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at')
       .in('id', dueUserIds);
-    if (profErr) {
+    let profRows: ProfPauseRow[];
+    if (profRes.error) {
       const fallback = await admin
         .from('profiles')
         .select('id, onboarding_follow_ups_paused_at')
         .in('id', dueUserIds);
-      profRows = fallback.data ?? [];
+      if (fallback.error) {
+        profRows = [];
+      } else {
+        profRows = (fallback.data ?? []).map((r) => ({
+          id: String((r as { id: string }).id),
+          onboarding_follow_ups_paused_at: (r as { onboarding_follow_ups_paused_at: string | null })
+            .onboarding_follow_ups_paused_at,
+          onboarding_follow_ups_canceled_at: null,
+        }));
+      }
+    } else {
+      profRows = ((profRes.data ?? []) as ProfPauseRow[]).map((r) => ({
+        ...r,
+        onboarding_follow_ups_canceled_at: r.onboarding_follow_ups_canceled_at ?? null,
+      }));
     }
-    for (const p of profRows ?? []) {
-      const row = p as {
-        id: string;
-        onboarding_follow_ups_paused_at: string | null;
-        onboarding_follow_ups_canceled_at?: string | null;
-      };
+    for (const row of profRows) {
       if (row.onboarding_follow_ups_paused_at || row.onboarding_follow_ups_canceled_at) {
         followUpAutomationOffUserIds.add(String(row.id));
       }
