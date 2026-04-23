@@ -456,12 +456,56 @@ export async function runOnboardingFollowUpProcessor() {
   return { reconciled: snapshots.length, sent, canceled };
 }
 
+function fullNameFromAuthUserMetadata(user: { user_metadata?: Record<string, unknown> }): string | null {
+  const m = user.user_metadata ?? {};
+  return (
+    (typeof m.full_name === 'string' ? m.full_name : null) ??
+    (typeof m.name === 'string' ? m.name : null) ??
+    null
+  );
+}
+
 export async function setFollowUpsPaused(userId: string, paused: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return { ok: false, error: 'Server misconfigured' };
   const pausedAt = paused ? new Date().toISOString() : null;
-  const res = await admin.from('profiles').update({ onboarding_follow_ups_paused_at: pausedAt }).eq('id', userId);
-  if (res.error) return { ok: false, error: res.error.message };
+
+  const { data: updatedRow, error: updateErr } = await admin
+    .from('profiles')
+    .update({ onboarding_follow_ups_paused_at: pausedAt })
+    .eq('id', userId)
+    .select('id')
+    .maybeSingle();
+
+  if (updateErr) return { ok: false, error: updateErr.message };
+
+  if (!updatedRow && paused) {
+    const { data: authData, error: authErr } = await admin.auth.admin.getUserById(userId);
+    if (authErr) return { ok: false, error: authErr.message };
+    if (!authData.user) return { ok: false, error: 'User not found' };
+
+    const u = authData.user;
+    const { error: insertErr } = await admin.from('profiles').insert({
+      id: userId,
+      email: u.email ?? null,
+      full_name: fullNameFromAuthUserMetadata(u),
+      onboarding_follow_ups_paused_at: pausedAt,
+    });
+    if (insertErr) {
+      if (insertErr.code === '23505') {
+        const { error: againErr } = await admin
+          .from('profiles')
+          .update({ onboarding_follow_ups_paused_at: pausedAt })
+          .eq('id', userId)
+          .select('id')
+          .maybeSingle();
+        if (againErr) return { ok: false, error: againErr.message };
+      } else {
+        return { ok: false, error: insertErr.message };
+      }
+    }
+  }
+
   if (paused) {
     const canceled = await cancelPendingFollowUpsForUser(userId, 'paused_by_admin');
     if (!canceled.ok) return { ok: false, error: canceled.error };
