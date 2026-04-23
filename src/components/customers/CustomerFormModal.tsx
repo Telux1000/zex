@@ -6,7 +6,6 @@ import { format } from 'date-fns';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   countries as locationCountries,
-  detectLikelyCountryCode,
   getStates,
   normalizeCountryCode,
 } from '@/lib/location';
@@ -134,8 +133,7 @@ export default function CustomerFormModal({
       });
     } else {
       const base = String(companyBaseCurrency ?? '').trim().toUpperCase();
-      const guessed = detectLikelyCountryCode();
-      setForm({ ...emptyForm, preferred_currency: base, country: guessed });
+      setForm({ ...emptyForm, preferred_currency: base });
     }
   }, [open, customer, companyBaseCurrency]);
 
