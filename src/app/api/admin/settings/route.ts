@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
-import { fetchSignupSettings, normalizeSignupMode } from '@/lib/auth/signup-control';
+import { fetchSignupSettings, mergeSignupSettingsRow, normalizeSignupMode } from '@/lib/auth/signup-control';
 import {
   fetchAppSystemSettings,
   normalizeSystemMode,
@@ -101,6 +101,16 @@ const patchSchema = z.discriminatedUnion('section', [
   systemAccessSectionSchema,
 ]);
 
+function parseSupabaseHost(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim() || '';
+  if (!raw) return null;
+  try {
+    return new URL(raw).host;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const gate = await requireAdminApiAccess();
   if (!gate.ok) return gate.response;
@@ -117,6 +127,7 @@ export async function GET() {
 
   const environment = {
     node_env: process.env.NODE_ENV ?? 'development',
+    supabase_host: parseSupabaseHost(),
     postmark_configured: Boolean(process.env.POSTMARK_SERVER_TOKEN?.trim()),
     paddle_billing_api_configured: Boolean(process.env.PADDLE_BILLING_API_KEY?.trim()),
     paddle_billing_webhook_configured: Boolean(process.env.PADDLE_BILLING_WEBHOOK_SECRET?.trim()),
@@ -181,18 +192,23 @@ export async function PATCH(req: Request) {
           ? null
           : String(parsed.data.signup_message).trim().slice(0, 2000);
 
-    const { error: upErr } = await admin
+    const { data: persistedSignupRow, error: upErr } = await admin
       .from('app_settings')
-      .update({
+      .upsert({
+        id: 'default',
         signup_mode: nextMode,
         signup_message: nextMessage,
         updated_at: new Date().toISOString(),
         updated_by: gate.user.id,
-      })
-      .eq('id', 'default');
+      }, { onConflict: 'id' })
+      .select('*')
+      .single();
     if (upErr) {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
+    const persistedSignup = mergeSignupSettingsRow(
+      (persistedSignupRow ?? null) as Record<string, unknown> | null
+    );
 
     await logAdminAuditEvent({
       supabase: gate.supabase,
@@ -203,15 +219,15 @@ export async function PATCH(req: Request) {
       targetId: 'default',
       metadata: {
         previous: { signup_mode: current.signup_mode, signup_message: current.signup_message },
-        next: { signup_mode: nextMode, signup_message: nextMessage },
+        next: {
+          signup_mode: persistedSignup.signup_mode,
+          signup_message: persistedSignup.signup_message,
+        },
       },
     });
 
     return NextResponse.json({
-      signup: {
-        signup_mode: nextMode,
-        signup_message: nextMessage,
-      },
+      signup: persistedSignup,
     });
   }
   if (parsed.data.section === 'system_access') {

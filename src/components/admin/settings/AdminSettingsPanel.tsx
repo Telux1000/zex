@@ -28,6 +28,7 @@ type SettingsPayload = {
   security: InternalSecuritySettingsDTO;
   environment: {
     node_env: string;
+    supabase_host?: string | null;
     postmark_configured: boolean;
     paddle_billing_api_configured: boolean;
     paddle_billing_webhook_configured: boolean;
@@ -211,6 +212,7 @@ export function AdminSettingsPanel() {
         {tab === 'signup' && (
           <SignupTab
             signup={signup}
+            environment={environment}
             disabled={!canEditSignup || saving}
             onSave={(patch) => void saveSection('signup', patch)}
           />
@@ -348,10 +350,12 @@ function SystemAccessTab({
 
 function SignupTab({
   signup,
+  environment,
   disabled,
   onSave,
 }: {
   signup: SignupSettings;
+  environment: SettingsPayload['environment'];
   disabled: boolean;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
@@ -398,6 +402,15 @@ function SignupTab({
 
   return (
     <div className="mt-2">
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+        <p>
+          Runtime mode: <span className="font-semibold text-zinc-900 dark:text-zinc-100">{signup.signup_mode}</span>
+          {' · '}Supabase:{' '}
+          <span className="font-mono">{environment.supabase_host?.trim() || 'unknown'}</span>
+          {' · '}Updated:{' '}
+          {signup.updated_at ? new Date(signup.updated_at).toLocaleString() : 'unknown'}
+        </p>
+      </div>
       <Field
         label="Signup mode"
         description="OPEN allows anyone, CLOSED blocks public registration, INVITE_ONLY requires a valid invite token."
