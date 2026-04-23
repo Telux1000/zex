@@ -129,18 +129,7 @@ export function FinanceCurrencySettingsForm({
             allowed list prepares for multi-currency invoicing.
           </p>
         </>
-      ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          We pre-selected a currency from your region when possible. Same as{' '}
-          <a
-            href="/settings?section=finance-currency"
-            className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-          >
-            Settings → Finance → Currency
-          </a>
-          . Skip if the default is fine.
-        </p>
-      )}
+      ) : null}
 
       {error && (
         <p className="mt-4 text-sm text-red-600 dark:text-red-400" role="alert">
