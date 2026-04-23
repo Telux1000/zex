@@ -15,6 +15,7 @@ import { AdminContentCard } from '@/components/admin/AdminContentCard';
 import { AdminRowActions, type AdminRowActionItem } from '@/components/admin/AdminRowActions';
 import { AdminTable, AdminTableHead, AdminTd, AdminTh, AdminTr } from '@/components/admin/AdminTable';
 import { AdminMemberRolePicker } from '@/components/admin/AdminMemberRolePicker';
+import { AdminAccountCustomersSection } from '@/components/admin/AdminAccountCustomersSection';
 import {
   buildInviteRolePickerOptions,
   buildMemberRolePickerOptions,
@@ -42,6 +43,7 @@ type DetailPayload = {
     status_days_left?: number | null;
     created_at: string;
     users_count: number;
+    customers_count: number;
   };
   users: Array<{
     id: string;
@@ -125,7 +127,7 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
   } | null>(null);
   const [passwordResetBusy, setPasswordResetBusy] = useState(false);
   const [userActionMsg, setUserActionMsg] = useState<string | null>(null);
-  const [accountSection, setAccountSection] = useState<'users' | 'activity'>('users');
+  const [accountSection, setAccountSection] = useState<'users' | 'activity' | 'customers'>('users');
 
   const router = useRouter();
 
@@ -467,12 +469,26 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
             >
               Activity
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={accountSection === 'customers'}
+              onClick={() => setAccountSection('customers')}
+              className={cn(
+                'rounded px-2 py-1 transition-colors',
+                accountSection === 'customers'
+                  ? 'bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+                  : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+              )}
+            >
+              Customers ({data.account.customers_count.toLocaleString()})
+            </button>
           </div>
         </div>
       </AdminContentCard>
 
       {accountSection === 'users' ? (
-      <AdminContentCard>
+        <AdminContentCard>
         <div className="flex flex-col gap-3 border-b border-zinc-200/80 pb-4 dark:border-zinc-800 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="flex min-w-0 flex-1 flex-col gap-1 sm:mr-4">
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Users</h3>
@@ -602,7 +618,9 @@ export function AdminAccountDetailPanel({ accountId }: { accountId: string }) {
             </tbody>
           </AdminTable>
         </div>
-      </AdminContentCard>
+        </AdminContentCard>
+      ) : accountSection === 'customers' ? (
+        <AdminAccountCustomersSection accountId={accountId} />
       ) : (
         <AdminAccountAuditSection
           accountId={accountId}

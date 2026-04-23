@@ -51,6 +51,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ account
   if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
   if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 });
 
+  const { count: customersCount, error: customersErr } = await admin
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', accountId);
+  if (customersErr) return NextResponse.json({ error: customersErr.message }, { status: 500 });
+
   const subscriptionsProbe = await admin.from('subscriptions').select('*').eq('business_id', accountId).limit(500);
   const subscriptionRows =
     subscriptionsProbe.error && subscriptionsProbe.error.code === '42P01'
@@ -181,6 +187,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ account
       status_days_left: statusDaysLeft,
       created_at: business.created_at,
       users_count: users.length,
+      customers_count: Number(customersCount ?? 0),
     },
     users,
     pending_invites: pendingInvites,
