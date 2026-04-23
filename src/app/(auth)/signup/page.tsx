@@ -52,7 +52,7 @@ function SignupPageInner() {
 
   useEffect(() => {
     let active = true;
-    fetch('/api/auth/signup-context')
+    fetch('/api/auth/signup-context', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json) => {
         if (!active) return;
