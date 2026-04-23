@@ -84,16 +84,19 @@ export default function CustomerFormModal({
   const [form, setForm] = useState<FormData>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
   const { showSuccessToast, showErrorToast } = useToasts();
 
   const isEdit = !!customer?.id && !readOnly;
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
     setFieldErrors({});
+    setShowMoreDetails(!!customer);
     if (customer) {
       const initialName = String(customer.name ?? '').trim();
       const initialCompanyRaw = String(customer.company ?? '').trim();
@@ -136,6 +139,14 @@ export default function CustomerFormModal({
     }
   }, [open, customer, companyBaseCurrency]);
 
+  useEffect(() => {
+    if (!open || readOnly) return;
+    const id = window.requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, readOnly]);
+
   const update = useCallback((key: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setFieldErrors((prev) => {
@@ -150,25 +161,47 @@ export default function CustomerFormModal({
     setError(null);
   }, []);
 
+  const validateField = useCallback(
+    (key: keyof FormData, value: string) => {
+      const next = value.trim();
+      let message: string | undefined;
+
+      if (key === 'name' && !next) {
+        message = 'Full name is required.';
+      }
+      if (key === 'email') {
+        if (!next) {
+          message = 'Email address is required.';
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) {
+          message = 'Enter a valid email address.';
+        }
+      }
+
+      setFieldErrors((prev) => {
+        const updated = { ...prev };
+        if (message) updated[key] = message;
+        else delete updated[key];
+        return updated;
+      });
+    },
+    []
+  );
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (readOnly) return;
-      const companyRaw = form.company.trim();
       const name = form.name.trim();
-      const company =
-        companyRaw &&
-        name &&
-        companyRaw.toLowerCase() === name.toLowerCase()
-          ? ''
-          : companyRaw;
+      const company = form.company.trim();
       const email = form.email.trim();
       const errors: Partial<Record<keyof FormData, string>> = {};
-      if (!company && !name) {
-        errors.company = 'Company or client name is required';
+      if (!name) {
+        errors.name = 'Full name is required.';
       }
       if (!email) {
-        errors.email = 'Email is required.';
+        errors.email = 'Email address is required.';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.email = 'Enter a valid email address.';
       }
       if (Object.keys(errors).length > 0) {
         setFieldErrors(errors);
@@ -260,6 +293,7 @@ export default function CustomerFormModal({
   const inputClass =
     'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm transition-colors focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] dark:border-slate-600 dark:bg-slate-900 dark:text-white';
   const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300';
+  const helperClass = 'mt-1 text-xs text-slate-500 dark:text-slate-400';
   const getCountryNameFromCode = (code: string) =>
     locationCountries.find((c) => c.code === code)?.name ?? code;
   const countryCode = normalizeCountryCode(form.country);
@@ -275,11 +309,22 @@ export default function CustomerFormModal({
       aria-labelledby="customer-form-title"
     >
       <div className="absolute inset-0 bg-slate-900/60" onClick={onClose} aria-hidden="true" />
-      <div className="relative max-h-[90vh] w-full max-w-lg overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
+      <div
+        className={`relative max-h-[90vh] w-full overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900 ${
+          isEdit ? 'max-w-lg' : 'max-w-md'
+        }`}
+      >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <h2 id="customer-form-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-            {readOnly ? 'Customer profile' : isEdit ? 'Edit customer' : 'Add customer'}
-          </h2>
+          <div>
+            <h2 id="customer-form-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+              {readOnly ? 'Customer profile' : isEdit ? 'Edit customer' : 'Add customer'}
+            </h2>
+            {!readOnly && !isEdit ? (
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Create a customer record to get started.
+              </p>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -449,14 +494,14 @@ export default function CustomerFormModal({
             </div>
           </div>
         ) : (
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="space-y-5 p-6">
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
               {error}
             </div>
           )}
 
-          {customer?.account_number && (
+          {isEdit && customer?.account_number && (
             <div>
               <label className={labelClass}>Customer Account Number</label>
               <input
@@ -469,47 +514,22 @@ export default function CustomerFormModal({
               />
             </div>
           )}
-          {!customer?.account_number && !readOnly && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Customer account number will be auto-generated when saved.</p>
-          )}
-
-          <div>
-            {/* 1. Company / Client Name (required) */}
-            <div>
-              <label htmlFor="customer-company" className={labelClass}>
-                Company / Client Name <span className="text-red-500" aria-hidden>*</span>
-              </label>
-              <input
-                id="customer-company"
-                type="text"
-                required
-                className={fieldErrors.company ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
-                value={form.company}
-                onChange={(e) => update('company', e.target.value)}
-                placeholder="Only if different from name"
-                aria-required="true"
-                aria-invalid={!!fieldErrors.company}
-                aria-describedby={fieldErrors.company ? 'customer-company-error' : undefined}
-              />
-              {fieldErrors.company && (
-                <p id="customer-company-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                  {fieldErrors.company}
-                </p>
-              )}
-            </div>
-
-            {/* 2. Contact Person (optional) */}
+          <div className="space-y-4">
             <div>
               <label htmlFor="customer-name" className={labelClass}>
-                Contact Person
+                Full Name <span className="text-red-500" aria-hidden>*</span>
               </label>
               <input
+                ref={nameInputRef}
                 id="customer-name"
                 type="text"
+                required
                 className={fieldErrors.name ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
                 value={form.name}
                 onChange={(e) => update('name', e.target.value)}
-                placeholder="Full name of contact (optional)"
+                onBlur={(e) => validateField('name', e.target.value)}
+                placeholder="Jane Doe"
+                aria-required="true"
                 aria-invalid={!!fieldErrors.name}
                 aria-describedby={fieldErrors.name ? 'customer-name-error' : undefined}
               />
@@ -520,10 +540,11 @@ export default function CustomerFormModal({
               )}
             </div>
 
-            {/* 3. Email */}
             <div>
-              <label htmlFor="customer-email" className={labelClass}>Email</label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Required for customer profile.</p>
+              <label htmlFor="customer-email" className={labelClass}>
+                Email Address <span className="text-red-500" aria-hidden>*</span>
+              </label>
+              <p className={helperClass}>Used for invoices and customer communication.</p>
               <input
                 id="customer-email"
                 type="email"
@@ -531,241 +552,267 @@ export default function CustomerFormModal({
                 className={fieldErrors.email ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
                 value={form.email}
                 onChange={(e) => update('email', e.target.value)}
+                onBlur={(e) => validateField('email', e.target.value)}
                 placeholder="billing@example.com"
                 aria-invalid={!!fieldErrors.email}
-                aria-describedby={fieldErrors.email ? 'customer-contact-error' : undefined}
+                aria-describedby={fieldErrors.email ? 'customer-email-error' : undefined}
               />
               {fieldErrors.email && (
-                <p id="customer-contact-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+                <p id="customer-email-error" className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
                   {fieldErrors.email}
                 </p>
               )}
             </div>
 
-            {/* 4. Phone */}
             <div>
-              <label htmlFor="customer-phone" className={labelClass}>Phone</label>
-              <input
-                id="customer-phone"
-                type="tel"
-                className={fieldErrors.phone ? inputClass + ' border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : inputClass}
-                value={form.phone}
-                onChange={(e) => update('phone', e.target.value)}
-                placeholder="+1 234 567 8900"
-                aria-invalid={!!fieldErrors.phone}
-                aria-describedby={fieldErrors.phone ? 'customer-contact-error' : undefined}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="customer-pref-currency" className={labelClass}>
-                Preferred invoice currency
+              <label htmlFor="customer-company" className={labelClass}>
+                Company Name <span className="text-slate-400">(optional)</span>
               </label>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Defaults to your company base currency ({companyBaseCurrency ?? '—'}). New invoices use this unless you override on the invoice.
-              </p>
-              <CurrencySelect
-                id="customer-pref-currency"
-                allowEmpty
-                emptyLabel={
-                  companyBaseCurrency
-                    ? `Use company base (${companyBaseCurrency})`
-                    : 'Use company base currency'
-                }
-                value={form.preferred_currency}
-                onChange={(code) => update('preferred_currency', code)}
-                className={inputClass}
-              />
-            </div>
-
-            {/* 5. Billing Address */}
-            <div>
-              <label htmlFor="customer-address" className={labelClass}>Billing Address</label>
               <input
-                id="customer-address"
+                id="customer-company"
                 type="text"
                 className={inputClass}
-                value={form.address_line1}
-                onChange={(e) => update('address_line1', e.target.value)}
-                placeholder="Street address"
+                value={form.company}
+                onChange={(e) => update('company', e.target.value)}
+                placeholder="Acme Inc."
               />
             </div>
-            <div>
-              <label htmlFor="customer-address2" className={labelClass}>Address line 2</label>
-              <input
-                id="customer-address2"
-                type="text"
-                className={inputClass}
-                value={form.address_line2}
-                onChange={(e) => update('address_line2', e.target.value)}
-                placeholder="Suite, unit, etc."
-              />
-            </div>
+          </div>
 
-            {/* 6. City, 7. State / Province */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label htmlFor="customer-city" className={labelClass}>City</label>
-                <input
-                  id="customer-city"
-                  type="text"
-                  className={inputClass}
-                  value={form.city}
-                  onChange={(e) => update('city', e.target.value)}
-                  placeholder="City"
-                />
-              </div>
-              <div>
-                <label htmlFor="customer-state" className={labelClass}>State / Province</label>
-                {stateOptions.length > 0 ? (
-                  <select
-                    id="customer-state"
-                    className={inputClass}
-                    value={form.state}
-                    onChange={(e) => update('state', e.target.value)}
-                    aria-label="State or province"
-                  >
-                    <option value="">Select</option>
-                    {stateOptions.map((s) => (
-                      <option key={s.code} value={s.code}>{s.name}</option>
-                    ))}
-                  </select>
-                ) : (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/30">
+            <button
+              type="button"
+              onClick={() => setShowMoreDetails((prev) => !prev)}
+              className="flex w-full items-center justify-between text-left text-sm font-medium text-slate-700 transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] dark:text-slate-300 dark:hover:text-white"
+              aria-expanded={showMoreDetails}
+              aria-controls="customer-more-details"
+            >
+              <span>Add more details <span className="text-slate-400">(optional)</span></span>
+              <span aria-hidden className="text-xs text-slate-500 dark:text-slate-400">
+                {showMoreDetails ? 'Hide' : 'Show'}
+              </span>
+            </button>
+            {showMoreDetails ? (
+              <div id="customer-more-details" className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <div>
+                  <label htmlFor="customer-phone" className={labelClass}>Phone</label>
                   <input
-                    id="customer-state"
+                    id="customer-phone"
+                    type="tel"
+                    className={inputClass}
+                    value={form.phone}
+                    onChange={(e) => update('phone', e.target.value)}
+                    placeholder="+1 234 567 8900"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="customer-pref-currency" className={labelClass}>
+                    Preferred invoice currency
+                  </label>
+                  <p className={helperClass}>
+                    Defaults to company base ({companyBaseCurrency ?? '—'}).
+                  </p>
+                  <CurrencySelect
+                    id="customer-pref-currency"
+                    allowEmpty
+                    emptyLabel={
+                      companyBaseCurrency
+                        ? `Use company base (${companyBaseCurrency})`
+                        : 'Use company base currency'
+                    }
+                    value={form.preferred_currency}
+                    onChange={(code) => update('preferred_currency', code)}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="customer-address" className={labelClass}>Billing address</label>
+                  <input
+                    id="customer-address"
                     type="text"
                     className={inputClass}
-                    value={form.state}
-                    onChange={(e) => update('state', e.target.value)}
-                    placeholder="State / Province"
+                    value={form.address_line1}
+                    onChange={(e) => update('address_line1', e.target.value)}
+                    placeholder="Street address"
                   />
-                )}
-              </div>
-            </div>
+                </div>
+                <div>
+                  <label htmlFor="customer-address2" className={labelClass}>Address line 2</label>
+                  <input
+                    id="customer-address2"
+                    type="text"
+                    className={inputClass}
+                    value={form.address_line2}
+                    onChange={(e) => update('address_line2', e.target.value)}
+                    placeholder="Suite, unit, etc."
+                  />
+                </div>
 
-            {/* 8. Country, 9. Postal Code */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2 min-w-0 max-w-full">
-                <label htmlFor="customer-country" className={labelClass}>
-                  Country
-                </label>
-                <CountrySelect
-                  id="customer-country"
-                  value={form.country}
-                  onChange={(isoCode) => {
-                    update('country', isoCode);
-                    update('state', '');
-                  }}
-                  className={inputClass + ' h-11'}
-                />
-              </div>
-              <div>
-                <label htmlFor="customer-postal" className={labelClass}>Postal Code</label>
-                <input
-                  id="customer-postal"
-                  type="text"
-                  className={inputClass}
-                  value={form.postal_code}
-                  onChange={(e) => update('postal_code', e.target.value)}
-                  placeholder="Postal code"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Invoice reminders</h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Default rules for this customer. Invoices can follow these or use custom rules.
-              </p>
-              <label className="mt-3 flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                  checked={form.automatic_reminders}
-                  onChange={(e) => setForm((f) => ({ ...f, automatic_reminders: e.target.checked }))}
-                />
-                <span className="text-sm text-slate-700 dark:text-slate-300">Automatic reminders</span>
-              </label>
-              <ul className="mt-3 space-y-2">
-                {form.reminder_timing.map((row, idx) => (
-                  <li key={idx} className="flex flex-wrap items-center gap-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="customer-city" className={labelClass}>City</label>
                     <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
-                      value={row.days}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setForm((f) => ({
-                          ...f,
-                          reminder_timing: f.reminder_timing.map((r, i) =>
-                            i === idx ? { ...r, days: v } : r
-                          ),
-                        }));
-                      }}
-                      aria-label="Days"
+                      id="customer-city"
+                      type="text"
+                      className={inputClass}
+                      value={form.city}
+                      onChange={(e) => update('city', e.target.value)}
+                      placeholder="City"
                     />
-                    <span className="text-sm text-slate-600 dark:text-slate-400">days</span>
-                    <select
-                      className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
-                      value={row.relativeTo}
-                      onChange={(e) => {
-                        const rel = e.target.value === 'after_due' ? 'after_due' : 'before_due';
-                        setForm((f) => ({
-                          ...f,
-                          reminder_timing: f.reminder_timing.map((r, i) =>
-                            i === idx ? { ...r, relativeTo: rel } : r
-                          ),
-                        }));
-                      }}
-                    >
-                      <option value="before_due">before due date</option>
-                      <option value="after_due">after due date</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="ml-auto rounded p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
-                      onClick={() =>
-                        setForm((f) => ({
-                          ...f,
-                          reminder_timing: f.reminder_timing.filter((_, i) => i !== idx),
-                        }))
-                      }
-                      aria-label="Remove"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={() =>
-                  setForm((f) => ({
-                    ...f,
-                    reminder_timing: [...f.reminder_timing, { days: '1', relativeTo: 'before_due' as ReminderRelativeTo }],
-                  }))
-                }
-                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400"
-              >
-                <Plus className="h-4 w-4" />
-                Add timing
-              </button>
-            </div>
+                  </div>
+                  <div>
+                    <label htmlFor="customer-state" className={labelClass}>State / Province</label>
+                    {stateOptions.length > 0 ? (
+                      <select
+                        id="customer-state"
+                        className={inputClass}
+                        value={form.state}
+                        onChange={(e) => update('state', e.target.value)}
+                        aria-label="State or province"
+                      >
+                        <option value="">Select</option>
+                        {stateOptions.map((s) => (
+                          <option key={s.code} value={s.code}>{s.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id="customer-state"
+                        type="text"
+                        className={inputClass}
+                        value={form.state}
+                        onChange={(e) => update('state', e.target.value)}
+                        placeholder="State / Province"
+                      />
+                    )}
+                  </div>
+                </div>
 
-            {/* 10. Notes */}
-            <div>
-              <label htmlFor="customer-notes" className={labelClass}>Notes</label>
-              <textarea
-                id="customer-notes"
-                rows={2}
-                className={inputClass}
-                value={form.notes}
-                onChange={(e) => update('notes', e.target.value)}
-                placeholder="Internal notes"
-              />
-            </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2 min-w-0 max-w-full">
+                    <label htmlFor="customer-country" className={labelClass}>
+                      Country
+                    </label>
+                    <CountrySelect
+                      id="customer-country"
+                      value={form.country}
+                      onChange={(isoCode) => {
+                        update('country', isoCode);
+                        update('state', '');
+                      }}
+                      className={inputClass + ' h-11'}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="customer-postal" className={labelClass}>Postal Code</label>
+                    <input
+                      id="customer-postal"
+                      type="text"
+                      className={inputClass}
+                      value={form.postal_code}
+                      onChange={(e) => update('postal_code', e.target.value)}
+                      placeholder="Postal code"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Invoice reminders</h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Optional defaults for this customer.
+                  </p>
+                  <label className="mt-3 flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      checked={form.automatic_reminders}
+                      onChange={(e) => setForm((f) => ({ ...f, automatic_reminders: e.target.checked }))}
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-300">Automatic reminders</span>
+                  </label>
+                  <ul className="mt-3 space-y-2">
+                    {form.reminder_timing.map((row, idx) => (
+                      <li key={idx} className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={365}
+                          className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          value={row.days}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setForm((f) => ({
+                              ...f,
+                              reminder_timing: f.reminder_timing.map((r, i) =>
+                                i === idx ? { ...r, days: v } : r
+                              ),
+                            }));
+                          }}
+                          aria-label="Days"
+                        />
+                        <span className="text-sm text-slate-600 dark:text-slate-400">days</span>
+                        <select
+                          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          value={row.relativeTo}
+                          onChange={(e) => {
+                            const rel = e.target.value === 'after_due' ? 'after_due' : 'before_due';
+                            setForm((f) => ({
+                              ...f,
+                              reminder_timing: f.reminder_timing.map((r, i) =>
+                                i === idx ? { ...r, relativeTo: rel } : r
+                              ),
+                            }));
+                          }}
+                        >
+                          <option value="before_due">before due date</option>
+                          <option value="after_due">after due date</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="ml-auto rounded p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              reminder_timing: f.reminder_timing.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          aria-label="Remove"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        reminder_timing: [...f.reminder_timing, { days: '1', relativeTo: 'before_due' as ReminderRelativeTo }],
+                      }))
+                    }
+                    className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add timing
+                  </button>
+                </div>
+
+                <div>
+                  <label htmlFor="customer-notes" className={labelClass}>Notes</label>
+                  <textarea
+                    id="customer-notes"
+                    rows={2}
+                    className={inputClass}
+                    value={form.notes}
+                    onChange={(e) => update('notes', e.target.value)}
+                    placeholder="Internal notes"
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
@@ -783,11 +830,11 @@ export default function CustomerFormModal({
             >
               {submitting
                 ? isEdit
-                ? 'Saving customer changes...'
-                  : 'Creating customer...'
+                  ? 'Saving...'
+                  : 'Creating...'
                 : isEdit
                   ? 'Save changes'
-                  : 'Add customer'}
+                  : 'Create customer'}
             </button>
           </div>
         </form>
