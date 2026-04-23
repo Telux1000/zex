@@ -136,7 +136,11 @@ export async function GET(req: Request) {
         onboarding_stage: snapshot.onboarding_stage,
         stuck_reason: stuckReason,
         days_stuck: daysStuck,
-        follow_up_status: snapshot.follow_ups_paused_at ? 'paused' : 'active',
+        follow_up_status: snapshot.follow_ups_canceled_at
+          ? 'cancelled'
+          : snapshot.follow_ups_paused_at
+            ? 'paused'
+            : 'active',
         last_follow_up: lastSent
           ? {
               sent_at: String(lastSent.updated_at),

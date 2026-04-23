@@ -72,6 +72,8 @@ export interface Profile {
   onboarding_pricing_completed_at?: string | null;
   /** Internal admin control: when set, automated onboarding follow-ups are paused. */
   onboarding_follow_ups_paused_at?: string | null;
+  /** Admin used "Cancel pending follow-ups"; UI shows Cancelled instead of Paused. */
+  onboarding_follow_ups_canceled_at?: string | null;
   created_at: string;
   updated_at: string;
 }

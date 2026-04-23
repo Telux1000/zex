@@ -32,7 +32,7 @@ type OnboardingAccountRow = {
   onboarding_stage: OnboardingStage;
   stuck_reason: string | null;
   days_stuck: number | null;
-  follow_up_status: 'active' | 'paused';
+  follow_up_status: 'active' | 'paused' | 'cancelled';
   last_follow_up: { sent_at: string; template_id: string; template_display?: string } | null;
   next_follow_up: { scheduled_for: string; template_id: string; template_display?: string } | null;
 };
@@ -443,8 +443,20 @@ export function AdminAccountsOnboardingPanel() {
                     )}
                   </AdminTd>
                   <AdminTd>
-                    <AdminBadge tone={row.follow_up_status === 'paused' ? 'warning' : 'active'}>
-                      {row.follow_up_status === 'paused' ? 'Paused' : 'Active'}
+                    <AdminBadge
+                      tone={
+                        row.follow_up_status === 'active'
+                          ? 'active'
+                          : row.follow_up_status === 'cancelled'
+                            ? 'suspended'
+                            : 'warning'
+                      }
+                    >
+                      {row.follow_up_status === 'active'
+                        ? 'Active'
+                        : row.follow_up_status === 'cancelled'
+                          ? 'Cancelled'
+                          : 'Paused'}
                     </AdminBadge>
                   </AdminTd>
                   <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
@@ -462,10 +474,10 @@ export function AdminAccountsOnboardingPanel() {
                             ]
                           : []),
                           {
-                            label: row.follow_up_status === 'paused' ? 'Resume follow-ups' : 'Pause follow-ups',
+                            label: row.follow_up_status === 'active' ? 'Pause follow-ups' : 'Resume follow-ups',
                             onClick: async () => {
                               setProcessorMessage(null);
-                              const resuming = row.follow_up_status === 'paused';
+                              const resuming = row.follow_up_status !== 'active';
                               const endpoint = resuming
                                 ? `/api/admin/onboarding/users/${row.id}/resume-follow-ups`
                                 : `/api/admin/onboarding/users/${row.id}/pause-follow-ups`;

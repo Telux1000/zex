@@ -13,7 +13,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   // Also persist automation stop (same as pause). Otherwise the follow-up processor’s
   // `reconcileFollowUpsForSnapshot` re-queues PENDING rows on the next run.
-  const cancelResult = await setFollowUpsPaused(userId, true, { pendingCancelReason: 'canceled_by_admin' });
+  const cancelResult = await setFollowUpsPaused(userId, true, {
+    pendingCancelReason: 'canceled_by_admin',
+    fromCancelAction: true,
+  });
   if (!cancelResult.ok) {
     return NextResponse.json({ error: cancelResult.error }, { status: 500 });
   }

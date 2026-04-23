@@ -22,6 +22,8 @@ export type OnboardingUserSnapshot = {
   onboarding_stage: AccountOnboardingStage;
   anchor_at: string | null;
   follow_ups_paused_at: string | null;
+  /** Set when admin used "Cancel pending follow-ups" (display: Cancelled). */
+  follow_ups_canceled_at: string | null;
 };
 
 type FollowUpSequenceStep = {
@@ -150,6 +152,7 @@ export async function listOnboardingSnapshots() {
     onboarding_completed_at: string | null;
     onboarding_pricing_completed_at: string | null;
     onboarding_follow_ups_paused_at: string | null;
+    onboarding_follow_ups_canceled_at: string | null;
   }[] = [];
   const chunk = 400;
   for (let i = 0; i < authUserIds.length; i += chunk) {
@@ -157,7 +160,7 @@ export async function listOnboardingSnapshots() {
     const profileRes = await admin
       .from('profiles')
       .select(
-        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at'
+        'id, full_name, email, created_at, internal_admin_role, onboarding_completed_at, onboarding_pricing_completed_at, onboarding_follow_ups_paused_at, onboarding_follow_ups_canceled_at'
       )
       .in('id', ids);
     if (profileRes.error) continue;
@@ -199,6 +202,7 @@ export async function listOnboardingSnapshots() {
           onboarding_completed_at: onboardingCompletedAt,
         }),
         follow_ups_paused_at: profile?.onboarding_follow_ups_paused_at ?? null,
+        follow_ups_canceled_at: profile?.onboarding_follow_ups_canceled_at ?? null,
       };
     })
     .filter((row): row is OnboardingUserSnapshot => row !== null);
@@ -496,7 +500,7 @@ export type SetFollowUpsPausedResult =
 export async function setFollowUpsPaused(
   userId: string,
   paused: boolean,
-  opts?: { pendingCancelReason?: string }
+  opts?: { pendingCancelReason?: string; fromCancelAction?: boolean }
 ): Promise<SetFollowUpsPausedResult> {
   const admin = getSupabaseServiceAdmin();
   if (!admin) return { ok: false, error: 'Server misconfigured' };
@@ -514,10 +518,15 @@ export async function setFollowUpsPaused(
   }
 
   const pausedAt = paused ? new Date().toISOString() : null;
+  const canceledAtForRow = paused && opts?.fromCancelAction ? pausedAt : null;
 
   const { data: updatedRow, error: updateErr } = await admin
     .from('profiles')
-    .update({ onboarding_follow_ups_paused_at: pausedAt })
+    .update({
+      onboarding_follow_ups_paused_at: pausedAt,
+      // Pause clears "Cancelled" display; cancel sets it; resume clears both (pausedAt is null)
+      onboarding_follow_ups_canceled_at: paused ? canceledAtForRow : null,
+    })
     .eq('id', userId)
     .select('id')
     .maybeSingle();
@@ -535,12 +544,16 @@ export async function setFollowUpsPaused(
       email: u.email ?? null,
       full_name: fullNameFromAuthUserMetadata(u),
       onboarding_follow_ups_paused_at: pausedAt,
+      onboarding_follow_ups_canceled_at: opts?.fromCancelAction ? pausedAt : null,
     });
     if (insertErr) {
       if (insertErr.code === '23505') {
         const { error: againErr } = await admin
           .from('profiles')
-          .update({ onboarding_follow_ups_paused_at: pausedAt })
+          .update({
+            onboarding_follow_ups_paused_at: pausedAt,
+            onboarding_follow_ups_canceled_at: canceledAtForRow,
+          })
           .eq('id', userId)
           .select('id')
           .maybeSingle();
