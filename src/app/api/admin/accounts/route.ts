@@ -464,6 +464,7 @@ export async function GET(req: Request) {
       current_plan: plan,
       subscription_status: lifecycle,
       status_days_left: statusDaysLeft,
+      subscription_expire_at: trialFromSubscription ? trialEnd : subscriptionSnapshot?.currentPeriodEndIso ?? null,
       trial_status: trialFromSubscription ? 'in_trial' : 'trial_ended',
       created_at: business.created_at,
       last_active_at: lastActiveByBusiness.get(String(business.id)) ?? null,

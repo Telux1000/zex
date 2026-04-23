@@ -25,6 +25,7 @@ type AccountRow = {
   subscription_status: string;
   /** Full days left in trial or current billing period; omitted when unknown. */
   status_days_left?: number | null;
+  subscription_expire_at?: string | null;
   trial_status: string;
   created_at: string;
   last_active_at: string | null;
@@ -331,6 +332,7 @@ export function AdminAccountsPanel() {
               <AdminTh>Owner</AdminTh>
               <AdminTh>Plan</AdminTh>
               <AdminTh>Status</AdminTh>
+              <AdminTh>Expire</AdminTh>
               <AdminTh>Users</AdminTh>
               <AdminTh>Created</AdminTh>
               <AdminTh>Last active</AdminTh>
@@ -355,6 +357,9 @@ export function AdminAccountsPanel() {
                     <AdminTd>{a.current_plan}</AdminTd>
                     <AdminTd>
                       <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
+                    </AdminTd>
+                    <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+                      {a.subscription_expire_at ? new Date(a.subscription_expire_at).toLocaleDateString() : '—'}
                     </AdminTd>
                     <AdminTd>
                       <button
