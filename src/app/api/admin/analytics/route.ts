@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
+import { loadSubscriptionMixAnalytics } from '@/lib/admin/subscription-mix-analytics';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { PAGE_SECTION_KEYS, PAGE_SECTION_LABELS } from '@/lib/product-usage/allowed-keys';
 
@@ -11,8 +12,6 @@ const PLAN_MRR: Record<string, number> = {
   professional: 129,
   enterprise: 399,
 };
-
-const PLAN_ORDER = ['starter', 'growth', 'professional', 'enterprise'] as const;
 
 const MS_DAY = 86_400_000;
 const INACTIVE_THRESHOLD_DAYS = 30;
@@ -236,6 +235,7 @@ export async function GET() {
       pastDueRes,
       trialSoonRes,
       everActivity,
+      subscriptionMixSplit,
     ] = await Promise.all([
       admin.from('profiles').select('id', { count: 'exact', head: true }),
       admin.from('businesses').select('id', { count: 'exact', head: true }),
@@ -302,6 +302,7 @@ export async function GET() {
         .gt('trial_ends_at', iso(new Date(now)))
         .lte('trial_ends_at', iso(trialEndSoonUntil)),
       distinctBusinessIdsWithAnyActivity(admin, 200_000),
+      loadSubscriptionMixAnalytics(admin, currentStartIso, currentEndIso),
     ]);
 
     if (aiCurRes.error) throw new Error(aiCurRes.error.message);
@@ -340,16 +341,6 @@ export async function GET() {
 
     const accounts_inactive_30d = Math.max(0, total_accounts - active_accounts_current);
     const accounts_no_usage_ever = Math.max(0, total_accounts - everActivity.size);
-
-    const subscription_mix: Record<string, number> = {};
-    for (const key of PLAN_ORDER) {
-      subscription_mix[key] = mix.subscription_counts[key] ?? 0;
-    }
-    for (const [k, v] of Object.entries(mix.subscription_counts)) {
-      if (!PLAN_ORDER.includes(k as (typeof PLAN_ORDER)[number])) {
-        subscription_mix[k] = v;
-      }
-    }
 
     const mrr = Number(mix.mrr.toFixed(2));
     const arr = Number((mix.mrr * 12).toFixed(2));
@@ -543,7 +534,8 @@ export async function GET() {
       revenue: {
         total_accounts,
         total_users,
-        subscription_mix,
+        trial_subscription_mix: subscriptionMixSplit.trial_mix,
+        paid_subscription_mix: subscriptionMixSplit.paid_mix,
         mrr,
         arr,
       },

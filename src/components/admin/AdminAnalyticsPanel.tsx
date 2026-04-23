@@ -17,7 +17,12 @@ import { GeoConversionInsightsCard } from '@/components/admin/GeoConversionInsig
 import { ANALYTICS_DRILLDOWN } from '@/lib/admin/analytics-drilldown';
 import { cn } from '@/lib/utils/cn';
 
-const DISPLAY_PLANS = ['starter', 'growth', 'professional', 'enterprise'] as const;
+type SubscriptionMixItem = {
+  plan_key: string;
+  plan_name: string;
+  count: number;
+  percentage: number;
+};
 
 type MetricWithTrend = {
   value: number;
@@ -66,7 +71,8 @@ type AnalyticsPayload = {
   revenue: {
     total_accounts: number;
     total_users: number;
-    subscription_mix: Record<string, number>;
+    trial_subscription_mix: SubscriptionMixItem[];
+    paid_subscription_mix: SubscriptionMixItem[];
     mrr: number;
     arr: number;
   };
@@ -272,6 +278,55 @@ function SectionTitle({
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
         <p className="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{description}</p>
       </div>
+    </div>
+  );
+}
+
+function SubscriptionMixCard({
+  title,
+  emptyLabel,
+  mixType,
+  rows,
+}: {
+  title: string;
+  emptyLabel: string;
+  mixType: 'trial' | 'paid';
+  rows: SubscriptionMixItem[];
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-200/90 bg-zinc-50/50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{title}</p>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {rows.map((row) => {
+            const pct = Math.max(0, Math.min(100, row.percentage));
+            return (
+              <li key={`${title}-${row.plan_key}`}>
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-zinc-800 dark:text-zinc-200">{row.plan_name}</span>
+                  <span className={cn('tabular-nums', row.count > 0 ? 'text-zinc-600 dark:text-zinc-400' : 'text-zinc-400')}>
+                    {row.count.toLocaleString()} <span className="text-zinc-400">({row.percentage.toFixed(1)}%)</span>
+                  </span>
+                </div>
+                <div className="mt-1">
+                  <Link
+                    href={`/admin/billing?plan=${encodeURIComponent(row.plan_key)}&segment=${mixType}`}
+                    prefetch={false}
+                    className="text-xs font-medium text-zinc-500 underline-offset-4 hover:text-zinc-800 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    View {row.plan_name} {mixType}
+                  </Link>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <div className="h-full rounded-full bg-zinc-700 dark:bg-zinc-300" style={{ width: `${pct}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -721,10 +776,10 @@ export function AdminAnalyticsPanel() {
       <AdminContentCard>
         <SectionTitle
           icon={CreditCard}
-          title="Revenue & subscription mix"
-          description="Workspace count, profile count, and plan distribution (MRR is estimated list price, not realized cash)."
+          title="Revenue & subscription"
+          description="Workspace totals plus clear funnel split between trial plan mix and paid plan mix."
         />
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-zinc-200/90 bg-zinc-50/50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/40">
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Totals</p>
             <dl className="mt-3 space-y-2 text-sm">
@@ -760,38 +815,22 @@ export function AdminAnalyticsPanel() {
               </div>
             </dl>
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Subscription mix</p>
-            <ul className="mt-3 space-y-2">
-              {DISPLAY_PLANS.map((plan) => {
-                const count = data.revenue.subscription_mix[plan] ?? 0;
-                const denom = Math.max(1, data.revenue.total_users);
-                const pct = Math.round((count / denom) * 100);
-                return (
-                  <li key={plan}>
-                    <div className="flex items-center justify-between gap-2 text-sm">
-                      <span className="capitalize text-zinc-800 dark:text-zinc-200">{plan}</span>
-                      <span
-                        className={cn(
-                          'tabular-nums',
-                          count > 0 ? 'text-zinc-600 dark:text-zinc-400' : 'text-zinc-400 dark:text-zinc-500'
-                        )}
-                      >
-                        {count.toLocaleString()} <span className="text-zinc-400">({pct}%)</span>
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                      <div
-                        className="h-full rounded-full bg-zinc-700 dark:bg-zinc-300"
-                        style={{ width: `${Math.min(100, pct)}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          <SubscriptionMixCard
+            title="Trial Subscription Mix"
+            emptyLabel="No trial subscription data for this period."
+            mixType="trial"
+            rows={data.revenue.trial_subscription_mix}
+          />
+          <SubscriptionMixCard
+            title="Paid Subscription Mix"
+            emptyLabel="No paid subscription data for this period."
+            mixType="paid"
+            rows={data.revenue.paid_subscription_mix}
+          />
         </div>
+        <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Trial mix = profiles created in this period with trial status. Paid mix = profiles created in this period with paid-active status.
+        </p>
       </AdminContentCard>
     </div>
   );
