@@ -76,7 +76,8 @@ function matchesAccountsDrilldown(
 function accountStatus(row: AccountRow): { label: string; tone: 'active' | 'pending' | 'suspended' } {
   const s = row.subscription_status as AccountLifecycleStatus | string;
   const days = row.status_days_left;
-  const suffix = typeof days === 'number' && days >= 0 ? `.${days}` : '';
+  const suffix =
+    typeof days === 'number' && days >= 0 ? ` . ${days} day${days === 1 ? '' : 's'} Left` : '';
   if (s === 'deactivated') return { label: 'Deactivated', tone: 'suspended' };
   if (s === 'suspended') return { label: 'Suspended', tone: 'suspended' };
   if (row.trial_status.toLowerCase().includes('in_trial')) return { label: `Trial${suffix}`, tone: 'pending' };
