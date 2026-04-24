@@ -19,7 +19,7 @@ import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
 import { buildPricingAuthHref, buildPricingNextPath, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
 
 export function LandingPricingSection() {
-  const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
+  const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('monthly');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -67,29 +67,33 @@ export function LandingPricingSection() {
   }
 
   return (
-    <section id="pricing" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-16 sm:py-20">
-      <div className="mx-auto max-w-6xl px-4">
+    <section id="pricing" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-12 sm:py-20">
+      <div className="mx-auto max-w-6xl px-3 sm:px-4">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
             Predictable pricing
           </h2>
-          <p className="mt-3 text-slate-600 dark:text-slate-400">
+          <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
             Straightforward plans with clear limits. Upgrade when you need more automation and scale.
           </p>
-          <div className="mx-auto mt-5 max-w-lg rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-4 py-3 dark:border-indigo-500/30 dark:bg-indigo-950/40">
-            <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+          <div className="mx-auto mt-5 max-w-lg rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-3 py-2.5 dark:border-indigo-500/30 dark:bg-indigo-950/40 sm:px-4 sm:py-3">
+            <p className="text-pretty text-xs font-semibold text-indigo-900 dark:text-indigo-100 sm:text-sm">
               {pricingPromoBannerHeadline(PRICING_TRIAL_DAYS)}
             </p>
-            <p className="mt-1 text-xs text-indigo-800/90 dark:text-indigo-200/85">
+            <p className="mt-1 text-pretty text-[11px] text-indigo-800/90 dark:text-indigo-200/85 sm:text-xs">
               {pricingTrialMessaging.subline}
             </p>
           </div>
-          <div className="mt-6 flex justify-center">
-            <BillingIntervalToggle value={billingInterval} onChange={setBillingInterval} />
+          <div className="mt-5 flex w-full justify-center px-1 sm:mt-6 sm:px-0">
+            <BillingIntervalToggle
+              value={billingInterval}
+              onChange={setBillingInterval}
+              className="w-full max-w-xs sm:w-auto"
+            />
           </div>
         </div>
 
-        <div className="mt-10">
+        <div className="mt-8 sm:mt-10">
           <PricingPlanCards
             plans={pricingPlans}
             billingInterval={billingInterval}
@@ -117,7 +121,7 @@ export function LandingPricingSection() {
           />
         </div>
 
-        <p className="mt-10 text-center text-xs text-slate-500 dark:text-slate-500">
+        <p className="mt-8 max-w-2xl px-1 text-center text-[11px] text-slate-500 dark:text-slate-500 sm:mt-10 sm:mx-auto sm:text-xs">
           Self-serve checkout. Taxes may apply by region. Cancel or change plans before your trial ends.
         </p>
       </div>

@@ -25,7 +25,7 @@ export function PricingPlanCards({
   currentPlanId?: BillingPlan | null;
 }) {
   return (
-    <div className="mx-auto grid max-w-7xl grid-cols-1 items-stretch gap-5 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 items-stretch gap-4 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
       {plans.map((plan) => {
         const mainPrice = formatPricingCardMainPrice(plan, billingInterval);
         const current = currentPlanId != null && plan.id === currentPlanId;
@@ -35,8 +35,8 @@ export function PricingPlanCards({
             className={cn(
               'relative flex h-full flex-col overflow-visible',
               plan.popular
-                ? 'rounded-xl border-2 border-indigo-500/45 bg-[var(--card)] p-7 shadow-xl shadow-indigo-950/[0.09] ring-1 ring-indigo-500/15 sm:p-8 dark:border-indigo-400/35 dark:bg-[var(--card)] dark:shadow-black/50 dark:ring-indigo-400/10'
-                : 'app-card-surface p-7 sm:p-8',
+                ? 'rounded-xl border-2 border-indigo-500/45 bg-[var(--card)] p-5 shadow-xl shadow-indigo-950/[0.09] ring-1 ring-indigo-500/15 sm:p-8 dark:border-indigo-400/35 dark:bg-[var(--card)] dark:shadow-black/50 dark:ring-indigo-400/10'
+                : 'app-card-surface p-5 sm:p-8',
               current &&
                 'ring-2 ring-indigo-500/60 ring-offset-2 ring-offset-[var(--card)] dark:ring-indigo-400/50 dark:ring-offset-slate-900'
             )}
@@ -67,9 +67,9 @@ export function PricingPlanCards({
             <p className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
               {plan.marketingDescription}
             </p>
-            <div className="mt-6 flex flex-col gap-1">
-              <p className="flex items-baseline gap-1">
-                <span className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <div className="mt-5 flex flex-col gap-1 sm:mt-6">
+              <p className="flex flex-wrap items-baseline gap-x-1 gap-y-0">
+                <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
                   {mainPrice}
                 </span>
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">/mo</span>
