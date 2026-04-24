@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
@@ -28,6 +29,14 @@ import {
   isInternalAdminRoleValue,
 } from '@/lib/system-access';
 import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
 export default async function DashboardLayout({
   children,
 }: {

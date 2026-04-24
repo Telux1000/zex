@@ -241,6 +241,26 @@ function SignupPageInner() {
           </>
         )}
 
+        {signupMode === 'OPEN' && (
+          <p className="mt-3 text-center text-sm leading-5 text-slate-500 dark:text-slate-400">
+            By signing up, you agree to Zenzex’s{' '}
+            <Link
+              href="/terms"
+              className="cursor-pointer text-slate-600 transition-colors hover:text-slate-700 hover:underline dark:text-slate-300 dark:hover:text-slate-200"
+            >
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link
+              href="/privacy"
+              className="cursor-pointer text-slate-600 transition-colors hover:text-slate-700 hover:underline dark:text-slate-300 dark:hover:text-slate-200"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        )}
+
         <p className="text-center text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}
           <Link href={loginHref} className="app-link-accent">

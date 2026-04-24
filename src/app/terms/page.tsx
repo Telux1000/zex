@@ -2,9 +2,23 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service | Zenzex',
+  title: 'Terms of Service',
   description:
     'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+  alternates: {
+    canonical: '/terms',
+  },
+  openGraph: {
+    title: 'Terms of Service | Zenzex',
+    description:
+      'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+    url: '/terms',
+  },
+  twitter: {
+    title: 'Terms of Service | Zenzex',
+    description:
+      'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+  },
 };
 
 export default function TermsPage() {

@@ -2,9 +2,23 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Zenzex',
+  title: 'Privacy Policy',
   description:
     'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+  alternates: {
+    canonical: '/privacy',
+  },
+  openGraph: {
+    title: 'Privacy Policy | Zenzex',
+    description:
+      'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+    url: '/privacy',
+  },
+  twitter: {
+    title: 'Privacy Policy | Zenzex',
+    description:
+      'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+  },
 };
 
 export default function PrivacyPage() {

@@ -1,7 +1,28 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { BarChart3, Bell, ChevronDown, CreditCard, FileText } from 'lucide-react';
 import { LandingPricingSection } from '@/components/pricing/LandingPricingSection';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
+
+export const metadata: Metadata = {
+  title: 'Simple Automated Invoicing',
+  description:
+    'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'Zenzex | Simple Automated Invoicing',
+    description:
+      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+    url: 'https://zenzex.com',
+  },
+  twitter: {
+    title: 'Zenzex | Simple Automated Invoicing',
+    description:
+      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+  },
+};
 
 const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
@@ -30,8 +51,64 @@ const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
 ];
 
 export default function LandingPage() {
+  const appUrl = 'https://zenzex.com';
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Zenzex',
+    legalName: 'Telux Pty Ltd',
+    url: appUrl,
+    logo: `${appUrl}/zenzex-mark.png`,
+  };
+  const softwareApplicationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Zenzex',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+    url: appUrl,
+    description:
+      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+  };
+  const websiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Zenzex',
+    url: appUrl,
+    description:
+      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+  };
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: LANDING_FAQ_ITEMS.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[var(--background)] via-[var(--background)] to-[var(--card)] text-[var(--foreground)]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       <header className="app-marketing-header">
         <div className="mx-auto flex h-14 min-h-[3.5rem] max-w-6xl items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
           <AppLogoInline href="/" size="md" priority className="min-w-0 shrink-0" />

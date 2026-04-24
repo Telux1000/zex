@@ -7,11 +7,32 @@ import { getServerUserTheme } from '@/lib/theme/server';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-geist-sans' });
+const metadataBase = new URL('https://zenzex.com');
+const defaultTitle = 'Zenzex | Simple Automated Invoicing';
+const defaultDescription =
+  'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.';
 
 export const metadata: Metadata = {
-  title: 'Zenzex – Invoicing, payments, and cash flow visibility',
-  description:
-    'Create invoices in seconds from text, voice, or uploads. Track payments in real time, automate reminders, and stay on top of revenue—without spreadsheets.',
+  metadataBase,
+  title: {
+    default: defaultTitle,
+    template: '%s | Zenzex',
+  },
+  description: defaultDescription,
+  openGraph: {
+    title: defaultTitle,
+    description: defaultDescription,
+    url: 'https://zenzex.com',
+    siteName: 'Zenzex',
+    type: 'website',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Zenzex | Simple Automated Invoicing' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: defaultTitle,
+    description: defaultDescription,
+    images: ['/twitter-image'],
+  },
   icons: {
     icon: [{ url: '/zenzex-mark.png', type: 'image/png' }],
     shortcut: '/zenzex-mark.png',

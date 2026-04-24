@@ -2,9 +2,23 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Refund Policy | Zenzex',
+  title: 'Refund Policy',
   description:
     'How refunds and subscription cancellations work for Zenzex—clear, simple, and fair.',
+  alternates: {
+    canonical: '/refunds',
+  },
+  openGraph: {
+    title: 'Refund Policy | Zenzex',
+    description:
+      'How refunds and subscription cancellations work for Zenzex—clear, simple, and fair.',
+    url: '/refunds',
+  },
+  twitter: {
+    title: 'Refund Policy | Zenzex',
+    description:
+      'How refunds and subscription cancellations work for Zenzex—clear, simple, and fair.',
+  },
 };
 
 export default function RefundPolicyPage() {

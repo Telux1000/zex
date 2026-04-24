@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "seo:check": "node scripts/seo-metadata-check.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"

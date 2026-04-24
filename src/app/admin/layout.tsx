@@ -1,7 +1,15 @@
+import type { Metadata } from 'next';
 import { AdminShell } from '@/components/admin/AdminShell';
 import { AdminNotificationsProvider } from '@/contexts/AdminNotificationsContext';
 import { AdminSupportUnreadProvider } from '@/contexts/AdminSupportUnreadContext';
 import { requireAdminPageAccess } from '@/lib/admin/auth';
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireAdminPageAccess();

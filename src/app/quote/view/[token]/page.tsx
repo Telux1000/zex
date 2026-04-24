@@ -1,9 +1,17 @@
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { findQuoteByPublicToken } from '@/lib/quotes/public-token';
 import { resolveInvoicePublicTokenForQuote } from '@/lib/quotes/public-quote-invoice-token';
 import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
 import { PublicQuoteViewClient } from '@/components/quotes/PublicQuoteViewClient';
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

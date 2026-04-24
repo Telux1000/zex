@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { createServiceClient } from '@/lib/supabase/server';
 import { formatDisplayDate } from '@/lib/utils/date';
 import { PublicInvoicePayButton } from '@/components/invoices/PublicInvoicePayButton';
@@ -10,6 +11,13 @@ import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discou
 import { formatMoneyCodeFirst } from '@/lib/utils/currency';
 import { PublicInvoiceBillToBlock } from '@/components/invoices/PublicInvoiceBillToBlock';
 import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function PublicInvoicePage({
   params,
