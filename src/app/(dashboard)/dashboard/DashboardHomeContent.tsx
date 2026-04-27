@@ -1161,7 +1161,7 @@ export async function DashboardHomeContent({
                       Invoice / Customer
                     </th>
                     <th className="app-th sm:px-5">
-                      Date
+                      Due
                     </th>
                     <th className="app-th-num sm:px-5">
                       Amount
