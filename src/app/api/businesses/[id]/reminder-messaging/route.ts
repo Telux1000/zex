@@ -5,9 +5,30 @@ import type { Json } from '@/lib/database.types';
 import {
   createDefaultReminderMessagingSettings,
   parseReminderMessaging,
+  REMINDER_MESSAGE_PRESETS,
   validateReminderMessaging,
   type ReminderMessagingSettingsV1,
 } from '@/lib/invoices/reminder-messaging';
+
+function validateCustomizeRowsOnSave(raw: ReminderMessagingSettingsV1): { ok: true } | { ok: false; error: string } {
+  for (const preset of REMINDER_MESSAGE_PRESETS) {
+    const row = (raw.presets as Record<string, unknown>)[preset] as Record<string, unknown> | undefined;
+    const customizeSelected =
+      row != null &&
+      ((typeof row.enabled === 'boolean' && row.enabled) ||
+        (typeof row.use_custom_copy === 'boolean' && row.use_custom_copy));
+    if (!customizeSelected) continue;
+    const subject = String(row?.subject_template ?? '').trim();
+    const message = String(row?.message_template ?? '').trim();
+    if (!subject) {
+      return { ok: false, error: `Add a subject for “${preset}” or choose “Use default message”.` };
+    }
+    if (!message) {
+      return { ok: false, error: `Add a message for “${preset}” or choose “Use default message”.` };
+    }
+  }
+  return { ok: true };
+}
 
 export async function GET(
   _req: Request,
@@ -51,6 +72,10 @@ export async function PUT(
   const next = body?.messaging as ReminderMessagingSettingsV1;
   if (!next || next.version !== 1 || !next.presets) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
+  const strict = validateCustomizeRowsOnSave(next);
+  if (!strict.ok) {
+    return NextResponse.json({ error: strict.error }, { status: 400 });
   }
   const v = validateReminderMessaging(next);
   if (!v.ok) {

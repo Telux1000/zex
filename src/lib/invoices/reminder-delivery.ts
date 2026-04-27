@@ -36,6 +36,11 @@ export type DeliverReminderOffsetContext = {
   allEntries: ReminderTimingEntry[];
 };
 
+function reminderDebugLog(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.log('[reminder-debug]', payload);
+}
+
 function resolveMessagePreset(
   kind: ReminderDeliveryKind,
   now: Date,
@@ -180,12 +185,15 @@ export async function deliverInvoicePaymentReminder(
     });
     if (insErr) {
       if (isPostgresUniqueViolation(insErr)) {
-        console.log('[reminder-send-debug] dedupe-skip', {
+        reminderDebugLog({
           invoice_id: opts.invoiceId,
           reminder_type: preset,
-          dedupe_key: effectiveDedupeKey,
-          kind: logKind,
-          already_sent: true,
+          use_custom_copy: null,
+          has_subject: null,
+          has_message: null,
+          scheduled_send_at: null,
+          decision: 'skip',
+          reason: 'already_sent',
         });
         return { ok: true, skipped: true };
       }
@@ -361,13 +369,17 @@ export async function deliverInvoicePaymentReminder(
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to send reminder';
-    console.error('[reminder-send-debug] pipeline-error', {
+    reminderDebugLog({
       invoice_id: opts.invoiceId,
       reminder_type: preset,
-      dedupe_key: effectiveDedupeKey,
-      kind: logKind,
-      error: msg,
+      use_custom_copy: null,
+      has_subject: null,
+      has_message: null,
+      scheduled_send_at: null,
+      decision: 'skip',
+      reason: msg,
     });
+    console.error('[reminder] pipeline-error', { invoice_id: opts.invoiceId, reminder_type: preset, kind: logKind, error: msg });
     return { ok: false, error: msg };
   } finally {
     if (!sendSucceeded) {

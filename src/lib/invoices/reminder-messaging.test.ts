@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReminderTimingEntry } from '@/lib/invoices/reminder-settings';
 import {
   assertNonEmptyReminderOutput,
+  buildPostmarkPaymentReminderTemplateModel,
   buildReminderRenderVariables,
   classifyPresetFromDateOffset,
   classifyPresetFromOffsetMatch,
@@ -172,5 +173,61 @@ describe('reminder-messaging', () => {
     const r = renderReminderSubjectAndMessage(s, 'before_due', vars);
     expect(r.subject).toBeTruthy();
     expect(r.messagePlain).toBeTruthy();
+  });
+
+  it('falls back to professional defaults when customize mode is incomplete', () => {
+    const vars = buildReminderRenderVariables({
+      customerName: 'A',
+      businessName: 'B',
+      invoiceNumber: 'INV-9',
+      amount: 99,
+      currency: 'USD',
+      dueDateIso: '2026-01-01',
+      paymentUrl: 'https://pay.example.com/x',
+      supportEmail: 'help@example.com',
+    });
+    const s = createDefaultReminderMessagingSettings();
+    s.presets.overdue.enabled = true;
+    s.presets.overdue.subject_template = '';
+    s.presets.overdue.message_template = 'Custom {{invoice_number}}';
+    const out = buildPostmarkPaymentReminderTemplateModel({
+      st: s,
+      preset: 'overdue',
+      vars,
+      hasPaymentUrl: true,
+      rawAmount: 99,
+      currencyCode: 'USD',
+    });
+    expect(out.subject).toContain('Reminder');
+    expect(out.messagePlain).toContain('invoice INV-9');
+  });
+
+  it('builds payment reminder template model with required keys', () => {
+    const vars = buildReminderRenderVariables({
+      customerName: 'A',
+      businessName: 'B',
+      invoiceNumber: 'INV-22',
+      amount: 120,
+      currency: 'USD',
+      dueDateIso: '2026-02-10',
+      paymentUrl: 'https://pay.example.com/inv-22',
+      supportEmail: 'billing@example.com',
+    });
+    const model = buildPostmarkPaymentReminderTemplateModel({
+      st: createDefaultReminderMessagingSettings(),
+      preset: 'before_due',
+      vars,
+      hasPaymentUrl: true,
+      rawAmount: 120,
+      currencyCode: 'USD',
+    }).templateModel as Record<string, unknown>;
+    expect(typeof model.subject).toBe('string');
+    expect(typeof model.reminder_message).toBe('string');
+    expect(typeof model.customer_name).toBe('string');
+    expect(typeof model.invoice_number).toBe('string');
+    expect(typeof model.amount_due).toBe('string');
+    expect(typeof model.due_date).toBe('string');
+    expect(typeof model.payment_link).toBe('string');
+    expect(typeof model.business_name).toBe('string');
   });
 });

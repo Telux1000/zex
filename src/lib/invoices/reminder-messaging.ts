@@ -407,12 +407,23 @@ function getEffectiveRow(
   preset: ReminderMessagePreset
 ): { subject: string; message: string; tone: ReminderTone } {
   const row = st.presets[preset];
+  const professionalDefault = DEFAULT_COPY['professional'][preset];
   if (row?.enabled) {
     const t = (REMINDER_TONES as readonly string[]).includes(String(row.tone)) ? row.tone : 'professional';
+    const customSubject = String(row.subject_template ?? '').trim();
+    const customMessage = String(row.message_template ?? '').trim();
+    if (customSubject && customMessage) {
+      return {
+        subject: row.subject_template,
+        message: row.message_template,
+        tone: t,
+      };
+    }
+    // Customize mode must never block reminder sends; fall back to professional defaults.
     return {
-      subject: row.subject_template,
-      message: row.message_template,
-      tone: t,
+      subject: professionalDefault.subject,
+      message: professionalDefault.message,
+      tone: 'professional',
     };
   }
   const tone: ReminderTone = row?.tone && (REMINDER_TONES as readonly string[]).includes(String(row.tone)) ? row.tone : 'professional';

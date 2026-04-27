@@ -32,6 +32,20 @@ type InvoiceRow = {
   businesses: { reminder_messaging: unknown } | null;
 };
 
+function reminderDebugLog(payload: {
+  invoice_id: string;
+  reminder_type: string | null;
+  use_custom_copy: boolean | null;
+  has_subject: boolean | null;
+  has_message: boolean | null;
+  scheduled_send_at: string | null;
+  decision: 'send' | 'skip';
+  reason?: string;
+}) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.log('[reminder-debug]', payload);
+}
+
 export type ProcessInvoiceRemindersOpts = {
   /** When set, only invoices for this business are scanned (for user-driven drains). */
   businessId?: string;
@@ -67,7 +81,6 @@ export async function processInvoiceReminders(
 
   for (const raw of rows ?? []) {
     const inv = raw as unknown as InvoiceRow & { customer_email?: string | null };
-    const nowIso = now.toISOString();
     if (
       !canManageAutoReminders({
         status: inv.status,
@@ -103,20 +116,14 @@ export async function processInvoiceReminders(
             ? 'overdue'
             : classifyPresetFromDateOffset(scheduledOffset, effective.reminderTiming);
         const preset = messaging.presets[reminderType];
-        console.log('[reminder-send-debug] eligibility', {
+        reminderDebugLog({
           invoice_id: inv.id,
           reminder_type: reminderType,
-          due_date: inv.due_date,
-          scheduled_send_at: scheduledIso,
-          now: nowIso,
-          enabled: true,
           use_custom_copy: preset.enabled,
-          has_custom_subject: String(preset.subject_template ?? '').trim().length > 0,
-          has_custom_message: String(preset.message_template ?? '').trim().length > 0,
-          already_sent: false,
-          idempotency_result: 'pending',
-          final_decision: 'send',
-          source: 'scheduled',
+          has_subject: String(preset.subject_template ?? '').trim().length > 0,
+          has_message: String(preset.message_template ?? '').trim().length > 0,
+          scheduled_send_at: scheduledIso,
+          decision: 'send',
         });
         const dk = `scheduled:${scheduledIso.slice(0, 16)}`;
         const r = await deliverInvoicePaymentReminder(supabase, {
@@ -130,34 +137,39 @@ export async function processInvoiceReminders(
           const base = (invParsed as Record<string, unknown> | null) ?? {};
           const nextSettings = { ...base, scheduledReminderAt: null };
           await supabase.from('invoices').update({ reminder_settings: nextSettings }).eq('id', inv.id);
-          console.log('[reminder-send-debug] decision-result', {
+          reminderDebugLog({
             invoice_id: inv.id,
             reminder_type: reminderType,
-            already_sent: false,
-            idempotency_result: 'inserted',
-            final_decision: 'sent',
-            source: 'scheduled',
+            use_custom_copy: preset.enabled,
+            has_subject: String(preset.subject_template ?? '').trim().length > 0,
+            has_message: String(preset.message_template ?? '').trim().length > 0,
+            scheduled_send_at: scheduledIso,
+            decision: 'send',
+            reason: 'delivered',
           });
         } else if (r.skipped) {
           skipped += 1;
-          console.log('[reminder-send-debug] decision-result', {
+          reminderDebugLog({
             invoice_id: inv.id,
             reminder_type: reminderType,
-            already_sent: true,
-            idempotency_result: 'duplicate_or_skipped',
-            final_decision: 'skip',
-            source: 'scheduled',
+            use_custom_copy: preset.enabled,
+            has_subject: String(preset.subject_template ?? '').trim().length > 0,
+            has_message: String(preset.message_template ?? '').trim().length > 0,
+            scheduled_send_at: scheduledIso,
+            decision: 'skip',
+            reason: 'already_sent',
           });
         } else if (!r.ok) {
           skipped += 1;
-          console.log('[reminder-send-debug] decision-result', {
+          reminderDebugLog({
             invoice_id: inv.id,
             reminder_type: reminderType,
-            already_sent: false,
-            idempotency_result: 'failed',
-            final_decision: 'skip',
-            source: 'scheduled',
-            error: r.error ?? 'unknown',
+            use_custom_copy: preset.enabled,
+            has_subject: String(preset.subject_template ?? '').trim().length > 0,
+            has_message: String(preset.message_template ?? '').trim().length > 0,
+            scheduled_send_at: scheduledIso,
+            decision: 'skip',
+            reason: r.error ?? 'delivery_failed',
           });
         }
         continue;
@@ -166,20 +178,15 @@ export async function processInvoiceReminders(
 
     if (!effective.automaticReminders) {
       skipped += 1;
-      console.log('[reminder-send-debug] eligibility', {
+      reminderDebugLog({
         invoice_id: inv.id,
         reminder_type: null,
-        due_date: inv.due_date,
-        scheduled_send_at: scheduledIso ?? null,
-        now: nowIso,
-        enabled: false,
         use_custom_copy: null,
-        has_custom_subject: null,
-        has_custom_message: null,
-        already_sent: false,
-        idempotency_result: 'not_applicable',
-        final_decision: 'skip',
-        source: 'offset',
+        has_subject: null,
+        has_message: null,
+        scheduled_send_at: scheduledIso ?? null,
+        decision: 'skip',
+        reason: 'automatic_reminders_disabled',
       });
       continue;
     }
@@ -187,20 +194,15 @@ export async function processInvoiceReminders(
     const offset = calendarOffsetFromDue(inv.due_date, now);
     if (offset == null) {
       skipped += 1;
-      console.log('[reminder-send-debug] eligibility', {
+      reminderDebugLog({
         invoice_id: inv.id,
         reminder_type: null,
-        due_date: inv.due_date,
-        scheduled_send_at: scheduledIso ?? null,
-        now: nowIso,
-        enabled: true,
         use_custom_copy: null,
-        has_custom_subject: null,
-        has_custom_message: null,
-        already_sent: false,
-        idempotency_result: 'not_applicable',
-        final_decision: 'skip',
-        source: 'offset',
+        has_subject: null,
+        has_message: null,
+        scheduled_send_at: scheduledIso ?? null,
+        decision: 'skip',
+        reason: 'invalid_due_date',
       });
       continue;
     }
@@ -210,20 +212,14 @@ export async function processInvoiceReminders(
       if (!offsetMatchesTiming(offset, entry)) continue;
       const reminderType = classifyPresetFromOffsetMatch(offset, entry, effective.reminderTiming);
       const preset = messaging.presets[reminderType];
-      console.log('[reminder-send-debug] eligibility', {
+      reminderDebugLog({
         invoice_id: inv.id,
         reminder_type: reminderType,
-        due_date: inv.due_date,
-        scheduled_send_at: scheduledIso ?? null,
-        now: nowIso,
-        enabled: true,
         use_custom_copy: preset.enabled,
-        has_custom_subject: String(preset.subject_template ?? '').trim().length > 0,
-        has_custom_message: String(preset.message_template ?? '').trim().length > 0,
-        already_sent: false,
-        idempotency_result: 'pending',
-        final_decision: 'send',
-        source: 'offset',
+        has_subject: String(preset.subject_template ?? '').trim().length > 0,
+        has_message: String(preset.message_template ?? '').trim().length > 0,
+        scheduled_send_at: scheduledIso ?? null,
+        decision: 'send',
       });
       const dk = `offset:${dateKey}:${entry.relativeTo}:${entry.days}`;
       const r = await deliverInvoicePaymentReminder(supabase, {
@@ -239,24 +235,27 @@ export async function processInvoiceReminders(
       });
       if (r.ok && !r.skipped) {
         sent += 1;
-        console.log('[reminder-send-debug] decision-result', {
+        reminderDebugLog({
           invoice_id: inv.id,
           reminder_type: reminderType,
-          already_sent: false,
-          idempotency_result: 'inserted',
-          final_decision: 'sent',
-          source: 'offset',
+          use_custom_copy: preset.enabled,
+          has_subject: String(preset.subject_template ?? '').trim().length > 0,
+          has_message: String(preset.message_template ?? '').trim().length > 0,
+          scheduled_send_at: scheduledIso ?? null,
+          decision: 'send',
+          reason: 'delivered',
         });
       } else {
         skipped += 1;
-        console.log('[reminder-send-debug] decision-result', {
+        reminderDebugLog({
           invoice_id: inv.id,
           reminder_type: reminderType,
-          already_sent: Boolean(r.skipped),
-          idempotency_result: r.skipped ? 'duplicate_or_skipped' : 'failed',
-          final_decision: 'skip',
-          source: 'offset',
-          ...(r.ok ? {} : { error: r.error ?? 'unknown' }),
+          use_custom_copy: preset.enabled,
+          has_subject: String(preset.subject_template ?? '').trim().length > 0,
+          has_message: String(preset.message_template ?? '').trim().length > 0,
+          scheduled_send_at: scheduledIso ?? null,
+          decision: 'skip',
+          reason: r.skipped ? 'already_sent' : (r.error ?? 'delivery_failed'),
         });
       }
     }
