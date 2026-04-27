@@ -420,12 +420,14 @@ export function InvoiceDetailClient({
               businessId={businessId}
               invoiceId={invoiceId}
               invoiceNumber={invoiceNumber}
+              customerEmail={invoice.customer_email ?? null}
               status={effectiveStatus}
               showRefundAction={effectiveShowRefund}
               amountPaid={Number(amountPaid ?? 0)}
               customerMissing={customerMissing}
               dueDate={dueDate}
               invoiceTotal={Number(invoice.total ?? 0)}
+              invoiceCurrency={invoice.currency ?? savedBusiness.currency ?? null}
               invoiceBalanceDue={
                 invoice.balance_due != null
                   ? Number(invoice.balance_due)

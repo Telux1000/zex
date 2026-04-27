@@ -39,6 +39,7 @@ type Props = {
   businessId: string;
   invoiceId: string;
   invoiceNumber: string;
+  customerEmail?: string | null;
   status: string;
   /** Server: show Refund when captured payments exist and refundable remainder > 0. */
   showRefundAction: boolean;
@@ -46,6 +47,7 @@ type Props = {
   customerMissing?: boolean;
   dueDate: string;
   invoiceTotal: number;
+  invoiceCurrency?: string | null;
   invoiceBalanceDue: number;
   invoiceAmountPaid: number;
   autoRemindersInitial: AutoRemindersInitialPayload;
@@ -61,12 +63,14 @@ export function InvoicePreviewActions({
   businessId,
   invoiceId,
   invoiceNumber,
+  customerEmail = null,
   status,
   showRefundAction,
   amountPaid = 0,
   customerMissing = false,
   dueDate,
   invoiceTotal,
+  invoiceCurrency = null,
   invoiceBalanceDue,
   invoiceAmountPaid,
   autoRemindersInitial,
@@ -89,6 +93,13 @@ export function InvoicePreviewActions({
   const [autoRemindersOpen, setAutoRemindersOpen] = useState(false);
   const [scheduleSendOpen, setScheduleSendOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [sendConfirmMode, setSendConfirmMode] = useState<'send' | 'resend'>('send');
+  const sendConfirmRef = useRef<HTMLDivElement>(null);
+  const sendConfirmOpenRef = useRef(false);
+  const lastSendEmailKey = `invoice:last-sent-email:${invoiceId}`;
+  const normalizedCustomerEmail = String(customerEmail ?? '').trim().toLowerCase();
+  const [lastSentEmail, setLastSentEmail] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [profileReady, setProfileReady] = useState<null | boolean>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -177,6 +188,53 @@ export function InvoicePreviewActions({
     'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-zenzex-500/40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:px-4';
   const primaryBtnClass =
     'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:bg-indigo-500 dark:hover:bg-indigo-400 sm:px-4';
+
+  useEffect(() => {
+    sendConfirmOpenRef.current = sendConfirmOpen;
+  }, [sendConfirmOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = window.localStorage.getItem(lastSendEmailKey);
+      setLastSentEmail(saved && saved.trim() ? saved.trim().toLowerCase() : null);
+    } catch {
+      setLastSentEmail(null);
+    }
+  }, [lastSendEmailKey]);
+
+  useEffect(() => {
+    if (!sendConfirmOpen) return;
+    const root = sendConfirmRef.current;
+    if (!root) return;
+
+    const focusable = root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!sendConfirmOpenRef.current) return;
+      if (event.key === 'Escape' && !sending && !resending) {
+        event.preventDefault();
+        setSendConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || focusable.length === 0) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [sendConfirmOpen, sending, resending]);
 
   useEffect(() => {
     return () => {
@@ -294,6 +352,10 @@ export function InvoicePreviewActions({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed');
       showSuccessToast('Invoice resent');
+      if (typeof window !== 'undefined' && normalizedCustomerEmail) {
+        window.localStorage.setItem(lastSendEmailKey, normalizedCustomerEmail);
+      }
+      setLastSentEmail(normalizedCustomerEmail || null);
       router.refresh();
     } catch (e) {
       showErrorToast(e instanceof Error ? e.message : "Couldn’t resend invoice. Try again");
@@ -364,6 +426,11 @@ export function InvoicePreviewActions({
       }
       if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed');
       showSuccessToast('Invoice sent');
+      setSendConfirmOpen(false);
+      if (typeof window !== 'undefined' && normalizedCustomerEmail) {
+        window.localStorage.setItem(lastSendEmailKey, normalizedCustomerEmail);
+      }
+      setLastSentEmail(normalizedCustomerEmail || null);
       router.refresh();
     } catch (e) {
       if (e instanceof Error && e.message === 'Cancelled') {
@@ -373,6 +440,39 @@ export function InvoicePreviewActions({
       }
     } finally {
       setSending(false);
+    }
+  };
+
+  const shouldConfirmResendForEmailChange =
+    Boolean(lastSentEmail) &&
+    Boolean(normalizedCustomerEmail) &&
+    lastSentEmail !== normalizedCustomerEmail;
+
+  const handleOpenSendConfirm = () => {
+    if (sending) return;
+    setSendConfirmMode('send');
+    setSendConfirmOpen(true);
+  };
+
+  const handleResendClick = () => {
+    if (resending) return;
+    if (shouldConfirmResendForEmailChange) {
+      setSendConfirmMode('resend');
+      setSendConfirmOpen(true);
+      return;
+    }
+    void handleResendInvoice();
+  };
+
+  const formatAmount = () => {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: String(invoiceCurrency || 'USD'),
+        currencyDisplay: 'symbol',
+      }).format(Number(invoiceTotal || 0));
+    } catch {
+      return `${Number(invoiceTotal || 0).toFixed(2)} ${String(invoiceCurrency || 'USD')}`;
     }
   };
 
@@ -438,7 +538,7 @@ export function InvoicePreviewActions({
           {showDraftSendActions ? (
             <button
               type="button"
-              onClick={() => void handleSend()}
+              onClick={handleOpenSendConfirm}
               disabled={sending || profileReady === false || customerMissing}
               aria-label={sending ? 'Sending invoice now' : 'Send invoice now'}
               className={cn(
@@ -458,7 +558,7 @@ export function InvoicePreviewActions({
           {showResendAndReminder ? (
             <button
               type="button"
-              onClick={() => void handleResendInvoice()}
+              onClick={handleResendClick}
               disabled={resending || profileReady === false || customerMissing}
               aria-label={resending ? 'Resending invoice' : 'Resend invoice'}
               className={cn(
@@ -721,6 +821,89 @@ export function InvoicePreviewActions({
           </div>
         </div>
       )}
+      {sendConfirmOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/40"
+                aria-label="Close send confirmation"
+                onClick={() => {
+                  if (sending || resending) return;
+                  setSendConfirmOpen(false);
+                }}
+              />
+              <div
+                ref={sendConfirmRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="send-confirm-title"
+                aria-describedby="send-confirm-description"
+                className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+              >
+                <h3 id="send-confirm-title" className="text-base font-semibold text-slate-900 dark:text-white">
+                  {sendConfirmMode === 'resend' ? 'Resend invoice?' : 'Send invoice now?'}
+                </h3>
+                <p
+                  id="send-confirm-description"
+                  className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+                >
+                  Confirm these details before sending.
+                </p>
+                <dl className="mt-3 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/70">
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-slate-500 dark:text-slate-400">Customer email</dt>
+                    <dd className="text-right font-medium text-slate-900 dark:text-slate-100">
+                      {customerEmail && String(customerEmail).trim() ? customerEmail : 'No email'}
+                    </dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-slate-500 dark:text-slate-400">Invoice number</dt>
+                    <dd className="text-right font-medium text-slate-900 dark:text-slate-100">{invoiceNumber}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-slate-500 dark:text-slate-400">Amount</dt>
+                    <dd className="text-right font-medium text-slate-900 dark:text-slate-100">{formatAmount()}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-slate-500 dark:text-slate-400">Due date</dt>
+                    <dd className="text-right font-medium text-slate-900 dark:text-slate-100">
+                      {formatDisplayDate(dueDate)}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSendConfirmOpen(false)}
+                    disabled={sending || resending}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sendConfirmMode === 'resend') {
+                        void handleResendInvoice();
+                        return;
+                      }
+                      void handleSend();
+                    }}
+                    disabled={sending || resending}
+                    aria-label={sendConfirmMode === 'resend' ? 'Resend invoice' : 'Send invoice'}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {sendConfirmMode === 'resend'
+                      ? (resending ? 'Sending…' : 'Resend invoice')
+                      : (sending ? 'Sending…' : 'Send invoice')}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       <RefundPaymentModal
         open={refundOpen}
         invoiceId={invoiceId}
