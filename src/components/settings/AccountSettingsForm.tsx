@@ -12,7 +12,16 @@ const readOnlyClass =
 
 const FULL_NAME_REQUIRED = 'Full name is required';
 
+/** Server-provided row for Settings — skips client `/api/profile` round-trip on first paint. */
+export type SettingsProfileCardInitial = {
+  full_name: string | null;
+  email: string | null;
+  workspace_role: string | null;
+};
+
 type Props = {
+  /** When set (e.g. from RSC), the profile card renders immediately without waiting on `/api/profile`. */
+  profileCardInitial?: SettingsProfileCardInitial | null;
   onSuccess: () => void;
   onClearSuccess: () => void;
   /** When set, external buttons can submit via <button type="submit" form={formId} /> */
@@ -34,6 +43,7 @@ const cardClass =
   'rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900';
 
 export function AccountSettingsForm({
+  profileCardInitial = null,
   onSuccess,
   onClearSuccess,
   formId,
@@ -44,15 +54,16 @@ export function AccountSettingsForm({
   onValidatedSubmitStart,
   onCanSubmitChange,
 }: Props) {
-  const [fullName, setFullName] = useState('');
+  const [fullName, setFullName] = useState(() => profileCardInitial?.full_name ?? '');
   const [fullNameError, setFullNameError] = useState<string | null>(null);
-  const [loginEmail, setLoginEmail] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loginEmail, setLoginEmail] = useState<string | null>(() => profileCardInitial?.email ?? null);
+  const [role, setRole] = useState<string | null>(() => profileCardInitial?.workspace_role ?? null);
+  const [loading, setLoading] = useState(() => !profileCardInitial);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (profileCardInitial) return;
     let cancelled = false;
     (async () => {
       setLoadError(null);
@@ -81,7 +92,7 @@ export function AccountSettingsForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [profileCardInitial]);
 
   useEffect(() => {
     if (!focusFullNameOnMount || loading) return;

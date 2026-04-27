@@ -1,11 +1,31 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { canEdit, isLocked } from '@/lib/invoices/edit-rules';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
-import { Download, Pencil, Printer, Send, EllipsisVertical, Mail, Wallet, Repeat, Bell, Calendar } from 'lucide-react';
+import {
+  Copy,
+  Download,
+  Loader2,
+  Pencil,
+  Printer,
+  Send,
+  EllipsisVertical,
+  Mail,
+  Wallet,
+  Repeat,
+  Bell,
+  Calendar,
+  Ban,
+} from 'lucide-react';
+import {
+  logInvoiceDownloadComplete,
+  logInvoiceDownloadError,
+  logInvoiceDownloadStep,
+} from '@/lib/dev/invoice-download-perf';
 import { RecurringInvoiceModal } from '@/components/invoices/RecurringInvoiceModal';
 import { AutoRemindersModal } from '@/components/invoices/AutoRemindersModal';
 import { ScheduleSendModal } from '@/components/invoices/ScheduleSendModal';
@@ -13,6 +33,7 @@ import { formatDisplayDate } from '@/lib/utils/date';
 import { canManageAutoReminders } from '@/lib/invoices/auto-reminders-eligibility';
 import type { AutoRemindersInitialPayload } from '@/lib/invoices/auto-reminders-eligibility';
 import { RefundPaymentModal } from '@/components/invoices/RefundPaymentModal';
+import { cn } from '@/lib/utils/cn';
 
 type Props = {
   businessId: string;
@@ -33,6 +54,7 @@ type Props = {
   /** Business account IANA timezone (server source of truth for schedule send). */
   accountTimezone: string;
   onScheduleSendSaved?: () => void;
+  className?: string;
 };
 
 export function InvoicePreviewActions({
@@ -52,6 +74,7 @@ export function InvoicePreviewActions({
   scheduledSendAtIso = null,
   accountTimezone,
   onScheduleSendSaved,
+  className,
 }: Props) {
   const router = useRouter();
   const { showErrorToast, showSuccessToast } = useToasts();
@@ -68,6 +91,12 @@ export function InvoicePreviewActions({
   const [refundOpen, setRefundOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [profileReady, setProfileReady] = useState<null | boolean>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  /** `preparing` is the only active stage; kept for an explicit "stage" for analytics / future use. */
+  const [downloadStage, setDownloadStage] = useState<'idle' | 'preparing'>('idle');
+  const [downloadOverlay, setDownloadOverlay] = useState(false);
+  const downloadInFlightRef = useRef(false);
+  const downloadOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -149,26 +178,78 @@ export function InvoicePreviewActions({
   const primaryBtnClass =
     'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:bg-indigo-500 dark:hover:bg-indigo-400 sm:px-4';
 
+  useEffect(() => {
+    return () => {
+      if (downloadOverlayTimerRef.current) {
+        clearTimeout(downloadOverlayTimerRef.current);
+        downloadOverlayTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearDownloadOverlayTimer = () => {
+    if (downloadOverlayTimerRef.current) {
+      clearTimeout(downloadOverlayTimerRef.current);
+      downloadOverlayTimerRef.current = null;
+    }
+  };
+
   const handleDownload = async () => {
     if (profileReady === false) {
       showErrorToast('Complete your business profile before sending or downloading invoices.');
+      logInvoiceDownloadError('profile', 0, 'blocked');
       return;
     }
-    try {
-      const res = await fetch(`/api/invoices/${invoiceId}/pdf`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string })?.error ?? 'Couldn’t download PDF');
+    if (downloadInFlightRef.current) return;
+    const t0 = performance.now();
+    logInvoiceDownloadStep('click_received', 0);
+    downloadInFlightRef.current = true;
+
+    flushSync(() => {
+      setIsDownloading(true);
+      setDownloadStage('preparing');
+      setDownloadOverlay(false);
+    });
+    clearDownloadOverlayTimer();
+    downloadOverlayTimerRef.current = setTimeout(() => {
+      if (downloadInFlightRef.current) {
+        setDownloadOverlay(true);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${invoiceNumber}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      showErrorToast(e instanceof Error ? e.message : 'Couldn’t download PDF');
+    }, 400);
+    logInvoiceDownloadStep('loading_state_set', performance.now() - t0);
+
+    await new Promise<void>((r) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => r());
+      });
+    });
+    logInvoiceDownloadStep('first_paint_yield_done', performance.now() - t0);
+    try {
+      logInvoiceDownloadStep('heavy_work_started', performance.now() - t0);
+      const { runSavedInvoicePdfDownload } = await import('@/lib/invoices/invoice-pdf-download-client');
+      const timings = await runSavedInvoicePdfDownload({
+        invoiceId,
+        downloadFileName: `invoice-${invoiceNumber}.pdf`,
+      });
+      const tEnd = performance.now();
+      const total = tEnd - t0;
+      logInvoiceDownloadStep('download_complete', total);
+      logInvoiceDownloadComplete({
+        fetch_settled_ms: timings.fetch_settled_ms,
+        blob_read_ms: timings.blob_read_ms,
+        file_handoff_ms: timings.file_handoff_ms,
+        total_download_ms: total,
+      });
+      showSuccessToast('Download ready');
+    } catch {
+      logInvoiceDownloadError('fetch', performance.now() - t0, 'failed');
+      showErrorToast('Could not download invoice. Please try again.');
+    } finally {
+      clearDownloadOverlayTimer();
+      setDownloadOverlay(false);
+      setIsDownloading(false);
+      setDownloadStage('idle');
+      downloadInFlightRef.current = false;
     }
   };
 
@@ -214,8 +295,8 @@ export function InvoicePreviewActions({
       if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed');
       showSuccessToast('Invoice resent');
       router.refresh();
-    } catch {
-      showErrorToast("Couldn’t resend invoice. Try again");
+    } catch (e) {
+      showErrorToast(e instanceof Error ? e.message : "Couldn’t resend invoice. Try again");
     } finally {
       setResending(false);
     }
@@ -297,7 +378,27 @@ export function InvoicePreviewActions({
 
   return (
     <>
-      <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:gap-3">
+      {typeof document !== 'undefined' && downloadOverlay
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/25 p-4 dark:bg-slate-950/40"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div className="max-w-sm rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-800 shadow-lg dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                Preparing invoice download…
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      <div
+        className={cn(
+          'flex w-full min-w-0 max-sm:w-auto max-sm:shrink-0 items-center justify-end gap-2 sm:gap-3',
+          className,
+        )}
+      >
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto sm:gap-3">
           {showSecondaryEdit ? (
             <Link
@@ -310,21 +411,13 @@ export function InvoicePreviewActions({
           ) : null}
           <button
             type="button"
-            onClick={() => void handleDownload()}
-            aria-label="Download invoice"
-            className={secondaryBtnClass}
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Download</span>
-          </button>
-          <button
-            type="button"
             onClick={handlePrint}
             aria-label="Print invoice"
             className={secondaryBtnClass}
           >
             <Printer className="h-4 w-4" aria-hidden="true" />
             <span className="hidden sm:inline">Print</span>
+            <span className="sm:hidden">Print</span>
           </button>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -341,6 +434,46 @@ export function InvoicePreviewActions({
               <span className="hidden sm:inline">Manage payment</span>
               <span className="sm:hidden">Pay</span>
             </Link>
+          ) : null}
+          {showDraftSendActions ? (
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={sending || profileReady === false || customerMissing}
+              aria-label={sending ? 'Sending invoice now' : 'Send invoice now'}
+              className={cn(
+                primaryBtnClass,
+                (sending || profileReady === false || customerMissing) && 'opacity-60',
+              )}
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              <span className="hidden sm:inline">{sending ? 'Sending…' : 'Send now'}</span>
+              <span className="sm:hidden">{sending ? 'Sending…' : 'Send'}</span>
+            </button>
+          ) : null}
+          {showResendAndReminder ? (
+            <button
+              type="button"
+              onClick={() => void handleResendInvoice()}
+              disabled={resending || profileReady === false || customerMissing}
+              aria-label={resending ? 'Resending invoice' : 'Resend invoice'}
+              className={cn(
+                primaryBtnClass,
+                (resending || profileReady === false || customerMissing) && 'opacity-60',
+              )}
+            >
+              {resending ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              <span className="hidden sm:inline">{resending ? 'Resending…' : 'Resend invoice'}</span>
+              <span className="sm:hidden">{resending ? 'Resending…' : 'Resend'}</span>
+            </button>
           ) : null}
           <div className="relative shrink-0" ref={menuRef}>
             <button
@@ -370,8 +503,9 @@ export function InvoicePreviewActions({
                   <Link
                     href={`/dashboard/invoices/${invoiceId}/manage-payment`}
                     onClick={() => setOpen(false)}
-                    className="block px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
+                    className="flex items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
                   >
+                    <Wallet className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                     Manage payment
                   </Link>
                 ) : null}
@@ -391,18 +525,6 @@ export function InvoicePreviewActions({
                   <>
                     <button
                       type="button"
-                      disabled={sending || profileReady === false || customerMissing}
-                      onClick={() => {
-                        void handleSend();
-                        setOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] disabled:opacity-50 dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
-                    >
-                      <Send className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-                      {sending ? 'Sending…' : 'Send now'}
-                    </button>
-                    <button
-                      type="button"
                       disabled={profileReady === false || customerMissing}
                       onClick={() => {
                         setScheduleSendOpen(true);
@@ -417,18 +539,6 @@ export function InvoicePreviewActions({
                 ) : null}
                 {showResendAndReminder ? (
                   <>
-                    <button
-                      type="button"
-                      disabled={resending || profileReady === false || customerMissing}
-                      onClick={() => {
-                        void handleResendInvoice();
-                        setOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] disabled:opacity-50 dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
-                    >
-                      <Send className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-                      {resending ? 'Resending…' : 'Resend invoice'}
-                    </button>
                     <button
                       type="button"
                       disabled={reminderSending || profileReady === false || customerMissing}
@@ -463,8 +573,9 @@ export function InvoicePreviewActions({
                       setVoidModalOpen(true);
                       setOpen(false);
                     }}
-                    className="block w-full px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
                   >
+                    <Ban className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                     Void invoice
                   </button>
                 ) : null}
@@ -474,8 +585,9 @@ export function InvoicePreviewActions({
                     void handleDuplicate();
                     setOpen(false);
                   }}
-                  className="block w-full px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
                 >
+                  <Copy className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
                   Duplicate invoice
                 </button>
                 {normalizedStatus !== 'voided' ? (
@@ -491,6 +603,25 @@ export function InvoicePreviewActions({
                     Create recurring invoice
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleDownload();
+                    setOpen(false);
+                  }}
+                  data-download-stage={isDownloading ? downloadStage : 'idle'}
+                  disabled={isDownloading || profileReady === false}
+                  aria-label={isDownloading ? 'Preparing invoice download' : 'Download invoice'}
+                  aria-busy={isDownloading}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-indigo-500/[0.06] disabled:opacity-50 dark:text-slate-200 dark:hover:bg-indigo-500/[0.1]"
+                >
+                  {isDownloading ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" aria-hidden="true" />
+                  ) : (
+                    <Download className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
+                  )}
+                  {isDownloading ? 'Preparing…' : 'Download'}
+                </button>
               </div>
             ) : null}
           </div>

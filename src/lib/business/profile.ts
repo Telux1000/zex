@@ -18,7 +18,7 @@ export {
   BUSINESS_PROFILE_FIELD_ORDER,
 } from '@/lib/business/business-profile-validation';
 
-type BusinessLike = Pick<
+export type BusinessLike = Pick<
   Business,
   'name' | 'address_line1' | 'city' | 'state' | 'country' | 'email' | 'phone'
 >;

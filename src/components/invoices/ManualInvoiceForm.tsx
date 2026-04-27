@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
@@ -24,18 +25,35 @@ import {
   recalculateInvoiceForCurrency,
 } from '@/lib/invoices/currency-edit';
 import { ItemNameInput } from '@/components/items/ItemNameInput';
-import { persistSavedLineItemsFromSave } from '@/lib/items/saved-line-items-store';
+import { applySavedLineItemToInvoiceRow } from '@/components/items/apply-saved-line-item';
 import { SearchableCustomerSelect } from '@/components/customers/SearchableCustomerSelect';
 import CustomerFormModal from '@/components/customers/CustomerFormModal';
 import { CustomerRequiredModal } from '@/components/customers/CustomerRequiredModal';
+import { formatCountryDisplayName } from '@/lib/addresses/country-display';
 import { cn } from '@/lib/utils/cn';
 import { getBusinessBaseCurrency, resolveInvoiceTransactionCurrency } from '@/lib/business/currency-policy';
 import { CalendarDays, Lock, Plus, Trash2 } from 'lucide-react';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
+import { CustomerApplyOverlay } from '@/components/feedback/CustomerApplyOverlay';
+import { SavingOverlay } from '@/components/feedback/SavingOverlay';
 import { useDashboardSetupProgress } from '@/contexts/DashboardAccessContext';
 import { isSetupProgressFullySatisfied } from '@/lib/onboarding/setup-progress';
 import { InvoiceCoreSetupBlockedFromContext } from '@/components/onboarding/InvoiceCoreSetupBlockedFromContext';
 import { InvoiceCustomerSetupPanel } from '@/components/onboarding/InvoiceCustomerSetupPanel';
+import {
+  createClientInvoiceSaveTimer,
+  devClearInvoiceSaveClickTrace,
+  devSetInvoiceSaveClickTrace,
+} from '@/lib/dev/invoice-save-timing';
+import {
+  devLogManualInvoiceOpen,
+  devLogManualInvoiceOpenBillingProfileReady,
+  devManualInvoiceOpenElapsedFromClick,
+  devMarkManualInvoiceFormShellPainted,
+  devMarkManualInvoiceOpenFullyReady,
+  manualInvoiceOpenTimingEnabled,
+} from '@/lib/dev/manual-invoice-open-timing';
+import { takeHubCustomersForManualForm } from '@/lib/invoice-creation/hub-customers-hydration';
 import { InvoiceManualEntrySetup } from '@/components/invoices/InvoiceManualEntrySetup';
 import { BusinessAddressInvoiceSoftPrompt } from '@/components/invoices/BusinessAddressInvoiceSoftPrompt';
 import { isBusinessSenderAddressMissingForInvoices } from '@/lib/business/profile';
@@ -44,13 +62,27 @@ import { useBillingPlan } from '@/hooks/use-billing-plan';
 import { hasPlanFeature } from '@/lib/billing/plans';
 import { UpgradePlanModal } from '@/components/billing/UpgradePlanModal';
 import { mapApiCodeToUpgradeTrigger, type UpgradeTrigger } from '@/lib/billing/upgrade-modal';
-import { formatInvoiceUnitLabelForDisplay, normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
+import { formatQuantityWithUnit, formatRateWithUnit, normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
 import { buildInvoiceTimeSummaryDoc } from '@/lib/invoices/invoice-time-summary';
+import { deriveInvoiceStatus } from '@/lib/invoices/status';
+import type { SavedBusiness, SavedInvoice, SavedInvoiceItem } from '@/types/invoice-preview';
+import {
+  normalizeInvoiceTemplateId,
+  type InvoiceTemplateId,
+} from '@/lib/invoices/invoice-template-ids';
+import { InvoiceRenderer } from '@/components/invoices/InvoiceRenderer';
+import type { InvoiceRendererData } from '@/components/invoices/InvoiceRenderer';
+import { InvoiceTemplatePicker } from '@/components/invoices/InvoiceTemplatePicker';
 import { InvoiceLineUnitField } from '@/components/invoices/InvoiceLineUnitField';
 import {
   MANUAL_INVOICE_FIELD_FOCUS,
   MANUAL_INVOICE_FIELD_FOCUS_ERROR,
 } from '@/components/invoices/manual-invoice-field-classes';
+
+const SavedLineItemsLibraryModal = dynamic(
+  () => import('@/components/saved-line-items/SavedLineItemsLibraryModal').then((m) => m.SavedLineItemsLibraryModal),
+  { ssr: false }
+);
 
 type LineItem = {
   name: string;
@@ -163,6 +195,10 @@ export type EditModeInitialData = {
     notes?: string | null;
     terms?: string | null;
     show_time_summary?: boolean;
+    /** Document layout: classic | modern | minimal | bold | elegant. */
+    template_id?: string | null;
+    source_quote_id?: string | null;
+    source_quote_number?: string | null;
     discount_amount?: number;
     /** Line-level tax % (invoice header); loaded from server row. */
     tax_percent?: number | null;
@@ -210,6 +246,7 @@ export type EditModeInitialData = {
     id: string;
     name: string;
     currency: string;
+    logo_url?: string | null;
     address_line1?: string | null;
     address_line2?: string | null;
     city?: string | null;
@@ -226,7 +263,7 @@ type ManualInvoiceFormProps = {
   initialCustomerId?: string;
   invoiceId?: string;
   initialData?: EditModeInitialData;
-  onSaved?: (payload: { invoiceId: string; data?: unknown }) => void;
+  onSaved?: (payload: { invoiceId: string; data?: unknown }) => void | Promise<void>;
   mode?: 'create' | 'edit';
   editInvoiceNumber?: string | null;
   disableSchedulePaymentActions?: boolean;
@@ -250,6 +287,13 @@ type ManualInvoiceFormProps = {
   htmlFormId?: string;
   /** When true with `workspaceEmbed`, hide bottom Back/Save row (parent provides chrome). */
   workspaceMobileSuppressFooter?: boolean;
+  /** Fires whenever submit/save busy state changes (e.g. parent Save button in workspace chrome). */
+  onSubmittingChange?: (submitting: boolean) => void;
+  /**
+   * Mobile workspace tabs: called after the live preview panel is shown and laid out
+   * (Edit → Preview). Drives a delayed “loading” overlay in the parent until paint.
+   */
+  onWorkspaceMobilePreviewPainted?: () => void;
 };
 
 type InvoiceFormHeaderProps = {
@@ -264,25 +308,54 @@ type InvoiceFormHeaderProps = {
 function InvoiceFormHeader({ backHref, backLabel, title, subtitle, mode, status }: InvoiceFormHeaderProps) {
   const normalizedStatus = (status ?? '').trim().toLowerCase();
   const statusLabel = normalizedStatus ? normalizedStatus[0]?.toUpperCase() + normalizedStatus.slice(1) : '';
+  const showCompactMobileEditHeader = mode === 'edit';
 
   return (
     <header className="mb-6 border-b border-slate-200/80 pb-5 dark:border-slate-800/90 sm:mb-7 sm:pb-6">
       <div className="flex flex-col gap-2">
-        <Link
-          href={backHref}
-          className="-mx-1 inline-flex w-fit items-center rounded-lg px-1 py-0.5 text-sm text-slate-500 transition-colors hover:bg-indigo-500/[0.06] hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-300"
-        >
-          ← {backLabel}
-        </Link>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">{title}</h1>
-          {mode === 'edit' && statusLabel ? (
-            <span className="inline-flex h-6 items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {statusLabel}
-            </span>
-          ) : null}
+        {showCompactMobileEditHeader ? (
+          <div className="sm:hidden">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <Link
+                href={backHref}
+                className="-mx-1 inline-flex min-w-0 items-center rounded-lg px-1 py-0.5 text-sm text-slate-500 transition-colors hover:bg-indigo-500/[0.06] hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-300"
+              >
+                ← {backLabel}
+              </Link>
+              {subtitle ? (
+                <p className="shrink-0 text-sm font-semibold text-slate-500 dark:text-slate-400">{subtitle}</p>
+              ) : null}
+            </div>
+            <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
+                {title}
+              </h1>
+              {statusLabel ? (
+                <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {statusLabel}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={showCompactMobileEditHeader ? 'hidden sm:flex sm:flex-col sm:gap-2' : 'flex flex-col gap-2'}>
+          <Link
+            href={backHref}
+            className="-mx-1 inline-flex w-fit items-center rounded-lg px-1 py-0.5 text-sm text-slate-500 transition-colors hover:bg-indigo-500/[0.06] hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-300"
+          >
+            ← {backLabel}
+          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">{title}</h1>
+            {mode === 'edit' && statusLabel ? (
+              <span className="inline-flex h-6 items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {statusLabel}
+              </span>
+            ) : null}
+          </div>
+          {subtitle ? <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p> : null}
         </div>
-        {subtitle ? <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p> : null}
       </div>
     </header>
   );
@@ -587,6 +660,8 @@ export default function ManualInvoiceForm({
   workspaceMobilePanel,
   htmlFormId,
   workspaceMobileSuppressFooter = false,
+  onSubmittingChange,
+  onWorkspaceMobilePreviewPainted,
 }: ManualInvoiceFormProps = {}) {
   const supabase = createClient();
   const setupProgress = useDashboardSetupProgress();
@@ -595,6 +670,7 @@ export default function ManualInvoiceForm({
     id: string;
     name: string;
     currency: string;
+    logo_url: string | null;
     address_line1: string | null;
     address_line2: string | null;
     city: string | null;
@@ -612,7 +688,18 @@ export default function ManualInvoiceForm({
   const workspaceFetchGen = useRef(0);
   /** Increment after inline business setup so workspace data is re-fetched without a full page reload. */
   const [workspaceLoadKey, setWorkspaceLoadKey] = useState(0);
+  /**
+   * `false` until the customer directory fetch settles for flows that use async loading (new manual invoice),
+   * or for embedded edit with `initialData`+`invoiceId` until the customer list is loaded. When true, empty
+   * `customers` means “no customers yet” rather than “still loading”.
+   */
+  const [customerListReady, setCustomerListReady] = useState(() => {
+    const newManualCreate = !initialData && (mode === 'create' || (!invoiceId && mode !== 'edit'));
+    return !(newManualCreate || Boolean(initialData && invoiceId));
+  });
   const [submitting, setSubmitting] = useState(false);
+  /** After a successful save while embedded, show “Opening saved invoice…” during handoff to the saved preview. */
+  const [openingSavedPreview, setOpeningSavedPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [lineItemErrors, setLineItemErrors] = useState<LineItemFieldErrors>({});
@@ -648,13 +735,33 @@ export default function ManualInvoiceForm({
   const customerInvoiceApplyGenRef = useRef(0);
   const [isUpdatingInvoice, setIsUpdatingInvoice] = useState(false);
   const [customerApplyMode, setCustomerApplyMode] = useState<'select' | 'create' | null>(null);
-  const [showCustomerApplyFeedback, setShowCustomerApplyFeedback] = useState(false);
-  // `window.setTimeout` returns a number in the browser; using `number` avoids Node `Timeout` type conflicts.
-  const customerApplyFeedbackTimerRef = useRef<number | null>(null);
   const { showSuccessToast, showErrorToast } = useToasts();
-  const { plan: billingPlan } = useBillingPlan();
+
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+  }, [submitting, onSubmittingChange]);
+  const { plan: billingPlan, loading: billingPlanLoading } = useBillingPlan();
+  const billingLoadStartedAtRef = useRef(
+    manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0
+  );
   const automationUnlocked = hasPlanFeature(billingPlan, 'automation');
+  const isCreateMode = useMemo(
+    () => mode === 'create' || (!invoiceId && mode !== 'edit'),
+    [mode, invoiceId]
+  );
+  const isDeferredCustomerFetch = useMemo(() => !initialData && isCreateMode, [initialData, isCreateMode]);
+  const manualOpenBlockingRef = useRef<{
+    segments: { label: string; blockMs: number; fromClickMs: number }[];
+  }>({ segments: [] });
+  const devManualReadyNotified = useRef(false);
+  const workspaceLoadKeyPrev = useRef<number | null>(null);
   const [upgradeModal, setUpgradeModal] = useState<UpgradeTrigger | null>(null);
+
+  useEffect(() => {
+    if (manualInvoiceOpenTimingEnabled()) {
+      devLogManualInvoiceOpen('manual_invoice_form_component_mount', {});
+    }
+  }, []);
   const router = useRouter();
   const pathname = usePathname();
   const urlSearchParams = useSearchParams();
@@ -737,8 +844,10 @@ export default function ManualInvoiceForm({
   const [notesTermsExpanded, setNotesTermsExpanded] = useState(false);
   const [showTimeSummary, setShowTimeSummary] = useState(false);
   const [referencePo, setReferencePo] = useState('');
+  const [templateId, setTemplateId] = useState<InvoiceTemplateId>('classic');
 
   const [lineItems, setLineItems] = useState<LineItem[]>([{ ...defaultLineItem }]);
+  const [savedLineItemsLibraryOpen, setSavedLineItemsLibraryOpen] = useState(false);
   const [taxPercent, setTaxPercent] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountPercent, setDiscountPercent] = useState(0);
@@ -754,19 +863,59 @@ export default function ManualInvoiceForm({
   const isFxFetchingRef = useRef(false);
   isFxFetchingRef.current = isFxFetching;
 
+  const applyNewInvoiceInitialCustomerPrefill = useCallback((prefill: Customer, defaultCurrency: string) => {
+    setSelectedCustomer(prefill);
+    setCustomerId(prefill.id);
+    const prefCur = (prefill as { preferred_currency_code?: string | null }).preferred_currency_code;
+    setInvoiceCurrency(
+      resolveInvoiceTransactionCurrency({
+        businessBase: defaultCurrency,
+        customerPreferred: prefCur,
+        invoiceCurrencyOverride: null,
+      })
+    );
+    const displayName = (prefill.company ?? '').trim() || (prefill.name ?? '').trim();
+    if (displayName) {
+      setCustomerName(displayName);
+    }
+    if ((prefill.email ?? '').trim()) setCustomerEmail(prefill.email ?? '');
+    if ((prefill.name ?? '').trim()) setContactPerson(prefill.name ?? '');
+    setCustomerCompany('');
+    setBillingAddressLine1((prefill.address_line1 ?? '').trim());
+    setBillingAddressLine2((prefill.address_line2 ?? '').trim());
+    const joinedAddress = [prefill.address_line1, prefill.address_line2].filter(Boolean).join(', ').trim();
+    if (joinedAddress) setBillingAddress(joinedAddress);
+    if ((prefill.city ?? '').trim()) setBillingCity(prefill.city ?? '');
+    if ((prefill.postal_code ?? '').trim()) setBillingPostalCode(prefill.postal_code ?? '');
+    const countryCode = resolveCountryCode(prefill.country ?? '');
+    if (countryCode) {
+      setBillingCountry(countryCode);
+      const nextState = resolveStateCode(countryCode, prefill.state ?? '');
+      if (nextState) setBillingState(nextState);
+    } else if ((prefill.state ?? '').trim()) {
+      setBillingState(prefill.state ?? '');
+    }
+  }, []);
+
   useEffect(() => {
     const gen = ++workspaceFetchGen.current;
     const isCurrent = () => gen === workspaceFetchGen.current;
+    if (manualInvoiceOpenTimingEnabled()) {
+      manualOpenBlockingRef.current = { segments: [] };
+      devLogManualInvoiceOpen('workspace_effect_start');
+    }
 
     (async () => {
       if (initialData && invoiceId) {
         if (!isCurrent()) return;
+        setCustomerListReady(false);
         const { business: biz, invoice: inv, items: invItems } = initialData;
         setBusinessId(biz.id);
         setBusiness({
           id: biz.id,
           name: biz.name,
           currency: biz.currency ?? 'USD',
+          logo_url: (biz as { logo_url?: string | null }).logo_url ?? null,
           address_line1: biz.address_line1 ?? null,
           address_line2: biz.address_line2 ?? null,
           city: biz.city ?? null,
@@ -799,6 +948,9 @@ export default function ManualInvoiceForm({
         setCustomerName(inv.customer_name ?? '');
         setCustomerEmail(inv.customer_email ?? '');
         setReferencePo(inv.reference_po ?? '');
+        setTemplateId(
+          normalizeInvoiceTemplateId((inv as { template_id?: string | null }).template_id)
+        );
         setNotes(inv.notes ?? '');
         setTerms(inv.terms ?? '');
         setShowTimeSummary(!!(inv as { show_time_summary?: boolean }).show_time_summary);
@@ -904,7 +1056,17 @@ export default function ManualInvoiceForm({
               : sortPaymentScheduleRows(defaultScheduleRows.map((r) => ({ ...r, _lastEdited: 'auto' as const })))
           );
         }
+        const tEmbedCust0 = manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
         const { data: cust } = await supabase.from('customers').select('*').eq('business_id', biz.id).order('name');
+        if (manualInvoiceOpenTimingEnabled() && tEmbedCust0) {
+          const blockMs = performance.now() - tEmbedCust0;
+          devLogManualInvoiceOpen('embed_edit_customers_query', { blockMs: Math.round(blockMs * 10) / 10 });
+          manualOpenBlockingRef.current.segments.push({
+            label: 'embed_edit_customers_query',
+            blockMs,
+            fromClickMs: devManualInvoiceOpenElapsedFromClick() ?? 0,
+          });
+        }
         if (!isCurrent()) return;
         setCustomers(cust ?? []);
         const selected = (cust ?? []).find((c) => c.id === (inv.customer_id ?? null));
@@ -913,34 +1075,68 @@ export default function ManualInvoiceForm({
         } else {
           setSelectedCustomer(null);
         }
+        setCustomerListReady(true);
         setWorkspaceLoading(false);
         return;
       }
 
+      if (isDeferredCustomerFetch) {
+        setCustomerListReady(false);
+      }
+      const tAuth0 = manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
       let user = (await supabase.auth.getUser()).data.user;
       if (!user) {
         const { data: sessionData } = await supabase.auth.getSession();
         user = sessionData.session?.user ?? null;
       }
+      if (manualInvoiceOpenTimingEnabled() && tAuth0) {
+        const blockMs = performance.now() - tAuth0;
+        devLogManualInvoiceOpen('auth_session', { blockMs: Math.round(blockMs * 10) / 10 });
+        manualOpenBlockingRef.current.segments.push({
+          label: 'auth_session',
+          blockMs,
+          fromClickMs: devManualInvoiceOpenElapsedFromClick() ?? 0,
+        });
+      }
       if (!isCurrent()) return;
       if (!user) {
         setBusinessId(null);
         setBusiness(null);
         setCustomers([]);
+        setCustomerListReady(true);
         setWorkspaceLoading(false);
+        if (manualInvoiceOpenTimingEnabled()) {
+          devLogManualInvoiceOpen('no_user', {});
+        }
         return;
       }
+      const tBiz0 = manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
       const { data: biz } = await supabase
         .from('businesses')
-        .select('id, name, currency, invoice_settings, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled')
+        .select(
+          'id, name, currency, logo_url, invoice_settings, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled'
+        )
         .eq('owner_id', user.id)
         .maybeSingle();
+      if (manualInvoiceOpenTimingEnabled() && tBiz0) {
+        const blockMs = performance.now() - tBiz0;
+        devLogManualInvoiceOpen('business_query', { blockMs: Math.round(blockMs * 10) / 10 });
+        manualOpenBlockingRef.current.segments.push({
+          label: 'business_query',
+          blockMs,
+          fromClickMs: devManualInvoiceOpenElapsedFromClick() ?? 0,
+        });
+      }
       if (!isCurrent()) return;
       if (!biz) {
         setBusinessId(null);
         setBusiness(null);
         setCustomers([]);
+        setCustomerListReady(true);
         setWorkspaceLoading(false);
+        if (manualInvoiceOpenTimingEnabled()) {
+          devLogManualInvoiceOpen('no_business', {});
+        }
         return;
       }
       setBusinessId(biz.id);
@@ -954,6 +1150,7 @@ export default function ManualInvoiceForm({
         id: biz.id,
         name: biz.name,
         currency: defaultCurrency,
+        logo_url: (biz as { logo_url?: string | null }).logo_url ?? null,
         address_line1: biz.address_line1 ?? null,
         address_line2: biz.address_line2 ?? null,
         city: biz.city ?? null,
@@ -968,56 +1165,109 @@ export default function ManualInvoiceForm({
       setSavedInvoiceStatus('draft');
       setServerExchangeRate(null);
       setLiveExchangeRate(1);
+      if (isDeferredCustomerFetch) {
+        const fromHub = takeHubCustomersForManualForm(biz.id);
+        if (fromHub) {
+          setCustomers(fromHub);
+          if (initialCustomerId) {
+            const p = fromHub.find((c) => c.id === initialCustomerId);
+            if (p) {
+              applyNewInvoiceInitialCustomerPrefill(p, defaultCurrency);
+            }
+          }
+          setCustomerListReady(true);
+          if (manualInvoiceOpenTimingEnabled()) {
+            devLogManualInvoiceOpen('customer_list_from_hub_cache', { rows: fromHub.length });
+          }
+        } else {
+          setCustomerListReady(false);
+        }
+        if (isCurrent()) {
+          setWorkspaceLoading(false);
+          if (manualInvoiceOpenTimingEnabled()) {
+            devLogManualInvoiceOpen('create_shell_unblocked_after_business', {});
+          }
+        }
+        const tCustNet0 = manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
+        const onePromise = initialCustomerId
+          ? supabase
+              .from('customers')
+              .select('*')
+              .eq('business_id', biz.id)
+              .eq('id', initialCustomerId)
+              .maybeSingle()
+          : Promise.resolve({ data: null as Customer | null });
+        const listPromise = supabase.from('customers').select('*').eq('business_id', biz.id).order('name');
+        const [oneRes, listRes] = await Promise.all([onePromise, listPromise]);
+        if (manualInvoiceOpenTimingEnabled() && tCustNet0) {
+          const blockMs = performance.now() - tCustNet0;
+          devLogManualInvoiceOpen('create_customers_parallel_list_query', { blockMs: Math.round(blockMs * 10) / 10 });
+          manualOpenBlockingRef.current.segments.push({
+            label: 'create_customers_parallel',
+            blockMs,
+            fromClickMs: devManualInvoiceOpenElapsedFromClick() ?? 0,
+          });
+        }
+        if (!isCurrent()) return;
+        const listRows = (listRes as { data: Customer[] | null }).data ?? [];
+        setCustomers(listRows);
+        const fromOne = (oneRes as { data: Customer | null }).data;
+        if (fromOne) {
+          applyNewInvoiceInitialCustomerPrefill(fromOne, defaultCurrency);
+        } else if (initialCustomerId && listRows.length > 0) {
+          const prefill = listRows.find((c) => c.id === initialCustomerId);
+          if (prefill) {
+            applyNewInvoiceInitialCustomerPrefill(prefill, defaultCurrency);
+          }
+        }
+        if (isCurrent()) {
+          setCustomerListReady(true);
+        }
+        return;
+      }
+      const tSyncCust0 = manualInvoiceOpenTimingEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
       const { data: cust } = await supabase.from('customers').select('*').eq('business_id', biz.id).order('name');
+      if (manualInvoiceOpenTimingEnabled() && tSyncCust0) {
+        const blockMs = performance.now() - tSyncCust0;
+        devLogManualInvoiceOpen('legacy_customers_query', { blockMs: Math.round(blockMs * 10) / 10 });
+        manualOpenBlockingRef.current.segments.push({
+          label: 'legacy_customers_query',
+          blockMs,
+          fromClickMs: devManualInvoiceOpenElapsedFromClick() ?? 0,
+        });
+      }
       if (!isCurrent()) return;
       setCustomers(cust ?? []);
 
       if (initialCustomerId && (cust ?? []).length > 0) {
         const prefill = (cust ?? []).find((c) => c.id === initialCustomerId);
         if (prefill) {
-          setSelectedCustomer(prefill as Customer);
-          setCustomerId(prefill.id);
-          const prefCur = (prefill as { preferred_currency_code?: string | null }).preferred_currency_code;
-          setInvoiceCurrency(
-            resolveInvoiceTransactionCurrency({
-              businessBase: defaultCurrency,
-              customerPreferred: prefCur,
-              invoiceCurrencyOverride: null,
-            })
-          );
-          const displayName = (prefill.company ?? '').trim() || (prefill.name ?? '').trim();
-          if (displayName) {
-            setCustomerName(displayName);
-          }
-          if ((prefill.email ?? '').trim()) setCustomerEmail(prefill.email ?? '');
-          if ((prefill.name ?? '').trim()) setContactPerson(prefill.name ?? '');
-          setCustomerCompany('');
-          setBillingAddressLine1((prefill.address_line1 ?? '').trim());
-          setBillingAddressLine2((prefill.address_line2 ?? '').trim());
-          const joinedAddress = [prefill.address_line1, prefill.address_line2].filter(Boolean).join(', ').trim();
-          if (joinedAddress) setBillingAddress(joinedAddress);
-          if ((prefill.city ?? '').trim()) setBillingCity(prefill.city ?? '');
-          if ((prefill.postal_code ?? '').trim()) setBillingPostalCode(prefill.postal_code ?? '');
-          const countryCode = resolveCountryCode(prefill.country ?? '');
-          if (countryCode) {
-            setBillingCountry(countryCode);
-            const nextState = resolveStateCode(countryCode, prefill.state ?? '');
-            if (nextState) setBillingState(nextState);
-          } else if ((prefill.state ?? '').trim()) {
-            setBillingState(prefill.state ?? '');
-          }
+          applyNewInvoiceInitialCustomerPrefill(prefill as Customer, defaultCurrency);
         }
       }
-      if (isCurrent()) setWorkspaceLoading(false);
+      if (isCurrent()) {
+        setCustomerListReady(true);
+        setWorkspaceLoading(false);
+      }
     })().catch(() => {
       if (isCurrent()) {
+        setCustomerListReady(true);
         setWorkspaceLoading(false);
       }
     });
     return () => {
       workspaceFetchGen.current += 1;
     };
-  }, [supabase, initialCustomerId, invoiceId, initialData, paymentScheduleSavedOnServer, workspaceLoadKey]);
+  }, [
+    supabase,
+    initialCustomerId,
+    invoiceId,
+    initialData,
+    paymentScheduleSavedOnServer,
+    workspaceLoadKey,
+    isDeferredCustomerFetch,
+    applyNewInvoiceInitialCustomerPrefill,
+  ]);
 
   const applyCustomerAutofill = useCallback((c: Customer) => {
     const displayName = (c.company ?? '').trim() || (c.name ?? '').trim();
@@ -1109,25 +1359,6 @@ export default function ManualInvoiceForm({
       }),
     []
   );
-
-  useEffect(() => {
-    if (!isUpdatingInvoice) {
-      setShowCustomerApplyFeedback(false);
-      if (customerApplyFeedbackTimerRef.current) window.clearTimeout(customerApplyFeedbackTimerRef.current);
-      customerApplyFeedbackTimerRef.current = null;
-      return;
-    }
-
-    if (customerApplyFeedbackTimerRef.current) window.clearTimeout(customerApplyFeedbackTimerRef.current);
-    customerApplyFeedbackTimerRef.current = window.setTimeout(() => {
-      setShowCustomerApplyFeedback(true);
-    }, 300);
-
-    return () => {
-      if (customerApplyFeedbackTimerRef.current) window.clearTimeout(customerApplyFeedbackTimerRef.current);
-      customerApplyFeedbackTimerRef.current = null;
-    };
-  }, [isUpdatingInvoice]);
 
   const waitForFxSettle = useCallback(
     async (maxWaitMs = 8000) => {
@@ -2070,9 +2301,15 @@ export default function ManualInvoiceForm({
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      devClearInvoiceSaveClickTrace();
+      const clickT0ForTrace =
+        process.env.NODE_ENV === 'development' && typeof performance !== 'undefined' ? performance.now() : 0;
       setError(null);
       const isCreating = mode === 'create' || (!invoiceId && mode !== 'edit');
-      if (isCreating && !workspaceLoading && customerSelectOptions.length === 0) {
+      if (isCreating && !customerListReady) {
+        return;
+      }
+      if (isCreating && !workspaceLoading && customerListReady && customerSelectOptions.length === 0) {
         setCustomerRequiredModalOpen(true);
         return;
       }
@@ -2081,6 +2318,8 @@ export default function ManualInvoiceForm({
         const el = customerSectionRef.current;
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      const tValidate0 =
+        process.env.NODE_ENV === 'development' && typeof performance !== 'undefined' ? performance.now() : 0;
       if (!validate()) {
         const errSnap = lastErrorsRef.current;
         if (usePaymentSchedule && errSnap.due_date) {
@@ -2167,6 +2406,11 @@ export default function ManualInvoiceForm({
         }
         return;
       }
+      if (tValidate0) {
+        console.log(
+          `[invoice-save] client validate() +${(performance.now() - tValidate0).toFixed(1)}ms`
+        );
+      }
       const bid = businessId;
       if (!bid) {
         setError('Create a business first.');
@@ -2185,6 +2429,8 @@ export default function ManualInvoiceForm({
         bypassScheduleActivationConfirmRef.current = false;
       }
       setSubmitting(true);
+      setOpeningSavedPreview(false);
+      const saveT = createClientInvoiceSaveTimer();
       try {
         const normalizedCurrency = recalculateInvoiceForCurrency(
           {
@@ -2278,6 +2524,7 @@ export default function ManualInvoiceForm({
           terms: terms.trim() || null,
           reference_po: referencePo.trim() || null,
           show_time_summary: showTimeSummary,
+          template_id: templateId,
           client_billing: {
             contact_person: contactPerson.trim() || null,
             company: customerCompany.trim() || null,
@@ -2313,7 +2560,9 @@ export default function ManualInvoiceForm({
               assignee: i.assignee.trim() ? i.assignee.trim().slice(0, 200) : null,
             })),
         };
+        saveT.mark('build_payload');
         if (invoiceId) {
+          const tNet0 = typeof performance !== 'undefined' ? performance.now() : 0;
           const res = await fetch(`/api/invoices/${invoiceId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -2323,18 +2572,17 @@ export default function ManualInvoiceForm({
               ...(paymentSchedulePayload ? { paymentSchedule: paymentSchedulePayload } : {}),
             }),
           });
+          if (tNet0) {
+            console.log(
+              `[invoice-save] client http PATCH (network+server) +${(performance.now() - tNet0).toFixed(1)}ms status=${res.status}`
+            );
+          }
           const data = (await res.json()) as Record<string, unknown>;
           if (!res.ok) throw new Error(String(data.error ?? 'Failed to update invoice'));
+          saveT.mark('parse_patch_response');
           if (usePaymentSchedule) {
             const invTot = Number(data.total ?? normalizedCurrency.total ?? 0);
-            let itemsToHydrate = extractInvoicePaymentScheduleItems(data);
-            if (itemsToHydrate.length === 0 && invoiceId) {
-              const refRes = await fetch(`/api/invoices/${invoiceId}`);
-              if (refRes.ok) {
-                const refData = (await refRes.json()) as Record<string, unknown>;
-                itemsToHydrate = extractInvoicePaymentScheduleItems(refData);
-              }
-            }
+            const itemsToHydrate = extractInvoicePaymentScheduleItems(data);
             const paymentSchedule =
               itemsToHydrate.length > 0
                 ? mapInvoicePaymentScheduleApiToRows(itemsToHydrate, invTot)
@@ -2363,25 +2611,38 @@ export default function ManualInvoiceForm({
           }
           if (data.use_payment_schedule != null) setUsePaymentSchedule(Boolean(data.use_payment_schedule));
           if (paymentScheduleOnly && usePaymentSchedule) setIsScheduleSavedOnServer(true);
-          if (businessId) {
-            persistSavedLineItemsFromSave(
-              businessId,
-              payload.items.map((i) => ({
-                name: i.name,
-                unitPrice: i.unit_price,
-                description: i.description,
-                taxPercent: i.tax_percent,
-              }))
-            );
-          }
           if (onSaved) {
-            showSuccessToast('Invoice saved');
-            onSaved({ invoiceId, data });
+            if (workspaceEmbed) {
+              setOpeningSavedPreview(true);
+            }
+            const tOnSaved0 = typeof performance !== 'undefined' ? performance.now() : 0;
+            await Promise.resolve(onSaved({ invoiceId, data }));
+            if (tOnSaved0) {
+              console.log(
+                `[invoice-save] client onSaved callback +${(performance.now() - tOnSaved0).toFixed(1)}ms`
+              );
+            }
+            setOpeningSavedPreview(false);
+            setSubmitting(false);
           } else {
-            showSuccessToast('Invoice saved');
-            window.location.href = `/dashboard/invoices/${invoiceId}`;
+            if (clickT0ForTrace) {
+              console.log(
+                `[invoice-save] client click → router.push (after PATCH) +${(performance.now() - clickT0ForTrace).toFixed(1)}ms`
+              );
+              devSetInvoiceSaveClickTrace(clickT0ForTrace);
+            }
+            saveT.mark('before_router_to_saved');
+            const tNav0 = typeof performance !== 'undefined' ? performance.now() : 0;
+            router.push(`/dashboard/invoices/${invoiceId}?saved=1`);
+            if (tNav0) {
+              console.log(
+                `[invoice-save] client router.push (sync) +${(performance.now() - tNav0).toFixed(3)}ms (navigation continues async)`
+              );
+            }
+            saveT.totalFromStart('to_router_push_after_save');
           }
         } else {
+          const tNet0 = typeof performance !== 'undefined' ? performance.now() : 0;
           const res = await fetch('/api/invoices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2390,7 +2651,12 @@ export default function ManualInvoiceForm({
               ...(paymentSchedulePayload ? { paymentSchedule: paymentSchedulePayload } : {}),
             }),
           });
-          const data = await res.json();
+          if (tNet0) {
+            console.log(
+              `[invoice-save] client http POST (network+server) +${(performance.now() - tNet0).toFixed(1)}ms status=${res.status}`
+            );
+          }
+          const data = (await res.json()) as { id?: string; error?: string; code?: string };
           if (!res.ok) {
             const trigger = mapApiCodeToUpgradeTrigger(
               typeof data?.code === 'string' ? data.code : null
@@ -2398,25 +2664,34 @@ export default function ManualInvoiceForm({
             if (trigger) setUpgradeModal(trigger);
             throw new Error(data.error ?? 'Failed to create invoice');
           }
-          if (businessId) {
-            persistSavedLineItemsFromSave(
-              businessId,
-              payload.items.map((i) => ({
-                name: i.name,
-                unitPrice: i.unit_price,
-                description: i.description,
-                taxPercent: i.tax_percent,
-              }))
+          if (!data.id) {
+            throw new Error('Failed to create invoice');
+          }
+          saveT.mark('parse_create_response');
+          if (clickT0ForTrace) {
+            console.log(
+              `[invoice-save] client click → router.push (after POST create) +${(performance.now() - clickT0ForTrace).toFixed(1)}ms`
+            );
+            devSetInvoiceSaveClickTrace(clickT0ForTrace);
+          }
+          const tNav0 = typeof performance !== 'undefined' ? performance.now() : 0;
+          router.push(`/dashboard/invoices/${data.id}?saved=1`);
+          if (tNav0) {
+            console.log(
+              `[invoice-save] client router.push (sync) +${(performance.now() - tNav0).toFixed(3)}ms (navigation async)`
             );
           }
-          showSuccessToast('Invoice saved');
-          window.location.href = `/dashboard/invoices/${data.id}`;
+          saveT.totalFromStart('to_router_push_create');
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Couldn\u2019t save invoice. Try again";
+        setOpeningSavedPreview(false);
+        const raw = err instanceof Error ? err.message : '';
+        const msg =
+          !raw || /^failed to (update|create) invoice\.?$/i.test(String(raw).trim())
+            ? 'Could not save invoice. Please try again.'
+            : raw;
         showErrorToast(msg);
         setError(msg);
-      } finally {
         setSubmitting(false);
       }
     },
@@ -2460,6 +2735,7 @@ export default function ManualInvoiceForm({
       deliveryCountry,
       lineItems,
       showTimeSummary,
+      templateId,
       validate,
       invoiceId,
       usePaymentSchedule,
@@ -2474,9 +2750,327 @@ export default function ManualInvoiceForm({
       mode,
       invoiceId,
       customerSelectOptions,
+      customerListReady,
       workspaceLoading,
+      workspaceEmbed,
+      router,
     ]
   );
+
+  const setupProgressSatisfied = isSetupProgressFullySatisfied(setupProgress);
+  const showLineItemFormLayout =
+    !workspaceLoading &&
+    business &&
+    setupProgressSatisfied &&
+    !(
+      isCreateMode &&
+      !paymentScheduleOnly &&
+      customerListReady &&
+      customerSelectOptions.length === 0
+    );
+  const manualFormInteractiveReady =
+    !workspaceLoading &&
+    business &&
+    setupProgressSatisfied &&
+    (paymentScheduleOnly || !isCreateMode || customerListReady);
+
+  useLayoutEffect(() => {
+    if (!showLineItemFormLayout) {
+      return;
+    }
+    devMarkManualInvoiceFormShellPainted(
+      isCreateMode && isDeferredCustomerFetch && !customerListReady
+        ? 'new_manual_customers_inflight'
+        : 'line_item_form_visible'
+    );
+  }, [showLineItemFormLayout, isCreateMode, isDeferredCustomerFetch, customerListReady]);
+
+  useLayoutEffect(() => {
+    if (!manualInvoiceOpenTimingEnabled() || devManualReadyNotified.current) {
+      return;
+    }
+    if (!manualFormInteractiveReady) {
+      return;
+    }
+    devManualReadyNotified.current = true;
+    const segs = manualOpenBlockingRef.current.segments;
+    const slow = segs.length
+      ? segs.reduce((a, b) => (a.blockMs >= b.blockMs ? a : b), segs[0]!)
+      : { label: 'none' as const, blockMs: 0 };
+    devMarkManualInvoiceOpenFullyReady({
+      slowestBlockingStep: String(slow.label),
+      slowestBlockingMs: slow.blockMs,
+      phases: segs.map((s) => s.label),
+    });
+  }, [manualFormInteractiveReady]);
+
+  useEffect(() => {
+    if (workspaceLoadKeyPrev.current === null) {
+      workspaceLoadKeyPrev.current = workspaceLoadKey;
+      return;
+    }
+    if (workspaceLoadKeyPrev.current === workspaceLoadKey) {
+      return;
+    }
+    workspaceLoadKeyPrev.current = workspaceLoadKey;
+    devManualReadyNotified.current = false;
+  }, [workspaceLoadKey]);
+
+  useEffect(() => {
+    if (billingPlanLoading) {
+      return;
+    }
+    if (!manualInvoiceOpenTimingEnabled()) {
+      return;
+    }
+    const t0 = billingLoadStartedAtRef.current;
+    if (t0) {
+      devLogManualInvoiceOpenBillingProfileReady(billingPlan, performance.now() - t0);
+    }
+  }, [billingPlanLoading, billingPlan]);
+
+  const status = deriveInvoiceStatus({
+    status: savedInvoiceStatus,
+    total,
+    amount_paid: amountPaid,
+    balance_due: liveBalanceDue,
+    total_refunded: totalRefunded,
+  });
+
+  const liveRendererData: InvoiceRendererData | null = useMemo(() => {
+    if (!business) return null;
+    const normalizedCurrency = recalculateInvoiceForCurrency(
+      {
+        base_currency_code: baseCurrencyCode,
+        subtotal: Math.round(subtotal * 100) / 100,
+        tax_amount: Math.round((invoiceId ? totalTax : invoiceTax) * 100) / 100,
+        total: Math.round(total * 100) / 100,
+      },
+      invoiceCurrency.trim().toUpperCase(),
+      showFxPanel ? displayFxRate : 1
+    );
+    const baseAmounts = getInvoiceBaseAmounts(normalizedCurrency, baseCurrencyCode);
+    const invNum = invoiceId
+      ? (editInvoiceNumber?.trim() ||
+          String((initialData?.invoice as { invoice_number?: string | null } | undefined)?.invoice_number ?? '').trim() ||
+          '—')
+      : '—';
+    const taxAmountLine = Math.round((invoiceId ? totalTax : invoiceTax) * 100) / 100;
+    const schedRows: SavedInvoice['payment_schedule'] = usePaymentSchedule
+      ? paymentScheduleOrdered.map((r) => {
+          const st = (r.status ?? 'pending') as 'pending' | 'paid' | 'refund';
+          return {
+            id: r.id != null ? String(r.id) : 'live',
+            description: r.description.trim() || '—',
+            amount: Number(r.amount) || 0,
+            due_date: r.due_date,
+            status: st,
+            paid_at: r.paid_at ?? null,
+          };
+        })
+      : undefined;
+    const items: SavedInvoiceItem[] = lineItems
+      .filter((i) => i.name.trim() && i.quantity > 0)
+      .map((i) => ({
+        name: i.name.trim(),
+        description: i.description.trim() || null,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        unit_label: normalizeInvoiceUnitLabel(i.unit_label),
+        amount: i.quantity * i.unit_price,
+        tax_percent: i.tax_percent ?? 0,
+        assignee: i.assignee.trim() ? i.assignee.trim().slice(0, 200) : null,
+      }));
+    const sb: SavedBusiness = {
+      name: business.name,
+      currency: business.currency,
+      logo_url: business.logo_url ?? null,
+      address_line1: business.address_line1,
+      address_line2: business.address_line2,
+      city: business.city,
+      state: business.state,
+      postal_code: business.postal_code,
+      country: business.country,
+      tax_id: business.tax_id,
+      payment_settings: business.payment_settings,
+      stripe_charges_enabled: business.stripe_charges_enabled,
+    };
+    const liveMeta: SavedInvoice['metadata'] = {
+      contact_person: contactPerson.trim() || null,
+      company: customerCompany.trim() || null,
+      billing_address_line1: billingAddressLine1.trim() || null,
+      billing_address_line2: billingAddressLine2.trim() || null,
+      billing_address: billingAddress.trim() || null,
+      billing_city: billingCity.trim() || null,
+      billing_state: billingState.trim() || null,
+      billing_postal_code: billingPostalCode.trim() || null,
+      billing_country: resolveCountryCode(billingCountry) || null,
+      billing_phone: billingPhone.trim() ? normalizePhone(billingPhone) : null,
+      use_delivery_address: useDeliveryAddress,
+      delivery_company: useDeliveryAddress ? (deliveryCompany.trim() || null) : null,
+      delivery_email: useDeliveryAddress ? (deliveryEmail.trim() || null) : null,
+      delivery_contact_person: useDeliveryAddress ? (deliveryContactPerson.trim() || null) : null,
+      delivery_phone: useDeliveryAddress ? (normalizePhone(deliveryPhone) || null) : null,
+      delivery_address: useDeliveryAddress ? (deliveryAddress.trim() || null) : null,
+      delivery_city: useDeliveryAddress ? (deliveryCity.trim() || null) : null,
+      delivery_state: useDeliveryAddress ? (deliveryState.trim() || null) : null,
+      delivery_postal_code: useDeliveryAddress ? (deliveryPostalCode.trim() || null) : null,
+      delivery_country: useDeliveryAddress ? (resolveCountryCode(deliveryCountry) || null) : null,
+    };
+    const inv: SavedInvoice = {
+      invoice_number: invNum,
+      reference_po: referencePo.trim() || null,
+      issue_date: issueDate || new Date().toISOString().slice(0, 10),
+      due_date: usePaymentSchedule ? (maxScheduleDueDate || dueDate || issueDate) : (dueDate || issueDate),
+      status: String(status),
+      customer_name: customerName.trim() || 'Client name',
+      customer_email: customerEmail.trim() || null,
+      sourceQuoteId: (initialData?.invoice as { source_quote_id?: string | null } | undefined)?.source_quote_id ?? null,
+      sourceQuoteNumber: (initialData?.invoice as { source_quote_number?: string | null } | undefined)?.source_quote_number ?? null,
+      currency: normalizedCurrency.currency,
+      base_currency_code: baseAmounts.base_currency_code,
+      exchange_rate_to_base: baseAmounts.exchange_rate_to_base,
+      subtotal_in_base: baseAmounts.subtotal_in_base ?? null,
+      tax_amount_in_base: baseAmounts.tax_amount_in_base ?? null,
+      total_in_base: baseAmounts.total_in_base ?? null,
+      subtotal: normalizedCurrency.subtotal ?? 0,
+      tax_amount: taxAmountLine,
+      total: normalizedCurrency.total ?? 0,
+      amount_paid: amountPaid,
+      total_refunded: totalRefunded,
+      balance_due: liveBalanceDue,
+      discount_amount: effectiveDiscount,
+      discount_percent: discountPercent,
+      tax_percent: taxPercent,
+      notes: notes.trim() || null,
+      terms: terms.trim() || null,
+      show_time_summary: showTimeSummary,
+      metadata: liveMeta,
+      template_id: templateId,
+      payment_schedule: schedRows,
+    };
+    return { business: sb, invoice: inv, items };
+  }, [
+    business,
+    subtotal,
+    total,
+    invoiceId,
+    totalTax,
+    invoiceTax,
+    issueDate,
+    dueDate,
+    usePaymentSchedule,
+    paymentScheduleOrdered,
+    lineItems,
+    contactPerson,
+    customerCompany,
+    billingAddressLine1,
+    billingAddressLine2,
+    billingAddress,
+    billingCity,
+    billingState,
+    billingPostalCode,
+    billingCountry,
+    billingPhone,
+    useDeliveryAddress,
+    deliveryCompany,
+    deliveryEmail,
+    deliveryContactPerson,
+    deliveryPhone,
+    deliveryAddress,
+    deliveryCity,
+    deliveryState,
+    deliveryPostalCode,
+    deliveryCountry,
+    customerName,
+    customerEmail,
+    initialData,
+    referencePo,
+    baseCurrencyCode,
+    invoiceCurrency,
+    showFxPanel,
+    displayFxRate,
+    amountPaid,
+    totalRefunded,
+    liveBalanceDue,
+    effectiveDiscount,
+    discountPercent,
+    taxPercent,
+    notes,
+    terms,
+    showTimeSummary,
+    maxScheduleDueDate,
+    editInvoiceNumber,
+    status,
+    templateId,
+  ]);
+
+  const showLivePreviewAside = !paymentScheduleOnly || (paymentScheduleOnly && paymentScheduleWithPreview);
+
+  const workspaceMobileTabMode = workspaceEmbed && workspaceMobilePanel != null;
+  const workspaceSplit = showLivePreviewAside && workspaceEmbed && !workspaceMobileTabMode;
+
+  const workspacePreviewAsideRef = useRef<HTMLElement | null>(null);
+  const mobilePreviewPanelPrevRef = useRef<string | null>(null);
+  /**
+   * Assistant mobile Edit → Preview: the parent’s SavingOverlay only shows the dim + “Loading invoice preview…”
+   * if `active` stays true for ≥ its delay (400ms). A double rAF was ~16–32ms, so the overlay never appeared.
+   * We signal ready only after the preview aside is laid out (ResizeObserver) or a safety timeout.
+   */
+  useEffect(() => {
+    const onPainted = onWorkspaceMobilePreviewPainted;
+    if (!workspaceMobileTabMode) {
+      mobilePreviewPanelPrevRef.current = workspaceMobilePanel ?? null;
+      return;
+    }
+    if (!onPainted) {
+      mobilePreviewPanelPrevRef.current = workspaceMobilePanel ?? null;
+      return;
+    }
+    if (!showLivePreviewAside) {
+      mobilePreviewPanelPrevRef.current = workspaceMobilePanel ?? null;
+      return;
+    }
+    const p = workspaceMobilePanel ?? null;
+    const becamePreview = mobilePreviewPanelPrevRef.current !== 'preview' && p === 'preview';
+    mobilePreviewPanelPrevRef.current = p;
+    if (!becamePreview) return;
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      onPainted();
+    };
+    const el = workspacePreviewAsideRef.current;
+    if (!el) {
+      finish();
+      return;
+    }
+    const minHeightPx = 40;
+    const check = () => {
+      if (done) return;
+      if (el.getBoundingClientRect().height >= minHeightPx) finish();
+    };
+    const ro = new ResizeObserver(() => {
+      check();
+    });
+    ro.observe(el);
+    const safety = window.setTimeout(finish, 12_000);
+    const t = window.setTimeout(() => {
+      check();
+    }, 0);
+    const r1 = requestAnimationFrame(() => {
+      check();
+    });
+    return () => {
+      done = true;
+      ro.disconnect();
+      window.clearTimeout(safety);
+      window.clearTimeout(t);
+      cancelAnimationFrame(r1);
+    };
+  }, [workspaceMobileTabMode, workspaceMobilePanel, onWorkspaceMobilePreviewPainted, showLivePreviewAside]);
 
   if (workspaceLoading) {
     return (
@@ -2497,7 +3091,6 @@ export default function ManualInvoiceForm({
     );
   }
 
-  const isCreateMode = mode === 'create' || (!invoiceId && mode !== 'edit');
   if (isCreateMode && !isSetupProgressFullySatisfied(setupProgress)) {
     return (
       <div className="mx-auto max-w-lg px-4 py-10">
@@ -2506,7 +3099,7 @@ export default function ManualInvoiceForm({
     );
   }
 
-  if (isCreateMode && !paymentScheduleOnly && !workspaceLoading && customerSelectOptions.length === 0) {
+  if (isCreateMode && !paymentScheduleOnly && !workspaceLoading && customerListReady && customerSelectOptions.length === 0) {
     return (
       <div className="mx-auto max-w-lg px-4 py-10">
         <InvoiceCustomerSetupPanel invoiceFlow returnTo={manualInvoiceReturnTo} />
@@ -2549,7 +3142,7 @@ export default function ManualInvoiceForm({
     subtitle: 'Update invoice details',
   };
   const header = formMode === 'edit' ? editHeader : createHeader;
-
+  const newManualAwaitingCustomerDirectory = isCreateMode && !paymentScheduleOnly && !customerListReady;
   const invoiceCustomerOrphanLabel =
     customerId && !customerSelectOptions.some((o) => o.id === customerId) && customerName.trim()
       ? customerName.trim()
@@ -2563,6 +3156,8 @@ export default function ManualInvoiceForm({
       ? getStates(billingCountryCode).find((s) => s.code === billingState)?.name ?? billingState
       : billingState;
   const deliveryCountryName = deliveryCountryCode ? getCountryNameFromCode(deliveryCountryCode) : '';
+  const billingCountryLabel = formatCountryDisplayName(billingCountryName || billingCountry);
+  const deliveryCountryLabel = formatCountryDisplayName(deliveryCountryName || deliveryCountry);
   const deliveryStateName =
     deliveryCountryCode && deliveryState
       ? getStates(deliveryCountryCode).find((s) => s.code === deliveryState)?.name ?? deliveryState
@@ -2583,16 +3178,11 @@ export default function ManualInvoiceForm({
     return row.due_date ? `Due ${formatDisplayDate(String(row.due_date))}` : 'Due —';
   };
 
-  const showLivePreviewAside = !paymentScheduleOnly || (paymentScheduleOnly && paymentScheduleWithPreview);
-
-  const workspaceMobileTabMode = workspaceEmbed && workspaceMobilePanel != null;
-  const workspaceSplit = showLivePreviewAside && workspaceEmbed && !workspaceMobileTabMode;
-
   return (
     <div
       className={cn(
-        'mx-auto overflow-x-hidden',
-        workspaceEmbed ? 'w-full max-w-none' : paymentScheduleOnly && !paymentScheduleWithPreview ? 'max-w-4xl' : 'max-w-7xl'
+        'mx-auto w-full min-w-0 max-w-full overflow-x-hidden',
+        workspaceEmbed ? 'max-w-none' : paymentScheduleOnly && !paymentScheduleWithPreview ? 'max-w-4xl' : 'max-w-7xl'
       )}
     >
       {!paymentScheduleOnly && !workspaceEmbed && (
@@ -2626,40 +3216,31 @@ export default function ManualInvoiceForm({
 
       <div
         className={cn(
-          'relative min-w-0 gap-8 md:gap-10',
+          'relative w-full min-w-0 max-w-full overflow-x-hidden gap-8 md:gap-10',
           workspaceSplit
-            ? 'flex w-full flex-col lg:flex-row lg:items-start'
-            : 'grid min-h-0 grid-cols-1',
-          showLivePreviewAside && !workspaceEmbed && 'xl:grid-cols-[minmax(0,1fr),420px]',
+            ? 'flex w-full min-w-0 max-w-full flex-col items-stretch justify-start lg:flex-row lg:items-start'
+            : 'grid min-h-0 min-w-0 max-w-full grid-cols-1 [grid-template-columns:minmax(0,1fr)]',
+          showLivePreviewAside && !workspaceEmbed && 'xl:grid-cols-[minmax(0,1fr),minmax(0,420px)]',
           !showLivePreviewAside && !workspaceEmbed && 'xl:grid-cols-1'
         )}
       >
-      {!paymentScheduleOnly && showCustomerApplyFeedback ? (
-        <div
-          className="pointer-events-none hidden md:absolute md:inset-0 md:z-40 md:flex md:items-center md:justify-center bg-white/40 backdrop-blur-sm dark:bg-black/25"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="flex flex-col items-center gap-3 px-4">
-            <span
-              className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 dark:border-slate-600 dark:border-t-indigo-400"
-              aria-hidden
-            />
-            <div className="flex flex-col items-center">
-              <p className="text-sm text-gray-700 dark:text-gray-200">Applying customer details...</p>
-              <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                {customerApplyMode === 'create' ? 'Creating customer...' : 'Applying selected customer...'}
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CustomerApplyOverlay
+        active={!paymentScheduleOnly && isUpdatingInvoice}
+        mode={customerApplyMode}
+      />
+      <SavingOverlay
+        active={submitting}
+        message={
+          workspaceEmbed && openingSavedPreview ? 'Opening saved invoice…' : 'Saving invoice…'
+        }
+      />
       <form
         ref={invoiceFormRef}
         id={htmlFormId}
         onSubmit={handleSubmit}
+        aria-busy={submitting || isUpdatingInvoice || newManualAwaitingCustomerDirectory}
         className={cn(
-          'min-w-0 space-y-10 md:space-y-12',
+          'w-full min-w-0 max-w-full space-y-10 overflow-x-hidden md:space-y-12',
           workspaceSplit && 'flex-1',
           workspaceMobileTabMode && workspaceMobilePanel === 'preview' && 'hidden'
         )}
@@ -2692,20 +3273,6 @@ export default function ManualInvoiceForm({
           )}
         >
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Customer</h2>
-          {showCustomerApplyFeedback ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-200">
-              <span
-                className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 dark:border-slate-600 dark:border-t-indigo-400"
-                aria-hidden
-              />
-              <div className="flex flex-col">
-                <span className="font-medium">Applying customer details...</span>
-                <span className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-300">
-                  {customerApplyMode === 'create' ? 'Creating customer...' : 'Applying selected customer...'}
-                </span>
-              </div>
-            </div>
-          ) : null}
           {(showCustomerRequiredError || errors.customer_name) && (
             <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400" role="alert">
               {errors.customer_name ?? 'Customer is required'}
@@ -2724,7 +3291,8 @@ export default function ManualInvoiceForm({
                 onChange={onInvoiceCustomerIdChange}
                 placeholder="Select customer"
                 orphanValueLabel={invoiceCustomerOrphanLabel}
-                disabled={criticalFieldsLocked}
+                optionsLoading={isCreateMode && !paymentScheduleOnly && !customerListReady}
+                disabled={criticalFieldsLocked || isUpdatingInvoice}
                 triggerClassName={
                   errors.customer_name || showCustomerRequiredError
                     ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30 dark:border-red-500 dark:focus-visible:border-red-500'
@@ -2747,20 +3315,14 @@ export default function ManualInvoiceForm({
                   <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{billingPhone.trim()}</p>
                 ) : null}
                 {billingAddress || billingCity || billingState || billingPostalCode || billingCountry ? (
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                  <p className="mt-2 min-w-0 max-w-full break-words [overflow-wrap:anywhere] text-xs text-slate-600 dark:text-slate-400">
                     {billingAddress.trim()}
                     {billingCity || billingState || billingPostalCode || billingCountry ? (
                       <>
                         {billingAddress.trim() ? <br /> : null}
-                        {[billingCity, billingStateName || billingState, billingPostalCode]
+                        {[billingCity, billingStateName || billingState, billingPostalCode, billingCountryLabel]
                           .filter(Boolean)
                           .join(', ')}
-                        {billingCountryName ? (
-                          <>
-                            <br />
-                            {billingCountryName}
-                          </>
-                        ) : null}
                       </>
                     ) : null}
                   </p>
@@ -2998,7 +3560,7 @@ export default function ManualInvoiceForm({
         <section
           ref={invoiceDetailsSectionRef}
           className={cn(
-            'rounded-2xl border bg-white p-6 shadow-sm transition-colors sm:p-7',
+            'min-w-0 max-w-full overflow-x-hidden rounded-2xl border bg-white p-6 shadow-sm transition-colors sm:p-7',
             showInvoiceDetailsDateError
               ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
               : 'border-slate-200 dark:border-slate-800 dark:bg-slate-900'
@@ -3074,6 +3636,10 @@ export default function ManualInvoiceForm({
               </div>
             </div>
 
+            {!paymentScheduleOnly && (
+              <InvoiceTemplatePicker value={templateId} onChange={setTemplateId} disabled={submitting} />
+            )}
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="md:col-span-2 xl:col-span-3">
                 <label htmlFor="invoice-currency" className={labelClass}>
@@ -3122,13 +3688,24 @@ export default function ManualInvoiceForm({
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Add services or products. Amounts update totals automatically.</p>
               </div>
                 {!criticalFieldsLocked && (
-                  <button
-                    type="button"
-                    onClick={addLineItem}
-                    className="whitespace-nowrap rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-                  >
-                    + Add line
-                  </button>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    {itemMemoryBusinessId ? (
+                      <button
+                        type="button"
+                        onClick={() => setSavedLineItemsLibraryOpen(true)}
+                        className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                      >
+                        Saved items
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={addLineItem}
+                      className="whitespace-nowrap rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                    >
+                      + Add line
+                    </button>
+                  </div>
                 )}
             </div>
           </div>
@@ -3151,17 +3728,10 @@ export default function ManualInvoiceForm({
                         currencyCode={invoiceCurrency}
                         value={item.name}
                         onChange={(v) => updateLineItem(index, { name: v })}
-                        onPickSuggestion={(s) =>
-                          updateLineItem(index, {
-                            name: s.name,
-                            description: s.description ?? '',
-                            unit_label: 'item',
-                            unit_price: s.unitPrice,
-                            tax_percent: s.taxPercent ?? 0,
-                          })
-                        }
+                        onPickSuggestion={(s) => updateLineItem(index, applySavedLineItemToInvoiceRow(s))}
                         placeholder="Item or service"
                         disabled={criticalFieldsLocked}
+                        showIndexLoadingStatusText={index === 0}
                         aria-invalid={lineItemErrors[index]?.name ? true : undefined}
                         className={cn(
                           'mt-1 h-11 w-full rounded-xl border bg-white px-3 text-base shadow-sm dark:bg-slate-900 dark:text-white',
@@ -3319,7 +3889,7 @@ export default function ManualInvoiceForm({
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800/50">
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Description</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Quantity</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Qty</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Unit</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Rate</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tax %</th>
@@ -3340,17 +3910,10 @@ export default function ManualInvoiceForm({
                           currencyCode={invoiceCurrency}
                           value={item.name}
                           onChange={(v) => updateLineItem(index, { name: v })}
-                          onPickSuggestion={(s) =>
-                            updateLineItem(index, {
-                              name: s.name,
-                              description: s.description ?? '',
-                              unit_label: 'item',
-                              unit_price: s.unitPrice,
-                              tax_percent: s.taxPercent ?? 0,
-                            })
-                          }
+                          onPickSuggestion={(s) => updateLineItem(index, applySavedLineItemToInvoiceRow(s))}
                           placeholder="Item or service"
                           disabled={criticalFieldsLocked}
+                          showIndexLoadingStatusText={index === 0}
                         aria-invalid={lineItemErrors[index]?.name ? true : undefined}
                         className={cn(
                           'h-10 w-full rounded-lg border bg-white px-3 text-sm shadow-sm dark:bg-slate-900 dark:text-white',
@@ -4902,7 +5465,7 @@ export default function ManualInvoiceForm({
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || newManualAwaitingCustomerDirectory}
                 className="whitespace-nowrap rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
               >
                 {submitting ? 'Saving…' : invoiceId ? 'Save changes' : 'Save as draft'}
@@ -4919,7 +5482,7 @@ export default function ManualInvoiceForm({
             </Link>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || newManualAwaitingCustomerDirectory}
               className="whitespace-nowrap rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
             >
               {submitting ? 'Saving…' : invoiceId ? 'Save changes' : 'Save as draft'}
@@ -4931,10 +5494,11 @@ export default function ManualInvoiceForm({
         {/* Invoice Preview – same source of truth as form */}
         {showLivePreviewAside && (
         <aside
+          ref={workspacePreviewAsideRef}
           className={cn(
-            'min-w-0 space-y-4 self-start',
+            'flex w-full min-w-0 max-w-full flex-col items-stretch self-start overflow-x-hidden',
             workspaceEmbed
-              ? 'w-full lg:w-[min(420px,34vw)] lg:max-w-[420px] lg:shrink-0 lg:overflow-visible'
+              ? 'w-full lg:w-[min(420px,34vw)] lg:max-w-[420px] lg:shrink-0 lg:overflow-x-hidden'
               : 'xl:sticky xl:top-24 xl:self-start',
             workspaceMobileTabMode && workspaceMobilePanel === 'form' && 'hidden'
           )}
@@ -4947,378 +5511,12 @@ export default function ManualInvoiceForm({
           >
             {paymentScheduleOnly ? 'Live preview' : 'Invoice preview'}
           </h2>
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 print:shadow-none">
-            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-              <p className="text-lg font-semibold text-slate-900 dark:text-white">{business.name}</p>
-              {(business.address_line1 || business.address_line2 || business.city || business.state || business.postal_code || business.country) && (
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  {[business.address_line1, business.address_line2].filter(Boolean).join(', ')}
-                  {[business.address_line1, business.address_line2].filter(Boolean).length > 0 && <br />}
-                  {[business.city, business.state].filter(Boolean).join(', ')}
-                  {(business.city || business.state) && business.postal_code && ` ${business.postal_code}`}
-                  {business.country && (business.city || business.state || business.postal_code) ? `, ${business.country}` : business.country}
-                </p>
-              )}
-              {business.tax_id && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Tax ID: {business.tax_id}</p>
-              )}
+          {liveRendererData ? (
+            <div className="mx-auto w-full min-w-0 max-w-full overflow-x-hidden">
+              <InvoiceRenderer data={liveRendererData} templateId={templateId} showSourceQuoteLink={false} />
             </div>
+          ) : null}
 
-            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-              <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Bill to</p>
-              {customerName.trim() ? (
-                <>
-                  {useDeliveryAddress ? (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      {/* Billing block (order: name -> billing address -> city/state -> email -> phone -> contact) */}
-                      <div className="p-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Billing address</p>
-                        <p className="mt-1 font-medium text-slate-900 dark:text-white">{customerName}</p>
-                        {customerCompany.trim() && (
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{customerCompany}</p>
-                        )}
-
-                        {(billingAddress || billingCity || billingState || billingPostalCode || billingCountry) ? (
-                          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                            {billingAddress}
-                            {(billingCity || billingStateName || billingPostalCode || billingCountryName) && (
-                              <>
-                                {billingAddress && <br />}
-                                {[billingCity, billingStateName || billingState, billingPostalCode].filter(Boolean).join(', ')}
-                                {billingCountryName &&
-                                  (billingCity || billingState || billingPostalCode ? (
-                                    <>
-                                      <br />
-                                      {billingCountryName}
-                                    </>
-                                  ) : (
-                                    billingCountryName
-                                  ))}
-                              </>
-                            )}
-                            {!billingAddress &&
-                              !(billingCity || billingState || billingPostalCode || billingCountry) &&
-                              '—'}
-                          </p>
-                        ) : null}
-
-                        {customerEmail.trim() && (
-                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{customerEmail}</p>
-                        )}
-                        {billingPhone.trim() && (
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Phone: {billingPhone}</p>
-                        )}
-                        {contactPerson.trim() && (
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Contact: {contactPerson}</p>
-                        )}
-                      </div>
-
-                      {/* Delivery block (order: name -> delivery address -> city/state -> email -> phone -> contact) */}
-                      <div className="p-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Delivery address</p>
-                        {deliveryCompany.trim() ? (
-                          <p className="mt-1 font-medium text-slate-900 dark:text-white">{deliveryCompany}</p>
-                        ) : null}
-
-                        {(
-                          deliveryAddress ||
-                          deliveryCity ||
-                          deliveryState ||
-                          deliveryPostalCode ||
-                          deliveryCountry ||
-                          deliveryContactPerson
-                        ) ? (
-                          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                            {deliveryAddress}
-                            {(deliveryCity || deliveryStateName || deliveryPostalCode || deliveryCountryName) && (
-                              <>
-                                {deliveryAddress && <br />}
-                                {[deliveryCity, deliveryStateName || deliveryState, deliveryPostalCode].filter(Boolean).join(', ')}
-                                {deliveryCountryName &&
-                                  (deliveryCity || deliveryState || deliveryPostalCode ? (
-                                    <>
-                                      <br />
-                                      {deliveryCountryName}
-                                    </>
-                                  ) : (
-                                    deliveryCountryName
-                                  ))}
-                              </>
-                            )}
-                            {!deliveryAddress &&
-                              !(deliveryCity || deliveryState || deliveryPostalCode || deliveryCountry) &&
-                              '—'}
-                          </p>
-                        ) : null}
-
-                        {deliveryEmail.trim() && (
-                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{deliveryEmail}</p>
-                        )}
-                        {deliveryPhone && (
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Phone: {deliveryPhone}</p>
-                        )}
-                        {deliveryContactPerson && (
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Contact: {deliveryContactPerson}</p>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    /* Single billing-only layout (order: name -> billing address -> city/state -> email -> phone -> contact) */
-                    <>
-                      <p className="mt-1 font-medium text-slate-900 dark:text-white">{customerName}</p>
-                      {customerCompany.trim() && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400">{customerCompany}</p>
-                      )}
-
-                      {(billingAddress || billingCity || billingState || billingPostalCode || billingCountry) && (
-                        <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                          {billingAddress}
-                          {(billingCity || billingStateName || billingPostalCode || billingCountryName) && (
-                            <>
-                              {billingAddress && <br />}
-                              {[billingCity, billingStateName || billingState, billingPostalCode].filter(Boolean).join(', ')}
-                              {billingCountryName &&
-                                (billingCity || billingState || billingPostalCode ? (
-                                  <>
-                                    <br />
-                                    {billingCountryName}
-                                  </>
-                                ) : (
-                                  billingCountryName
-                                ))}
-                            </>
-                          )}
-                          {!billingAddress &&
-                            !(billingCity || billingState || billingPostalCode || billingCountry) &&
-                            '—'}
-                        </p>
-                      )}
-
-                      {customerEmail.trim() && (
-                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{customerEmail}</p>
-                      )}
-                      {billingPhone.trim() && (
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Phone: {billingPhone}</p>
-                      )}
-                      {contactPerson.trim() && (
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Contact: {contactPerson}</p>
-                      )}
-                    </>
-                  )}
-                </>
-              ) : (
-                <p className="mt-1 text-sm italic text-slate-400 dark:text-slate-500">Client name</p>
-              )}
-            </div>
-
-            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-              <div className="flex flex-wrap justify-between gap-2 text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Invoice #</span>
-                <span className="text-right font-medium text-slate-700 dark:text-slate-300">
-                  {invoiceId
-                    ? (editInvoiceNumber?.trim() ||
-                        String((initialData?.invoice as { invoice_number?: string | null } | undefined)?.invoice_number ?? '').trim() ||
-                        '—')
-                    : 'Auto-generated when saved'}
-                </span>
-              </div>
-              {referencePo.trim() && (
-                <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">Reference / PO</span>
-                  <span className="text-slate-700 dark:text-slate-300">{referencePo}</span>
-                </div>
-              )}
-              <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Issue date</span>
-                <span className="text-slate-700 dark:text-slate-300">{issueDate ? formatDisplayDate(issueDate) : '—'}</span>
-              </div>
-              <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Due date</span>
-                <span className="text-slate-700 dark:text-slate-300">{dueDate ? formatDisplayDate(dueDate) : '—'}</span>
-              </div>
-              <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Status</span>
-                <span className="text-slate-700 dark:text-slate-300">{status}</span>
-              </div>
-            </div>
-
-            <div className="border-b border-slate-200 dark:border-slate-800">
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-fixed text-xs">
-                  <colgroup>
-                    <col className="w-[30%]" />
-                    <col className="w-14" />
-                    <col className="w-20" />
-                    <col className="w-24" />
-                    <col className="w-14" />
-                    <col className="w-24" />
-                  </colgroup>
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Description</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Quantity</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Unit</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Rate</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tax %</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {lineItems.map((item, index) => {
-                      const lineTotal = item.quantity * item.unit_price;
-                      const lineTax = lineTotal * (item.tax_percent / 100);
-                      const lineTotalWithTax = lineTotal + lineTax;
-                      return (
-                        <tr key={index}>
-                          <td className="px-4 py-3 text-slate-900 dark:text-white">
-                            {item.name.trim() || '—'}
-                            {item.description.trim() && (
-                              <span className="mt-0.5 block text-slate-500 dark:text-slate-400">{item.description}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">{item.quantity}</td>
-                          <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">
-                            {formatInvoiceUnitLabelForDisplay(item.unit_label)}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">{formatMoneyCodeFirst(item.unit_price, invoiceCurrency)}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">{item.tax_percent ? `${item.tax_percent}%` : '—'}</td>
-                          <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900 dark:text-white">{formatMoneyCodeFirst(lineTotalWithTax, invoiceCurrency)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {timeSummaryPreview && timeSummaryPreview.rows.length > 0 ? (
-                <div className="border-t border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/25">
-                  <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Time Summary</p>
-                  <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                    Work hours from line items above. Invoice subtotal and total follow in the next section.
-                  </p>
-                  <div className="mt-2 space-y-1.5 text-xs">
-                    {timeSummaryPreview.rows.map((row, idx) => (
-                      <div
-                        key={`${row.assignee}-${idx}`}
-                        className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-2 gap-y-0.5 text-slate-700 dark:text-slate-300"
-                      >
-                        <span className="min-w-0 truncate font-medium text-slate-900 dark:text-white">{row.assignee}</span>
-                        <span className="shrink-0 tabular-nums text-slate-600 dark:text-slate-400">{row.detail}</span>
-                        <span className="shrink-0 text-right tabular-nums font-medium text-slate-900 dark:text-white">{row.amount}</span>
-                      </div>
-                    ))}
-                    <div className="border-t border-slate-200 pt-2 dark:border-slate-700" />
-                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      <span>{timeSummaryPreview.footer.label}</span>
-                      <span className="tabular-nums">{timeSummaryPreview.footer.hours}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Invoice totals</p>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums">{formatMoneyCodeFirst(subtotal, invoiceCurrency)}</span>
-                </div>
-                {effectiveDiscount > 0 && (
-                  <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                    <span>
-                      {discountPercent > 0 ? `Discount (${discountPercent}%)` : 'Discount'}
-                    </span>
-                    <span className="tabular-nums">−{formatMoneyCodeFirst(effectiveDiscount, invoiceCurrency)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>
-                    {taxPercent > 0 ? `Tax (${taxPercent}%)` : 'Tax'}
-                  </span>
-                  <span className="tabular-nums">{formatMoneyCodeFirst(totalTax, invoiceCurrency)}</span>
-                </div>
-                <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold dark:border-slate-700">
-                  <span>Total</span>
-                  <span className="tabular-nums">{formatMoneyCodeFirst(total, invoiceCurrency)}</span>
-                </div>
-              </div>
-            </div>
-
-            {usePaymentSchedule && invoice.paymentSchedule.length > 0 && (
-              <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Payment schedule</p>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="min-w-full table-fixed text-xs">
-                    <colgroup>
-                      <col />
-                      <col className="w-28" />
-                      <col className="w-28" />
-                      <col className="w-20" />
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800">
-                        <th className="py-2 pr-3 text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Description
-                        </th>
-                        <th className="py-2 pr-3 text-right font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Amount
-                        </th>
-                        <th className="py-2 pr-3 text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Due Date
-                        </th>
-                        <th className="py-2 text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {invoice.paymentSchedule.map((r, idx) => {
-                        const st = ((r.status ?? 'pending') as 'pending' | 'paid') ?? 'pending';
-                        const isOverdue =
-                          st !== 'paid' &&
-                          Boolean(r.due_date) &&
-                          new Date(String(r.due_date)) <
-                            new Date(new Date().toISOString().slice(0, 10));
-                        const statusText = getScheduleStatusText(r, isOverdue);
-                        return (
-                          <tr key={String(r.id ?? `idx-${idx}`)}>
-                            <td className="py-2 pr-3 text-slate-900 dark:text-white">
-                              {r.description || '—'}
-                            </td>
-                            <td className="py-2 pr-3 text-right tabular-nums text-slate-900 dark:text-white">
-                              {formatMoneyCodeFirst(Number(r.amount || 0), invoiceCurrency)}
-                            </td>
-                            <td className="py-2 pr-3 text-slate-600 dark:text-slate-400">
-                              {r.due_date ? formatDisplayDate(String(r.due_date)) : '—'}
-                            </td>
-                            <td className="py-2 text-slate-600 dark:text-slate-400 whitespace-nowrap">{statusText}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {(notes.trim() || (!usePaymentSchedule && terms.trim())) && (
-              <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Notes & terms</p>
-                {notes.trim() && (
-                  <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-300">{notes}</p>
-                )}
-                {!usePaymentSchedule && terms.trim() && (
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-300">{terms}</p>
-                )}
-              </div>
-            )}
-
-            <InvoicePaymentMethods
-              settings={business.payment_settings ?? null}
-              stripeChargesEnabled={business.stripe_charges_enabled}
-            />
-          </div>
         </aside>
         )}
       </div>
@@ -5372,6 +5570,15 @@ export default function ManualInvoiceForm({
           </div>,
           document.body
         )}
+
+      {businessId ? (
+        <SavedLineItemsLibraryModal
+          open={savedLineItemsLibraryOpen}
+          onClose={() => setSavedLineItemsLibraryOpen(false)}
+          businessId={businessId}
+          defaultCurrency={invoiceCurrency}
+        />
+      ) : null}
 
       {businessId ? (
         <CustomerFormModal

@@ -6,6 +6,7 @@ import { issuePublicQuoteToken } from '@/lib/quotes/public-token';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { buildQuotePdfBase64 } from '@/services/quote-pdf';
 import { updateQuoteBodySchema } from '@/lib/validations/quote';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
 import {
   getConfirmationMethodSubtextFromVia,
   isManualConfirmationVia,
@@ -50,6 +51,31 @@ function confirmationChannelLabel(channel: 'email' | 'phone' | 'in_person' | nul
   if (channel === 'phone') return 'phone call';
   if (channel === 'in_person') return 'in person';
   return null;
+}
+
+async function syncSavedLineItemsFromQuote(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  args: { businessId: string; quoteId: string; currency: string }
+) {
+  const { data: quoteItems, error } = await supabase
+    .from('quote_items')
+    .select('name, description, unit_price, tax_percent')
+    .eq('quote_id', args.quoteId);
+  if (error || !quoteItems?.length) return;
+
+  void syncSavedLineItemsFromUsage(supabase, {
+    businessId: args.businessId,
+    currency: String(args.currency || 'USD')
+      .toUpperCase()
+      .slice(0, 3),
+    items: quoteItems.map((item) => ({
+      name: String(item.name ?? ''),
+      description: item.description ?? null,
+      unit_label: 'item',
+      unit_price: Number(item.unit_price ?? 0),
+      tax_percent: Number(item.tax_percent ?? 0),
+    })),
+  }).catch((e) => console.error('[saved-line-items]', e));
 }
 
 async function loadOwnedQuote(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, id: string) {
@@ -184,6 +210,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         sort_order: i,
       });
     }
+    const nextCur = String(updates.currency ?? quote.currency ?? 'USD')
+      .toUpperCase()
+      .slice(0, 3);
+    void syncSavedLineItemsFromUsage(supabase, {
+      businessId: String(quote.business_id),
+      currency: nextCur,
+      items: p.items.map((item) => ({
+        name: item.name,
+        description: item.description ?? null,
+        unit_label: 'item',
+        unit_price: item.unit_price,
+        tax_percent: item.tax_percent ?? 0,
+      })),
+    }).catch((e) => console.error('[saved-line-items]', e));
+  }
+
+  if (!p.items && p.status && (p.status === 'sent' || p.status === 'accepted')) {
+    await syncSavedLineItemsFromQuote(supabase, {
+      businessId: String(quote.business_id),
+      quoteId: String(quote.id),
+      currency: String(updates.currency ?? quote.currency ?? 'USD'),
+    });
   }
 
   if (p.status && p.status !== quote.status) {

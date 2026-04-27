@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { DashboardNavItem } from '@/components/dashboard/dashboard-nav';
-import { isNavActive } from '@/components/dashboard/dashboard-nav';
+import { isNavActive, markAssistantNavClickForDevTiming } from '@/components/dashboard/dashboard-nav';
 import { useSupportUnread } from '@/contexts/SupportUnreadContext';
 import { cn } from '@/lib/utils/cn';
 import { ZenzexLogoMark } from '@/components/branding/AppLogoInline';
@@ -84,6 +84,7 @@ export function DashboardSidebar({
             <Link
               key={href}
               href={href}
+              onClick={() => markAssistantNavClickForDevTiming(href)}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors active:scale-[0.99]',
                 active

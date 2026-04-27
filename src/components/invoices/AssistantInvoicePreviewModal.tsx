@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { mapApiInvoiceJsonToEditModeInitialData } from '@/lib/invoices/map-api-invoice-to-edit-initial-data';
+import { mapApiInvoiceJsonToPreviewSaved } from '@/lib/invoices/map-api-invoice-to-preview-saved';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ExternalLink, FileDown, Pencil, RefreshCw, Send, X } from 'lucide-react';
 import { useIsLgDown } from '@/hooks/use-is-lg-down';
@@ -17,6 +19,7 @@ import {
 import { canEdit } from '@/lib/invoices/edit-rules';
 import { formatDisplayDate } from '@/lib/utils/date';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
+import { SavingOverlay } from '@/components/feedback/SavingOverlay';
 
 function formatStatusLabel(status: string | null | undefined): string {
   if (!status) return '—';
@@ -111,10 +114,34 @@ export function AssistantInvoicePreviewModal({
   const [sendConfirmKind, setSendConfirmKind] = useState<'send_now' | 'send_reminder' | null>(null);
   const [sendProcessing, setSendProcessing] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  /** `ManualInvoiceForm` submit in flight (drives mobile Save in workspace header). */
+  const [formSubmitting, setFormSubmitting] = useState(false);
   /** Only auto-enter edit from `context.initialMode` once per open / invoice (not after save reload). */
   const shouldApplyInitialEditRef = useRef(false);
+  const previewBundleRef = useRef<InvoicePreviewSavedBundle | null>(null);
 
   const isMobile = useIsLgDown();
+
+  /** False only while the embedded editor’s mobile “Preview” tab is shown but not yet laid out (see ManualInvoiceForm callback). */
+  const [embedMobilePreviewReady, setEmbedMobilePreviewReady] = useState(true);
+  const handleMobileEmbedPreviewPainted = useCallback(() => {
+    setEmbedMobilePreviewReady(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (workspaceMode !== 'edit' || !isMobile) {
+      setEmbedMobilePreviewReady(true);
+      return;
+    }
+    if (mobileEditTab !== 'preview') {
+      setEmbedMobilePreviewReady(true);
+      return;
+    }
+    setEmbedMobilePreviewReady(false);
+  }, [mobileEditTab, workspaceMode, isMobile]);
+
+  const showMobileEditPreviewNavOverlay =
+    isMobile && workspaceMode === 'edit' && mobileEditTab === 'preview' && !embedMobilePreviewReady;
 
   const invoiceId = (() => {
     const v = context?.invoiceId;
@@ -126,6 +153,8 @@ export function AssistantInvoicePreviewModal({
   const isLoading = loadStatus === 'loading';
   const isSuccess = loadStatus === 'success' && previewBundle !== null;
   const isError = loadStatus === 'error';
+
+  previewBundleRef.current = previewBundle;
 
   useEffect(() => {
     if (!open || !invoiceId) {
@@ -211,6 +240,12 @@ export function AssistantInvoicePreviewModal({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || workspaceMode === 'view') {
+      setFormSubmitting(false);
+    }
+  }, [open, workspaceMode]);
+
   const hrefInvoice = `/dashboard/invoices/${invoiceId ?? ''}`;
 
   const handleOpenInInvoices = () => {
@@ -240,10 +275,48 @@ export function AssistantInvoicePreviewModal({
     }
   }, [invoiceId, onInvoiceSavedToAssistant]);
 
-  const reloadAfterSave = useCallback(async () => {
-    await refreshPreviewBundle({ emitEditedAtMs: Date.now() });
-    setWorkspaceMode('view');
-  }, [refreshPreviewBundle]);
+  const reloadAfterSave = useCallback(
+    async (payload?: { invoiceId: string; data?: unknown }) => {
+      const raw = payload?.data as Record<string, unknown> | undefined;
+      if (raw && invoiceId) {
+        const next = mapApiInvoiceJsonToPreviewSaved(raw);
+        if (next) {
+          const prev = previewBundleRef.current;
+          const merged =
+            prev &&
+            (next.business.name === 'Business' || !String(next.business.name ?? '').trim()) &&
+            String(prev.business.name ?? '').trim() &&
+            prev.business.name !== 'Business'
+              ? { ...next, business: prev.business }
+              : next;
+          setPreviewBundle(merged);
+          const nextEdit = mapApiInvoiceJsonToEditModeInitialData(raw);
+          if (nextEdit) setEditInitialData(nextEdit);
+          onInvoiceSavedToAssistant?.({
+            invoiceId,
+            ...buildAssistantChatOverlayFromBundle(merged, Date.now()),
+          });
+          void loadAssistantInvoicePreviewFromSupabase(invoiceId).then((r) => {
+            if (r.ok) {
+              setPreviewBundle(r.bundle);
+              if (r.editInitialData) setEditInitialData(r.editInitialData);
+            }
+          });
+        } else {
+          await refreshPreviewBundle({ emitEditedAtMs: Date.now() });
+        }
+      } else if (invoiceId) {
+        await refreshPreviewBundle({ emitEditedAtMs: Date.now() });
+      }
+      setWorkspaceMode('view');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          showSuccessToast('Invoice saved');
+        });
+      });
+    },
+    [invoiceId, refreshPreviewBundle, onInvoiceSavedToAssistant, showSuccessToast]
+  );
 
   const normalizedStatus = String(previewBundle?.invoice.status ?? '').toLowerCase();
   const balanceDue = Number((previewBundle?.invoice as { balance_due?: number | null } | null)?.balance_due ?? 0);
@@ -264,7 +337,7 @@ export function AssistantInvoicePreviewModal({
         ? 'Send reminder'
         : null;
   const sendLoadingLabel =
-    sendActionKind === 'send_now' ? 'Sending invoice...' : 'Sending reminder...';
+    sendActionKind === 'send_now' ? 'Sending invoice…' : 'Sending reminder…';
 
   const workspaceFormId =
     invoiceId != null
@@ -335,7 +408,7 @@ export function AssistantInvoicePreviewModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={headingId}
-      aria-busy={isLoading}
+      aria-busy={isLoading || showMobileEditPreviewNavOverlay}
     >
       {!isMobile ? (
         <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
@@ -398,10 +471,11 @@ export function AssistantInvoicePreviewModal({
                 <button
                   type="submit"
                   form={workspaceFormId}
-                  disabled={!editInitialData || loadStatus !== 'success'}
+                  disabled={!editInitialData || loadStatus !== 'success' || formSubmitting}
                   className="shrink-0 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-indigo-500"
+                  aria-busy={formSubmitting}
                 >
-                  Save
+                  {formSubmitting ? 'Saving…' : 'Save'}
                 </button>
               ) : (
                 <div className="w-10" aria-hidden />
@@ -677,14 +751,16 @@ export function AssistantInvoicePreviewModal({
                 editInvoiceNumber={previewBundle?.invoice.invoice_number?.trim() ?? null}
                 workspaceEmbed
                 onWorkspaceBack={() => setWorkspaceMode('view')}
-                onSaved={() => {
-                  void reloadAfterSave();
+                onSubmittingChange={setFormSubmitting}
+                onSaved={async (p) => {
+                  await reloadAfterSave(p);
                 }}
                 workspaceMobilePanel={
                   isMobile ? (mobileEditTab === 'edit' ? 'form' : 'preview') : undefined
                 }
                 htmlFormId={workspaceFormId}
                 workspaceMobileSuppressFooter={isMobile}
+                onWorkspaceMobilePreviewPainted={handleMobileEmbedPreviewPainted}
               />
             ) : editEverOpened ? (
               <div className="flex min-h-[12rem] flex-col items-center justify-center gap-3 px-6 py-12 text-center">
@@ -702,6 +778,12 @@ export function AssistantInvoicePreviewModal({
         )}
       </div>
 
+      <SavingOverlay
+        active={showMobileEditPreviewNavOverlay}
+        message="Loading invoice preview…"
+        delayMs={400}
+        className="!z-[220]"
+      />
       {sendConfirmKind && isSuccess ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-2xl">

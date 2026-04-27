@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isBusinessProfileComplete } from '@/lib/business/profile';
+import { isBusinessProfileComplete, type BusinessLike } from '@/lib/business/profile';
 import { getBusinessBaseCurrency } from '@/lib/business/currency-policy';
 import { isSupportedCurrency } from '@/lib/currency/supported';
 
@@ -17,23 +17,46 @@ export type InvoiceSetupProbeResult =
  * (e.g. Assistant invoice wizard) can branch — e.g. start in-chat customer creation
  * when the only gap is “no customers yet”.
  */
+const PROBE_BUSINESS_SELECT =
+  'id, name, currency, address_line1, city, state, country, email, phone, invoice_settings';
+
+export type InvoiceReadinessBusinessRow = {
+  id: string;
+  name?: string | null;
+  currency?: string | null;
+  address_line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  invoice_settings?: { default_currency?: string | null } | null;
+};
+
 export async function probeInvoiceCreationSetup(
   supabase: SupabaseClient,
-  businessId: string
+  businessId: string,
+  preloaded?: InvoiceReadinessBusinessRow | null
 ): Promise<InvoiceSetupProbeResult> {
-  const { data: business, error } = await supabase
-    .from('businesses')
-    .select(
-      'id, name, currency, address_line1, city, state, country, email, phone, invoice_settings'
-    )
-    .eq('id', businessId)
-    .maybeSingle();
-
-  if (error || !business) {
-    return { ok: false, notFound: true };
+  let business: InvoiceReadinessBusinessRow;
+  if (preloaded) {
+    if (String(preloaded.id ?? '') !== String(businessId)) {
+      return { ok: false, notFound: true };
+    }
+    business = preloaded;
+  } else {
+    const { data, error } = await supabase
+      .from('businesses')
+      .select(PROBE_BUSINESS_SELECT)
+      .eq('id', businessId)
+      .maybeSingle();
+    if (error || !data) {
+      return { ok: false, notFound: true };
+    }
+    business = data as InvoiceReadinessBusinessRow;
   }
 
-  if (!isBusinessProfileComplete(business)) {
+  if (!isBusinessProfileComplete(business as BusinessLike)) {
     return { ok: false, missing: 'business_profile' };
   }
 
@@ -69,9 +92,10 @@ export async function probeInvoiceCreationSetup(
  */
 export async function assertInvoiceCreationReadiness(
   supabase: SupabaseClient,
-  businessId: string
+  businessId: string,
+  preloadedBusiness?: InvoiceReadinessBusinessRow | null
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
-  const probe = await probeInvoiceCreationSetup(supabase, businessId);
+  const probe = await probeInvoiceCreationSetup(supabase, businessId, preloadedBusiness ?? null);
   if (probe.ok) return { ok: true };
 
   if ('notFound' in probe && probe.notFound) {

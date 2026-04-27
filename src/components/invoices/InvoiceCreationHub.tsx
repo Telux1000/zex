@@ -10,6 +10,10 @@ import { BusinessAddressInvoiceSoftPrompt } from '@/components/invoices/Business
 import type { InvoiceCreationWorkspace } from '@/hooks/use-invoice-creation-workspace';
 import { cn } from '@/lib/utils/cn';
 import { isSetupProgressFullySatisfied } from '@/lib/onboarding/setup-progress';
+import { DASHBOARD_ASSISTANT_HREF } from '@/lib/dashboard/assistant-route';
+import { devSetManualInvoiceOpenClickT0 } from '@/lib/dev/manual-invoice-open-timing';
+import { devSetAssistantInvoiceChatClickT0 } from '@/lib/dev/assistant-invoice-chat-timing';
+import { setHubCustomersCacheForManualEntry } from '@/lib/invoice-creation/hub-customers-hydration';
 
 const cardClassName =
   'group flex min-h-[140px] w-full min-w-0 flex-col justify-between rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow,transform] hover:border-indigo-500/25 hover:shadow-[0_4px_20px_rgba(99,91,255,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] dark:border-slate-700/80 dark:bg-slate-900/40 dark:shadow-none dark:hover:border-indigo-400/30 sm:min-h-[160px] sm:rounded-3xl sm:p-7 md:p-8';
@@ -24,7 +28,7 @@ export function InvoiceCreationHub({ workspace }: { workspace: InvoiceCreationWo
     q.set('session', session);
     q.set('context', 'create_invoice');
     q.set('returnTo', '/dashboard/invoices/new');
-    return `/dashboard/assistant?${q.toString()}`;
+    return `${DASHBOARD_ASSISTANT_HREF}?${q.toString()}`;
   }, []);
 
   const setupProgress = useDashboardSetupProgress();
@@ -95,7 +99,11 @@ export function InvoiceCreationHub({ workspace }: { workspace: InvoiceCreationWo
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
-        <Link href={assistantCreateInvoiceHref} className={cardClassName}>
+        <Link
+          href={assistantCreateInvoiceHref}
+          className={cardClassName}
+          onClick={() => devSetAssistantInvoiceChatClickT0()}
+        >
           <div className="flex items-start gap-4">
             <span
               className={cn(
@@ -127,6 +135,14 @@ export function InvoiceCreationHub({ workspace }: { workspace: InvoiceCreationWo
 
         <Link
           href="/dashboard/invoices/new?mode=form"
+          onClick={() => {
+            if (typeof performance !== 'undefined') {
+              devSetManualInvoiceOpenClickT0(performance.now());
+            }
+            if (businessId) {
+              setHubCustomersCacheForManualEntry(businessId, allCustomers);
+            }
+          }}
           className={cardClassName}
           aria-label="Manual invoice entry"
         >

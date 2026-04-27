@@ -1,3 +1,4 @@
+import { formatAddressBlockLines } from '@/lib/addresses/address-block-format';
 import { countries as locationCountries, getStates } from '@/lib/location';
 import type { InvoiceCustomerSnapshot } from '@/lib/invoices/customer-snapshot';
 
@@ -129,21 +130,19 @@ export function formatPublicInvoiceBillToLines(
     if (legacy) {
       const parts = legacy.split(/\n/).map((s) => s.trim()).filter(Boolean);
       line1 = parts[0] ?? '';
-      line2 = parts.slice(1).join(', ') || undefined;
+      line2 = parts.slice(1).join('\n') || undefined;
     }
   }
-  if (line1) lines.push(line1);
-  if (line2) lines.push(line2);
-
-  const city = snapshot.city?.trim();
-  const stateName = getStateDisplay(snapshot.country, snapshot.state);
-  const pc = snapshot.postalCode?.trim();
-  const cityState = [city, stateName].filter(Boolean).join(', ');
-  const cityLine = [cityState, pc].filter(Boolean).join(cityState && pc ? ' ' : '');
-  if (cityLine) lines.push(cityLine);
-
-  const countryName = getCountryNameFromCode(snapshot.country);
-  if (countryName) lines.push(countryName);
+  const countryResolved = getCountryNameFromCode(snapshot.country) || String(snapshot.country ?? '').trim();
+  const addrLines = formatAddressBlockLines({
+    line1: line1 || undefined,
+    line2: line2 || undefined,
+    city: snapshot.city,
+    state: getStateDisplay(snapshot.country, snapshot.state),
+    postal_code: snapshot.postalCode,
+    country: countryResolved,
+  });
+  lines.push(...addrLines);
 
   const email = snapshot.email?.trim();
   if (email) lines.push(email);

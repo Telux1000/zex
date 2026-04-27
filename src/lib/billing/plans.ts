@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { profileDisplayNameFromProfileRow } from '@/lib/audit-log';
 
 export type BillingPlan = 'starter' | 'growth' | 'professional' | 'enterprise';
 export type PricingPlan = {
@@ -258,6 +259,34 @@ export async function getUserBillingPlan(
 ): Promise<BillingPlan> {
   const { data } = await supabase.from('profiles').select('billing_plan').eq('id', userId).maybeSingle();
   return normalizeBillingPlan((data as { billing_plan?: unknown } | null)?.billing_plan);
+}
+
+/**
+ * One profiles row read for invoice POST (replaces separate resolveActorDisplayName + getUserBillingPlan).
+ * Same RLS; same data as two selects combined.
+ */
+export async function fetchActorLabelAndBillingPlan(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ actorLabel: string | null; billingPlan: BillingPlan }> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('full_name, email, billing_plan')
+    .eq('id', userId)
+    .maybeSingle();
+  const label = profileDisplayNameFromProfileRow(
+    data as { full_name?: string | null; email?: string | null } | null
+  );
+  if (label) {
+    return {
+      actorLabel: label,
+      billingPlan: normalizeBillingPlan((data as { billing_plan?: unknown } | null)?.billing_plan),
+    };
+  }
+  return {
+    actorLabel: data ? 'User' : null,
+    billingPlan: normalizeBillingPlan((data as { billing_plan?: unknown } | null)?.billing_plan),
+  };
 }
 
 export function featureUpgradeMessage(feature: PlanFeature): string {

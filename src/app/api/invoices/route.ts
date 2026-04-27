@@ -1,98 +1,45 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createInvoiceBodySchema, resolveDiscountAmount } from '@/lib/validations/invoice';
 import { normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import { normalizeInvoiceAssignee } from '@/lib/invoices/invoice-time-summary';
 import { buildInvoiceFxRow, resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
-import { resolveActorDisplayName } from '@/lib/audit-log';
 import { logInvoiceDraftCreated } from '@/lib/invoices/log-invoice-draft-created';
 import { findExistingCustomer } from '@/lib/customers';
-import { getDueDateRange, getIssueDateRange } from '@/lib/invoices/list-filters';
-import { deriveInvoiceStatus } from '@/lib/invoices/status';
-import {
-  applyRefundDisplayStatus,
-  availableRefundableAmount,
-  canShowRefundMenuAction,
-  normalizeCurrencyForRefund,
-  resolveRefundDisplayStatus,
-  succeededPaymentGrossInInvoiceCurrency,
-} from '@/lib/invoices/refund-display';
-import { notifyBusinessEvent } from '@/services/notifications';
-import { DASHBOARD_TZ_COOKIE } from '@/lib/dashboard/date-range';
-import { invoiceMatchesPastDueUi, resolvePastDueCivilTodayYmd } from '@/lib/invoices/invoice-past-due-ui';
-import { normalizeInvoiceRecord, isInvoiceOpenForReporting } from '@/lib/invoices/normalize';
-import { logOverdueParityDebug } from '@/lib/invoices/dashboard-invoice-overdue';
 import { normalizeClientPaymentScheduleCamel } from '@/lib/invoices/normalize-client-payment-schedule';
 import { parseInvoiceReminderSettings, serializeInvoiceReminderSettings } from '@/lib/invoices/reminder-settings';
 import { assertBusinessPermission } from '@/lib/rbac/server';
+import type { InvoiceReadinessBusinessRow } from '@/lib/onboarding/invoice-readiness-server';
 import { assertInvoiceCreationReadiness } from '@/lib/onboarding/invoice-readiness-server';
 import {
   buildInvoiceRecurringSummary,
   type RecurringRuleListFields,
 } from '@/lib/recurring-invoice/display';
 import { fetchDedupeKeysForInvoices, resolveNextReminderForInvoiceDisplay } from '@/lib/invoices/next-pending-reminder';
-import { processInvoiceReminders } from '@/lib/invoices/reminder-cron';
 import { processScheduledInvoiceSends } from '@/lib/invoices/scheduled-invoice-send-cron';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { fetchAdminPlatformSettings, monthlyInvoiceLimitForPlan } from '@/lib/admin/admin-platform-settings';
-import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
+import { featureUpgradeMessage, fetchActorLabelAndBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
 import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
-import { computeInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
-
-const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
-
-type InvoiceListRowPastDueInput = {
-  id: string;
-  status: string;
-  due_date: string;
-  balance_due: number;
-  total: number;
-  amount_paid: number;
-  total_refunded?: number;
-  use_payment_schedule: boolean;
-  next_due_date: string | null;
-};
-
-/** Same predicate as shared `invoice-past-due-ui` (invoice table Past due + schedule past_due). */
-/** Matches list filter `status=partially_paid`: derived status or open balance with payments recorded. */
-function listRowMatchesPartiallyPaidFilter(inv: InvoiceListRowPastDueInput): boolean {
-  const raw = String(inv.status ?? '').toLowerCase();
-  if (raw === 'voided' || raw === 'cancelled' || raw === 'draft') return false;
-  const derived = deriveInvoiceStatus({
-    status: inv.status,
-    total: inv.total,
-    amount_paid: inv.amount_paid,
-    balance_due: inv.balance_due,
-    total_refunded: inv.total_refunded ?? 0,
-  });
-  return derived === 'partially_paid' || derived === 'partially_refunded';
-}
-
-function invoiceApiRowMatchesPastDue(inv: InvoiceListRowPastDueInput, civilTodayYmd: string): boolean {
-  const nextDueYmd = String(inv.next_due_date ?? inv.due_date ?? '').slice(0, 10);
-  return invoiceMatchesPastDueUi(
-    {
-      id: inv.id,
-      status: inv.status,
-      due_date: inv.due_date,
-      balance_due: inv.balance_due,
-      total: inv.total,
-      amount_paid: inv.amount_paid,
-      use_payment_schedule: inv.use_payment_schedule,
-      total_refunded: inv.total_refunded ?? 0,
-    },
-    civilTodayYmd,
-    nextDueYmd
-  );
-}
-const SELECT_COLS =
-  'id, invoice_number, customer_name, customer_id, customer_email, reference_po, subtotal, tax_amount, total, total_in_base, currency, base_currency_code, exchange_rate_to_base, amount_paid, balance_due, total_refunded, use_payment_schedule, status, issue_date, due_date, paid_at, created_at, recurring_rule_id, use_customer_reminder_defaults, reminder_settings, scheduled_send_at, customers ( reminder_settings )';
-const LEGACY_SELECT_COLS =
-  'id, invoice_number, customer_name, customer_id, customer_email, reference_po, total, currency, amount_paid, balance_due, use_payment_schedule, status, due_date, created_at, scheduled_send_at';
+import {
+  createServerInvoiceSaveTimer,
+  type InvoiceSaveServerSummaryMeta,
+  voidLogAsyncDuration,
+} from '@/lib/dev/invoice-save-timing';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
+import {
+  INVOICE_LIST_LEAN_COLS,
+  INVOICE_LIST_LEAN_COLS_LEGACY,
+  parseInvoiceListRequestParams,
+} from '@/lib/invoices/invoice-list-sql-path';
+import { runInvoiceListDataPipeline } from '@/lib/invoices/invoice-list-data-pipeline.server';
+import { createInvoiceListServerPerf, invoiceTablePerfEnabled } from '@/lib/dev/invoice-table-perf';
 
 export async function GET(req: Request) {
+  const perf = createInvoiceListServerPerf();
+  perf.mark('fetch_start');
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -106,16 +53,13 @@ export async function GET(req: Request) {
 
   const admin = getSupabaseServiceAdmin();
   if (admin) {
-    try {
-      await processScheduledInvoiceSends(admin, new Date(), { businessId });
-    } catch (e) {
-      console.error('[scheduled-invoice-send] list GET drain failed', e);
-    }
-    try {
-      await processInvoiceReminders(admin, new Date(), { businessId });
-    } catch (e) {
-      console.error('[invoice-reminders] list GET drain failed', e);
-    }
+    void (async () => {
+      try {
+        await processScheduledInvoiceSends(admin, new Date(), { businessId });
+      } catch (e) {
+        console.error('[scheduled-invoice-send] list GET drain failed', e);
+      }
+    })();
   }
 
   const { data: business } = await supabase
@@ -125,475 +69,37 @@ export async function GET(req: Request) {
     .single();
   if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
-  const q = (searchParams.get('q') ?? '').trim();
-  /** Lowercase for comparisons (`Partially_Paid` → `partially_paid`). */
-  const status = (searchParams.get('status') ?? '').trim().toLowerCase();
-  const due = searchParams.get('due') ?? '';
-  const due_from = searchParams.get('due_from') ?? '';
-  const due_to = searchParams.get('due_to') ?? '';
-  const issue = searchParams.get('issue') ?? '';
-  const issue_from = searchParams.get('issue_from') ?? '';
-  const issue_to = searchParams.get('issue_to') ?? '';
-  const customer = searchParams.get('customer') ?? '';
-  const schedule_filter = searchParams.get('schedule_filter') ?? '';
-  const filter = searchParams.get('filter') ?? '';
-  const balance = searchParams.get('balance') ?? '';
-  const sort = searchParams.get('sort') ?? 'created_at';
-  /** Default descending (newest first for `created_at`) unless `order=asc`. */
-  const order = searchParams.get('order') === 'asc' ? 'asc' : 'desc';
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-  const page_size = Math.min(
-    MAX_PAGE_SIZE,
-    Math.max(1, parseInt(searchParams.get('page_size') ?? String(DEFAULT_PAGE_SIZE), 10))
-  );
-
-  let query = supabase
-    .from('invoices')
-    .select(SELECT_COLS, { count: 'exact' })
-    .eq('business_id', business.id);
-
-  const dueRange = getDueDateRange(
-    due || undefined,
-    due_from || undefined,
-    due_to || undefined
-  );
-  const issueRange = getIssueDateRange(
-    issue || undefined,
-    issue_from || undefined,
-    issue_to || undefined
-  );
-  if (issueRange) {
-    query = query.gte('issue_date', issueRange.from).lte('issue_date', issueRange.to);
-  }
-  if (dueRange) {
-    query = query.gte('due_date', dueRange.from).lte('due_date', dueRange.to);
-  }
-
-  if (customer) query = query.eq('customer_id', customer);
-
-  if (q) {
-    const qLower = `%${q.toLowerCase()}%`;
-    const num = parseFloat(q.replace(/[^0-9.-]/g, ''));
-    const conditions = [
-      `invoice_number.ilike.${qLower}`,
-      `customer_name.ilike.${qLower}`,
-      `metadata->>company.ilike.${qLower}`,
-      `customer_email.ilike.${qLower}`,
-      `reference_po.ilike.${qLower}`,
-    ];
-    if (!Number.isNaN(num)) conditions.push(`total.eq.${num}`);
-    query = query.or(conditions.join(','));
-  }
-
-  // We apply schedule-aware filters/sorting after next_due_date is derived.
-  query = query.order('created_at', { ascending: false });
-
-  let { data: rows, error } = (await query) as {
-    data: Record<string, unknown>[] | null;
-    error: { message?: string } | null;
-  };
-  if (error && /column .* does not exist/i.test(error.message || '')) {
-    let legacyQuery = supabase
-      .from('invoices')
-      .select(LEGACY_SELECT_COLS, { count: 'exact' })
-      .eq('business_id', business.id);
-    if (dueRange) {
-      legacyQuery = legacyQuery.gte('due_date', dueRange.from).lte('due_date', dueRange.to);
-    }
-    if (issueRange) {
-      legacyQuery = legacyQuery.gte('issue_date', issueRange.from).lte('issue_date', issueRange.to);
-    }
-    if (customer) legacyQuery = legacyQuery.eq('customer_id', customer);
-    if (q) {
-      const qLower = `%${q.toLowerCase()}%`;
-      const num = parseFloat(q.replace(/[^0-9.-]/g, ''));
-      const conditions = [
-        `invoice_number.ilike.${qLower}`,
-        `customer_name.ilike.${qLower}`,
-        `metadata->>company.ilike.${qLower}`,
-        `customer_email.ilike.${qLower}`,
-        `reference_po.ilike.${qLower}`,
-      ];
-      if (!Number.isNaN(num)) conditions.push(`total.eq.${num}`);
-      legacyQuery = legacyQuery.or(conditions.join(','));
-    }
-    legacyQuery = legacyQuery.order('created_at', { ascending: false });
-    const legacyRes = await legacyQuery;
-    rows = (legacyRes.data ?? null) as Record<string, unknown>[] | null;
-    error = legacyRes.error;
-  }
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const invoiceIds = (rows ?? []).map((r) => String(r.id));
-  let pendingByInvoice = new Map<string, { next_due_date: string | null; remaining_installments: number }>();
-  if (invoiceIds.length > 0) {
-    const { data: pendingRows } = await supabase
-      .from('invoice_payment_schedule_items')
-      .select('invoice_id, due_date, status')
-      .in('invoice_id', invoiceIds)
-      .eq('status', 'pending')
-      .order('due_date', { ascending: true });
-
-    for (const row of pendingRows ?? []) {
-      const invId = String((row as any).invoice_id);
-      const curr = pendingByInvoice.get(invId);
-      if (!curr) {
-        pendingByInvoice.set(invId, {
-          next_due_date: String((row as any).due_date ?? ''),
-          remaining_installments: 1,
-        });
-      } else {
-        pendingByInvoice.set(invId, {
-          next_due_date: curr.next_due_date,
-          remaining_installments: curr.remaining_installments + 1,
-        });
-      }
-    }
-  }
-
-  const baseCurrency = String((business as { currency?: string }).currency ?? 'USD').toUpperCase();
-  let invoices = (rows ?? [])
-    .map((raw) => {
-      const r = normalizeInvoiceRecord(raw as Record<string, unknown>, baseCurrency);
-      if (!r) return null;
-      const rr = (raw as { recurring_rule_id?: string | null }).recurring_rule_id;
-      const recurring_rule_id =
-        rr != null && String(rr).trim() !== '' ? String(rr) : null;
-      const pending = pendingByInvoice.get(String(r.id));
-      const amountPaid = Number(r.amount_paid ?? 0);
-      const rawSt = String(r.status ?? '').toLowerCase();
-      const totalRefunded = Number((raw as { total_refunded?: number | null }).total_refunded ?? 0);
-      const balanceDue =
-        rawSt === 'voided' || rawSt === 'cancelled'
-          ? 0
-          : computeInvoiceBalanceDue(Number(r.total), amountPaid, totalRefunded);
-      const rawRow = raw as Record<string, unknown>;
-      const customerReminderSettings =
-        (rawRow.customers as { reminder_settings?: unknown } | null | undefined)?.reminder_settings ??
-        null;
-      const useCustomerReminderDefaults =
-        rawRow.use_customer_reminder_defaults !== undefined
-          ? (rawRow.use_customer_reminder_defaults as boolean) !== false
-          : undefined;
-      return {
-        id: r.id,
-        invoice_number: r.invoice_number,
-        customer_name: r.customer_name,
-        customer_id: r.customer_id,
-        customer_email: r.customer_email,
-        reference_po: r.reference_po,
-        currency: r.currency,
-        issue_date: r.issue_date,
-        total: Number(r.total),
-        total_in_base: Number(r.total_in_base ?? 0),
-        exchange_rate_to_base: Number(r.exchange_rate_to_base ?? 0),
-        amount_paid: amountPaid,
-        balance_due: balanceDue,
-        total_refunded: totalRefunded,
-        use_payment_schedule: !!r.use_payment_schedule,
-        next_due_date: pending?.next_due_date ?? r.due_date,
-        remaining_installments: pending?.remaining_installments ?? 0,
-        status: deriveInvoiceStatus({
-          status: r.status,
-          total: Number(r.total ?? 0),
-          amount_paid: amountPaid,
-          balance_due: balanceDue,
-          total_refunded: totalRefunded,
-        }),
-        due_date: r.due_date,
-        paid_at: r.paid_at ?? null,
-        created_at: r.created_at,
-        recurring_rule_id,
-        scheduled_send_at: (rawRow as { scheduled_send_at?: string | null }).scheduled_send_at ?? null,
-        ...(useCustomerReminderDefaults !== undefined
-          ? {
-              use_customer_reminder_defaults: useCustomerReminderDefaults,
-              reminder_settings: rawRow.reminder_settings ?? null,
-              customer_reminder_settings: customerReminderSettings,
-            }
-          : {}),
-      };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
-
-  const cookieStore = await cookies();
-  const tzRaw = cookieStore.get(DASHBOARD_TZ_COOKIE)?.value;
-  let workspaceTz: string | null = null;
-  try {
-    workspaceTz = tzRaw ? decodeURIComponent(tzRaw) : null;
-  } catch {
-    workspaceTz = tzRaw ?? null;
-  }
-  const today = resolvePastDueCivilTodayYmd(new Date(), workspaceTz);
-  if (status) {
-    if (status === 'overdue') {
-      invoices = invoices.filter((inv) => invoiceApiRowMatchesPastDue(inv, today));
-    } else if (status === 'cancelled') {
-      invoices = invoices.filter(
-        (inv) => inv.status === 'cancelled' || inv.status === 'voided'
-      );
-    } else if (status === 'pending') {
-      invoices = invoices.filter((inv) => inv.status === 'pending' || inv.status === 'sent');
-    } else if (status === 'partially_paid') {
-      invoices = invoices.filter((inv) => listRowMatchesPartiallyPaidFilter(inv));
-    } else {
-      invoices = invoices.filter((inv) => inv.status === status);
-    }
-  }
-
-  if (filter === 'open' || balance === 'open') {
-    invoices = invoices.filter((inv) =>
-      isInvoiceOpenForReporting({
-        status: inv.status,
-        total: inv.total,
-        amount_paid: inv.amount_paid,
-        balance_due: inv.balance_due,
-        total_refunded: inv.total_refunded ?? 0,
-      })
-    );
-  }
-
-  if (schedule_filter === 'with_schedule') {
-    invoices = invoices.filter((inv) => !!inv.use_payment_schedule);
-  } else if (schedule_filter === 'due_today') {
-    invoices = invoices.filter(
-      (inv) => String(inv.next_due_date || inv.due_date || '').slice(0, 10) === today
-    );
-  } else if (schedule_filter === 'upcoming') {
-    invoices = invoices.filter(
-      (inv) => String(inv.next_due_date || inv.due_date || '').slice(0, 10) > today
-    );
-  } else if (schedule_filter === 'past_due') {
-    invoices = invoices.filter((inv) => invoiceApiRowMatchesPastDue(inv, today));
-  }
-
-  if (status === 'overdue' || schedule_filter === 'past_due') {
-    logOverdueParityDebug({
-      surface: 'invoice_api_list',
-      overdueCount: invoices.length,
-      civilTodayYmd: today,
-      extra: { businessId: business.id, status: status || null, schedule_filter: schedule_filter || null },
-    });
-  }
-
-  const normalizedSort = sort === 'default' ? 'created_at' : sort;
-  const compareDate = (a: string | null | undefined, b: string | null | undefined) =>
-    (a || '').localeCompare(b || '');
-  const compareText = (a: string | null | undefined, b: string | null | undefined) =>
-    (a || '').localeCompare(b || '');
-  const statusRank = (value: string) => {
-    const v = value === 'overdue' ? 'overdue' : value;
-    if (v === 'draft') return 0;
-    if (v === 'pending') return 1;
-    if (v === 'sent') return 2;
-    if (v === 'overdue') return 3;
-    if (v === 'partially_paid') return 4;
-    if (v === 'paid') return 5;
-    if (v === 'cancelled' || v === 'voided') return 6;
-    return 99;
-  };
-
-  invoices.sort((a, b) => {
-    let base = 0;
-    if (normalizedSort === 'next_due' || normalizedSort === 'due_date') {
-      base = compareDate(a.next_due_date || a.due_date, b.next_due_date || b.due_date);
-    } else if (normalizedSort === 'issue_date') {
-      base = compareDate(a.issue_date, b.issue_date);
-    } else if (normalizedSort === 'amount') {
-      base = Number(a.balance_due ?? a.total) - Number(b.balance_due ?? b.total);
-    } else if (normalizedSort === 'total') {
-      base = Number(a.total) - Number(b.total);
-    } else if (normalizedSort === 'status') {
-      const aNext = String(a.next_due_date || a.due_date || '').slice(0, 10);
-      const bNext = String(b.next_due_date || b.due_date || '').slice(0, 10);
-      const aStatus =
-        a.status === 'paid' || a.status === 'voided' || a.status === 'cancelled' || a.status === 'partially_paid'
-          ? a.status
-          : a.due_date && aNext < today
-            ? 'overdue'
-            : a.status;
-      const bStatus =
-        b.status === 'paid' || b.status === 'voided' || b.status === 'cancelled' || b.status === 'partially_paid'
-          ? b.status
-          : b.due_date && bNext < today
-            ? 'overdue'
-            : b.status;
-      base = statusRank(aStatus) - statusRank(bStatus);
-    } else if (normalizedSort === 'created_at') {
-      base = compareDate(a.created_at, b.created_at);
-    } else if (normalizedSort === 'number') {
-      base = compareText(a.invoice_number, b.invoice_number);
-    } else if (normalizedSort === 'customer') {
-      base = compareText(a.customer_name, b.customer_name);
-    } else {
-      base = compareDate(a.created_at, b.created_at);
-    }
-    return order === 'asc' ? base : -base;
+  const { listParams, page, pageSize, wantExactCount } = parseInvoiceListRequestParams(searchParams);
+  const pipeline = await runInvoiceListDataPipeline({
+    supabase,
+    business: business as { id: string; currency?: string | null },
+    listParams,
+    mode: {
+      kind: 'list',
+      page,
+      pageSize,
+      wantExactCount,
+      perf,
+      selectPrimary: INVOICE_LIST_LEAN_COLS,
+      selectLegacy: INVOICE_LIST_LEAN_COLS_LEGACY,
+    },
   });
-
-  const totalCount = invoices.length;
-  const from = (page - 1) * page_size;
-  const to = from + page_size;
-  invoices = invoices.slice(from, to);
-
-  const pageIds = invoices.map((inv) => inv.id);
-  const refundedByInvoice = new Map<string, number>();
-  const grossPaidByInvoice = new Map<string, number>();
-  if (pageIds.length > 0) {
-    const { data: refundRows } = await supabase
-      .from('payment_refunds')
-      .select('invoice_id, amount, status')
-      .in('invoice_id', pageIds);
-    for (const row of refundRows ?? []) {
-      const st = String((row as { status?: string }).status ?? '').toLowerCase();
-      if (st !== 'succeeded' && st !== 'pending') continue;
-      const invoiceId = String((row as { invoice_id?: string }).invoice_id ?? '');
-      if (!invoiceId) continue;
-      const amount = Number((row as { amount?: number }).amount ?? 0);
-      if (!Number.isFinite(amount) || amount <= 0) continue;
-      refundedByInvoice.set(invoiceId, (refundedByInvoice.get(invoiceId) ?? 0) + amount);
-    }
-    const { data: succeededPayments } = await supabase
-      .from('payments')
-      .select('invoice_id, amount, amount_in_invoice_currency, currency')
-      .in('invoice_id', pageIds)
-      .eq('status', 'succeeded');
-    const invCurrencyById = new Map(
-      invoices.map((inv) => [
-        String(inv.id),
-        normalizeCurrencyForRefund((inv as { currency?: string }).currency),
-      ])
-    );
-    for (const row of succeededPayments ?? []) {
-      const invoiceId = String((row as { invoice_id?: string }).invoice_id ?? '');
-      if (!invoiceId) continue;
-      const invCur = invCurrencyById.get(invoiceId) ?? 'USD';
-      const chunk = succeededPaymentGrossInInvoiceCurrency(
-        {
-          amount: (row as { amount?: number | null }).amount,
-          amount_in_invoice_currency: (row as { amount_in_invoice_currency?: number | null })
-            .amount_in_invoice_currency,
-          currency: (row as { currency?: string | null }).currency,
-        },
-        invCur
-      );
-      if (!(chunk > 0)) continue;
-      grossPaidByInvoice.set(invoiceId, (grossPaidByInvoice.get(invoiceId) ?? 0) + chunk);
-    }
+  if (!pipeline.ok) {
+    return NextResponse.json({ error: pipeline.error.message }, { status: 500 });
   }
-  const latestSucceededPaymentByInvoice = new Map<string, string>();
-  if (pageIds.length > 0) {
-    const { data: paymentRows } = await supabase
-      .from('payments')
-      .select('invoice_id, paid_at, created_at')
-      .in('invoice_id', pageIds)
-      .eq('status', 'succeeded');
-    for (const row of paymentRows ?? []) {
-      const invId = String((row as { invoice_id?: string }).invoice_id ?? '');
-      if (!invId) continue;
-      const touch =
-        (row as { paid_at?: string | null; created_at?: string | null }).paid_at ??
-        (row as { created_at?: string | null }).created_at ??
-        null;
-      if (!touch) continue;
-      const ts = Date.parse(String(touch));
-      if (!Number.isFinite(ts)) continue;
-      const prev = latestSucceededPaymentByInvoice.get(invId);
-      if (!prev || Date.parse(prev) < ts) latestSucceededPaymentByInvoice.set(invId, String(touch));
-    }
-  }
-
-  const paidOrPartialIds = invoices
-    .filter((inv) => inv.status === 'paid' || inv.status === 'partially_paid')
-    .map((inv) => inv.id);
-  const latestSchedulePaidByInvoice = new Map<string, string>();
-  if (paidOrPartialIds.length > 0) {
-    const { data: schedPaidRows } = await supabase
-      .from('invoice_payment_schedule_items')
-      .select('invoice_id, paid_at')
-      .in('invoice_id', paidOrPartialIds)
-      .eq('status', 'paid');
-    for (const row of schedPaidRows ?? []) {
-      const invId = String((row as { invoice_id?: string }).invoice_id ?? '');
-      const pa = (row as { paid_at?: string | null }).paid_at;
-      if (!invId || pa == null || String(pa).trim() === '') continue;
-      const ts = Date.parse(String(pa));
-      if (!Number.isFinite(ts)) continue;
-      const prev = latestSchedulePaidByInvoice.get(invId);
-      if (!prev || Date.parse(prev) < ts) latestSchedulePaidByInvoice.set(invId, String(pa));
-    }
-  }
-
-  function maxPaymentTouch(a: string | null | undefined, b: string | null | undefined): string | null {
-    const ta = a != null && String(a).trim() !== '' ? Date.parse(String(a)) : NaN;
-    const tb = b != null && String(b).trim() !== '' ? Date.parse(String(b)) : NaN;
-    if (!Number.isFinite(ta) && !Number.isFinite(tb)) return null;
-    if (!Number.isFinite(ta)) return String(b);
-    if (!Number.isFinite(tb)) return String(a);
-    return ta >= tb ? String(a) : String(b);
-  }
-
-  invoices = invoices.map((inv) => {
-    const rawStatusForRefund = String(inv.status ?? '').toLowerCase();
-    const fromPayments = latestSucceededPaymentByInvoice.get(inv.id) ?? null;
-    const fromSchedule = latestSchedulePaidByInvoice.get(inv.id) ?? null;
-    const latestActivity = maxPaymentTouch(fromPayments, fromSchedule);
-
-    const amountPaidOnInvoice = Number(inv.amount_paid ?? 0);
-    const grossFromPaymentRows = grossPaidByInvoice.get(inv.id) ?? 0;
-    /** Same canonical “Paid” as invoice detail: `invoices.amount_paid`, with fallback if unset. */
-    const grossPaidAmount =
-      amountPaidOnInvoice > 0.0001 ? amountPaidOnInvoice : grossFromPaymentRows;
-
-    const refundStatus = resolveRefundDisplayStatus({
-      grossPaidAmount,
-      refundedAmount: refundedByInvoice.get(inv.id) ?? 0,
-    });
-    const displayStatus = applyRefundDisplayStatus(inv.status, refundStatus);
-    const refundedAmount = refundedByInvoice.get(inv.id) ?? 0;
-    const netPaidAmount = Math.max(0, grossPaidAmount - refundedAmount);
-    const available_refundable_amount = availableRefundableAmount(grossPaidAmount, refundedAmount);
-    const refund_action_eligible = canShowRefundMenuAction({
-      status: rawStatusForRefund,
-      grossPaidSucceeded: grossPaidAmount,
-      refundedSucceededAndPending: refundedAmount,
-    });
-
-    if (inv.status === 'paid') {
-      return {
-        ...inv,
-        status: displayStatus,
-        refunded_amount: refundedAmount,
-        gross_paid_amount: grossPaidAmount,
-        net_paid_amount: netPaidAmount,
-        available_refundable_amount,
-        refund_action_eligible,
-        paid_at: inv.paid_at ?? latestActivity ?? null,
-      };
-    }
-    if (inv.status === 'partially_paid') {
-      return {
-        ...inv,
-        status: displayStatus,
-        refunded_amount: refundedAmount,
-        gross_paid_amount: grossPaidAmount,
-        net_paid_amount: netPaidAmount,
-        available_refundable_amount,
-        refund_action_eligible,
-        latest_payment_at: latestActivity ?? null,
-      };
-    }
-    return {
-      ...inv,
-      status: displayStatus,
-      refunded_amount: refundedAmount,
-      gross_paid_amount: grossPaidAmount,
-      net_paid_amount: netPaidAmount,
-      available_refundable_amount,
-      refund_action_eligible,
-    };
-  });
+  const { totalCount, useDbPage } = pipeline;
+  const invoices = pipeline.invoices as Array<{
+    id: string;
+    recurring_rule_id?: string | null;
+    status: string;
+    total: number;
+    amount_paid: number;
+    balance_due: number;
+    due_date: string;
+    use_customer_reminder_defaults?: boolean;
+    reminder_settings?: unknown;
+    customer_reminder_settings?: unknown;
+  }>;
 
   const pageIdsForRecurring = invoices.map((inv) => inv.id);
   const ruleIdsForRecurring = Array.from(
@@ -654,7 +160,19 @@ export async function GET(req: Request) {
     return { ...rest, recurring, next_reminder_at: next.next_reminder_at };
   });
 
-  return NextResponse.json({ invoices: invoicesOut, totalCount });
+  perf.mark('enrichment_done');
+  perf.summary({
+    useDbPage,
+    exactCount: wantExactCount ? 1 : 0,
+    totalCount,
+    rowCount: invoicesOut.length,
+  });
+
+  const payload: Record<string, unknown> = { invoices: invoicesOut, totalCount };
+  if (invoiceTablePerfEnabled()) {
+    payload._debugInvoiceListPerf = { ...perf.devPayload(), useDbPage, exactCount: wantExactCount ? 1 : 0 };
+  }
+  return NextResponse.json(payload);
 }
 
 export async function POST(req: Request) {
@@ -663,6 +181,7 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const postT = createServerInvoiceSaveTimer('POST');
     const body = (await req.json()) as Record<string, unknown>;
     const businessId = body.business_id;
     if (!businessId) return NextResponse.json({ error: 'Missing business_id' }, { status: 400 });
@@ -674,31 +193,56 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    postT.mark('parse_and_validate');
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('id, currency, owner_id')
+      .select(
+        'id, currency, owner_id, name, address_line1, city, state, country, email, phone, invoice_settings'
+      )
       .eq('id', businessId)
       .single();
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    postT.mark('load_business');
 
     const subGate = await assertWorkspaceCoreWriteAccess(
       supabase,
       String((business as { owner_id: string }).owner_id)
     );
     if (!subGate.ok) return subGate.response;
+    postT.mark('subscription_gate');
 
-    const readiness = await assertInvoiceCreationReadiness(supabase, String(businessId));
+    const ownerIdForRbac = String((business as { owner_id: string }).owner_id);
+    const [readiness, createGate] = await Promise.all([
+      assertInvoiceCreationReadiness(
+        supabase,
+        String(businessId),
+        business as unknown as InvoiceReadinessBusinessRow
+      ),
+      assertBusinessPermission(
+        supabase,
+        String(businessId),
+        user.id,
+        'create_invoice',
+        { knownOwnerId: ownerIdForRbac }
+      ),
+    ]);
     if (!readiness.ok) return readiness.response;
-
-    const createGate = await assertBusinessPermission(supabase, String(businessId), user.id, 'create_invoice');
     if (!createGate.ok) {
-      const manageGate = await assertBusinessPermission(supabase, String(businessId), user.id, 'manage_invoices');
+      const manageGate = await assertBusinessPermission(
+        supabase,
+        String(businessId),
+        user.id,
+        'manage_invoices',
+        { knownOwnerId: ownerIdForRbac }
+      );
       if (!manageGate.ok) return manageGate.response;
     }
+    postT.mark('readiness_and_create_permission_parallel');
 
-    const actorName = (await resolveActorDisplayName(supabase, user.id)) ?? user.email ?? 'User';
-    const billingPlan = await getUserBillingPlan(supabase, user.id);
+    const { actorLabel, billingPlan } = await fetchActorLabelAndBillingPlan(supabase, user.id);
+    const actorName = (actorLabel ?? user.email) ?? 'User';
+    postT.mark('actor_name_and_billing_plan');
 
     const baseCur = String((business as { currency?: string }).currency ?? 'USD').toUpperCase();
     const p = parsed.data;
@@ -736,6 +280,7 @@ export async function POST(req: Request) {
     monthStart.setUTCHours(0, 0, 0, 0);
     const nextMonthStart = new Date(monthStart);
     nextMonthStart.setUTCMonth(nextMonthStart.getUTCMonth() + 1);
+    postT.mark('totals_compute_local');
     const adminClient = getSupabaseServiceAdmin();
     const platformInv = adminClient ? await fetchAdminPlatformSettings(adminClient) : null;
     const monthlyCap = platformInv ? monthlyInvoiceLimitForPlan(billingPlan, platformInv) : null;
@@ -758,6 +303,7 @@ export async function POST(req: Request) {
         );
       }
     }
+    postT.mark('platform_and_monthly_invoice_count');
     if (invCur !== baseCur && !hasPlanFeature(billingPlan, 'multi_currency')) {
       return NextResponse.json(
         {
@@ -781,6 +327,7 @@ export async function POST(req: Request) {
         );
       }
     }
+    postT.mark('resolve_fx');
     const fxRow = buildInvoiceFxRow(baseCur, fxRate, subtotal, taxCombined, total);
 
     // Payment schedule (optional): validate sum equals invoice total, and use latest scheduled due date.
@@ -833,6 +380,7 @@ export async function POST(req: Request) {
       p_business_id: business.id,
     });
     const invoiceNumber = (invNum as string) ?? 'INV-00001';
+    postT.mark('next_invoice_number_rpc');
 
     let customerId = p.customer_id ?? null;
     if (!customerId && customerName) {
@@ -843,6 +391,7 @@ export async function POST(req: Request) {
       });
       if (existing?.id) customerId = existing.id;
     }
+    postT.mark('customer_find_dedupe');
 
     const { data: selectedCustomer } = customerId
       ? await supabase
@@ -854,6 +403,7 @@ export async function POST(req: Request) {
           .eq('business_id', business.id)
           .maybeSingle()
       : { data: null as null };
+    postT.mark('customer_row_select');
 
     const billingLine1 =
       p.client_billing?.billing_address_line1 ??
@@ -940,6 +490,7 @@ export async function POST(req: Request) {
         total,
         notes: p.notes ?? null,
         theme_id: p.theme_id ?? null,
+        template_id: normalizeInvoiceTemplateId(p.template_id),
         reference_po: p.reference_po ?? null,
         discount_amount: discountAmount,
         terms: p.terms ?? null,
@@ -961,12 +512,15 @@ export async function POST(req: Request) {
         : '';
       return NextResponse.json({ error: msg + hint }, { status: 500 });
     }
+    postT.mark('invoice_row_insert');
+    const _idSuf = String((invoice as { id?: string }).id ?? '').length >= 4
+      ? String((invoice as { id?: string }).id).slice(-4)
+      : '****';
 
-    for (let i = 0; i < p.items.length; i++) {
-      const item = p.items[i];
+    const lineRows = p.items.map((item, i) => {
       const taxPct = (item as { tax_percent?: number }).tax_percent ?? 0;
       const amount = item.quantity * item.unit_price;
-      await supabase.from('invoice_items').insert({
+      return {
         invoice_id: invoice.id,
         name: item.name,
         description: item.description ?? null,
@@ -977,22 +531,47 @@ export async function POST(req: Request) {
         sort_order: i,
         tax_percent: taxPct,
         assignee: normalizeInvoiceAssignee((item as { assignee?: unknown }).assignee),
+      };
+    });
+    if (lineRows.length > 0) {
+      const { error: lineErr } = await supabase.from('invoice_items').insert(lineRows);
+      if (lineErr) {
+        return NextResponse.json({ error: lineErr.message ?? 'Failed to save line items' }, { status: 500 });
+      }
+    }
+    postT.mark('line_items_insert');
+    {
+      const syncP = syncSavedLineItemsFromUsage(supabase, {
+        businessId: String(business.id),
+        currency: invCur,
+        items: p.items.map((it) => ({
+          name: it.name,
+          description: it.description ?? null,
+          unit_label: (it as { unit_label?: string | null }).unit_label,
+          unit_price: it.unit_price,
+          tax_percent: (it as { tax_percent?: number | null }).tax_percent ?? 0,
+        })),
       });
+      voidLogAsyncDuration('saved_line_items', syncP);
+      void syncP.catch((e) => console.error('[saved-line-items]', e));
     }
 
     if (useSchedule) {
-      for (const row of schedule) {
-        await supabase.from('invoice_payment_schedule_items').insert({
-          invoice_id: invoice.id,
-          description: String(row.description ?? ''),
-          amount: Number(row.amount),
-          due_date: row.due_date,
-          status: (row.status as string | undefined) ?? 'pending',
-        });
+      const schedRows = schedule.map((row) => ({
+        invoice_id: invoice.id,
+        description: String(row.description ?? ''),
+        amount: Number(row.amount),
+        due_date: row.due_date,
+        status: (row.status as string | undefined) ?? 'pending',
+      }));
+      const { error: schedErr } = await supabase.from('invoice_payment_schedule_items').insert(schedRows);
+      if (schedErr) {
+        return NextResponse.json({ error: schedErr.message ?? 'Failed to save payment schedule' }, { status: 500 });
       }
     }
+    postT.mark(useSchedule ? 'payment_schedule_batch_insert' : 'payment_schedule_skipped');
 
-    await logInvoiceDraftCreated({
+    const draftLogPayload = {
       supabase,
       businessId: business.id,
       performedByUserId: user.id,
@@ -1002,17 +581,28 @@ export async function POST(req: Request) {
       customerName,
       total: Number(total),
       currencyCode: invCur,
-      source: 'manual',
+      source: 'manual' as const,
       hasPaymentSchedule: useSchedule && schedule.length > 0,
+    };
+    const logP = logInvoiceDraftCreated(draftLogPayload);
+    voidLogAsyncDuration('log_invoice_draft_activity_notify', logP);
+    void logP.catch((e) => {
+      console.error('[invoice POST] logInvoiceDraftCreated', e);
+    });
+    postT.mark('return_async_activity_started');
+
+    let customerMode: InvoiceSaveServerSummaryMeta['customerMode'] = 'none';
+    if (p.customer_id) customerMode = 'lookup_only';
+    else if (customerId) customerMode = 'lookup_deduped';
+    else customerMode = 'new_or_unlinked';
+    postT.summary({
+      lineItemCount: p.items.length,
+      customerMode,
+      hasPaymentSchedule: useSchedule,
+      invoiceIdSuffix: _idSuf,
     });
 
-    const { data: full } = await supabase
-      .from('invoices')
-      .select('*, invoice_items(*), invoice_payment_schedule_items(*)')
-      .eq('id', invoice.id)
-      .single();
-
-    return NextResponse.json(full ?? invoice);
+    return NextResponse.json(invoice);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Server error';
     return NextResponse.json({ error: message }, { status: 500 });

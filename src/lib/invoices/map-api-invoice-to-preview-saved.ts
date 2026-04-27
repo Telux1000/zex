@@ -1,4 +1,5 @@
 import { normalizeInvoiceCurrencyFields } from '@/lib/invoices/currency-edit';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import type { SavedBusiness, SavedInvoice, SavedInvoiceItem } from '@/types/invoice-preview';
 
 export type InvoicePreviewSavedBundle = {
@@ -151,6 +152,7 @@ export function mapApiInvoiceJsonToPreviewSaved(raw: Record<string, unknown>): I
     scheduled_send_at: (raw.scheduled_send_at as string | null | undefined) ?? null,
     scheduled_send_timezone: (raw.scheduled_send_timezone as string | null | undefined) ?? null,
     show_time_summary: !!(raw as { show_time_summary?: boolean }).show_time_summary,
+    template_id: normalizeInvoiceTemplateId((raw as { template_id?: string | null }).template_id),
     payment_schedule: payment_schedule ?? [],
   };
 
@@ -182,4 +184,23 @@ export function mapApiInvoiceJsonToPreviewSaved(raw: Record<string, unknown>): I
         });
 
   return { business, invoice, items };
+}
+
+/**
+ * Build the same bundle as GET /api/invoices/[id] for public pages and other server loaders
+ * when you have invoice row + business + items + optional payment schedule rows.
+ */
+export function buildPreviewSavedBundleFromServerRows(input: {
+  invoice: Record<string, unknown>;
+  business: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  paymentSchedule?: Record<string, unknown>[];
+}): InvoicePreviewSavedBundle | null {
+  const sched = input.paymentSchedule ?? [];
+  return mapApiInvoiceJsonToPreviewSaved({
+    ...input.invoice,
+    businesses: input.business,
+    invoice_items: input.items,
+    invoice_payment_schedule_items: sched,
+  });
 }

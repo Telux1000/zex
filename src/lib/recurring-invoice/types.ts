@@ -43,6 +43,7 @@ export const recurringTemplateSnapshotSchema = z.object({
   notes: z.string().nullable().optional(),
   terms: z.string().nullable().optional(),
   theme_id: z.string().uuid().nullable().optional(),
+  template_id: z.enum(['classic', 'modern', 'minimal', 'bold', 'elegant']).optional(),
   metadata: z.unknown().nullable().optional(),
   use_payment_schedule: z.boolean(),
   use_customer_reminder_defaults: z.boolean().optional(),

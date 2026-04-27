@@ -24,7 +24,7 @@ export default async function InvoiceEditPage({
     .select(`
       *,
       invoice_items(*),
-      businesses(id, name, currency, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled)
+      businesses(id, name, currency, logo_url, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled)
     `)
     .eq('id', id)
     .single();
@@ -35,6 +35,7 @@ export default async function InvoiceEditPage({
     id: string;
     name: string;
     currency: string;
+    logo_url?: string | null;
     address_line1?: string | null;
     address_line2?: string | null;
     city?: string | null;
@@ -148,6 +149,7 @@ export default async function InvoiceEditPage({
           : null,
       metadata,
       show_time_summary: !!(row as { show_time_summary?: boolean }).show_time_summary,
+      template_id: (row as { template_id?: string | null }).template_id ?? null,
     },
     items: items.map((i) => ({
       name: i.name,
@@ -174,6 +176,7 @@ export default async function InvoiceEditPage({
       id: business.id,
       name: business.name,
       currency: business.currency,
+      logo_url: business.logo_url ?? null,
       address_line1: business.address_line1 ?? null,
       address_line2: business.address_line2 ?? null,
       city: business.city ?? null,

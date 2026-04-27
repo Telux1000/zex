@@ -1,6 +1,9 @@
+import { cache } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { planIsFree, type BillingPlan } from '@/lib/billing/plans';
 import type { PrimaryBusinessRow } from '@/lib/supabase/server-auth';
+import { createClient } from '@/lib/supabase/server';
+import { isLoginPerfEnabled, loginPerfLog } from '@/lib/dev/login-perf';
 
 export type PlanSelectionStatus =
   | 'NOT_SELECTED'
@@ -19,7 +22,8 @@ export type OnboardingEntryNextAction =
   | 'RESUME_ONBOARDING'
   | 'GO_TO_DASHBOARD';
 
-type OnboardingEntryProfile = {
+/** Subset of `profiles` used by `deriveOnboardingEntryState` (and merged dashboard profile row). */
+export type OnboardingEntryProfile = {
   billing_plan?: unknown;
   billing_interval?: unknown;
   subscription_status?: unknown;
@@ -31,6 +35,51 @@ type OnboardingEntryProfile = {
   pending_checkout_provider?: unknown;
   pending_checkout_plan?: unknown;
 };
+
+/**
+ * One `profiles` select for layout + onboarding entry + any `fetchOnboardingEntryState` in the same RSC request.
+ * Request-scoped dedupe via `cache` (per React / Next app router).
+ */
+export const DASHBOARD_PROFILE_COLUMNS = [
+  'full_name',
+  'role',
+  'onboarding_completed_at',
+  'onboarding_pricing_completed_at',
+  'internal_admin_role',
+  'internal_admin_suspended_at',
+  'billing_plan',
+  'billing_interval',
+  'subscription_status',
+  'trial_ends_at',
+  'plan_selection_status',
+  'selected_plan_at',
+  'pending_checkout_provider',
+  'pending_checkout_plan',
+].join(', ');
+
+export type DashboardProfileRow = {
+  full_name?: string | null;
+  role?: string | null;
+  onboarding_completed_at?: string | null;
+  onboarding_pricing_completed_at?: string | null;
+  internal_admin_role?: string | null;
+  internal_admin_suspended_at?: string | null;
+} & OnboardingEntryProfile;
+
+export const getDashboardProfileRow = cache(async (userId: string): Promise<DashboardProfileRow | null> => {
+  const t0 = Date.now();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(DASHBOARD_PROFILE_COLUMNS)
+    .eq('id', userId)
+    .maybeSingle();
+  if (isLoginPerfEnabled()) {
+    loginPerfLog('dashboard: profile_row_ms', { ms: Date.now() - t0 });
+  }
+  if (error) return null;
+  return data as DashboardProfileRow | null;
+});
 
 export type OnboardingEntryState = {
   selected_plan: BillingPlan | null;
@@ -153,21 +202,18 @@ export function deriveOnboardingEntryState(params: {
   };
 }
 
+/**
+ * @param _supabase Retained for call-site compatibility; profile is loaded via
+ *   `getDashboardProfileRow` (request-scoped cache) so a single RSC request does not query `profiles` twice.
+ */
 export async function fetchOnboardingEntryState(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   userId: string,
   primaryBusiness: PrimaryBusinessRow | null
 ): Promise<OnboardingEntryState> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select(
-      'billing_plan, billing_interval, subscription_status, onboarding_pricing_completed_at, onboarding_completed_at, trial_ends_at, plan_selection_status, selected_plan_at, pending_checkout_provider, pending_checkout_plan'
-    )
-    .eq('id', userId)
-    .maybeSingle();
-
+  const row = await getDashboardProfileRow(userId);
   return deriveOnboardingEntryState({
-    profile: (profile as OnboardingEntryProfile | null) ?? null,
+    profile: (row as OnboardingEntryProfile | null) ?? null,
     primaryBusiness,
   });
 }

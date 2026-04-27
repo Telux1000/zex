@@ -90,18 +90,26 @@ export function subscriptionLapsedMessage(effective: SubscriptionLifecycleStatus
   }
 }
 
-/** Persist trial_expired when DB still says trialing but window ended (service role). */
+/**
+ * Persist trial_expired when DB still says trialing but window ended (service role).
+ * @returns true when a row was updated — callers can merge `subscription_status: 'trial_expired'`
+ *   in-memory and skip a re-fetch; false when no DB write.
+ */
 export async function reconcileSubscriptionStatusInDb(
   ownerUserId: string,
   row: ProfileSubscriptionFields
-): Promise<void> {
+): Promise<boolean> {
   const { effective } = computeEffectiveSubscription(row);
   if (String(row.subscription_status).toLowerCase() !== 'trialing' || effective !== 'trial_expired') {
-    return;
+    return false;
   }
   const admin = getSupabaseServiceAdmin();
-  if (!admin) return;
-  await admin.from('profiles').update({ subscription_status: 'trial_expired' }).eq('id', ownerUserId);
+  if (!admin) return false;
+  const { error } = await admin
+    .from('profiles')
+    .update({ subscription_status: 'trial_expired' })
+    .eq('id', ownerUserId);
+  return !error;
 }
 
 export async function fetchOwnerSubscriptionRow(
@@ -138,9 +146,10 @@ export async function assertWorkspaceCoreWriteAccess(
     };
   }
 
-  await reconcileSubscriptionStatusInDb(businessOwnerId, row);
-
-  const fresh = (await fetchOwnerSubscriptionRow(supabase, businessOwnerId)) ?? row;
+  const didReconcile = await reconcileSubscriptionStatusInDb(businessOwnerId, row);
+  const fresh: ProfileSubscriptionFields = didReconcile
+    ? { ...row, subscription_status: 'trial_expired' }
+    : row;
   const { effective } = computeEffectiveSubscription(fresh);
 
   if (coreWriteBlockedStatuses().has(effective)) {

@@ -24,7 +24,7 @@ export default async function ExpensesPage() {
   const { data: rows } = await supabase
     .from('expenses')
     .select(
-      'id, business_id, expense_date, description, category, amount, attachment_url, attachment_name, attachment_type, attachment_size, notes'
+      'id, business_id, expense_date, description, category, amount, currency, base_currency, base_amount, exchange_rate, attachment_url, attachment_name, attachment_type, attachment_size, notes'
     )
     .eq('business_id', business.id)
     .order('expense_date', { ascending: false });

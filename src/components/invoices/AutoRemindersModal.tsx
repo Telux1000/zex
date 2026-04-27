@@ -203,9 +203,9 @@ export function AutoRemindersModal({
 
   const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-200';
   const inputClass =
-    'mt-1 block h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-600 dark:bg-slate-900 dark:text-white';
+    'app-date-field mt-1 block h-10 w-full';
   const inputErrorClass =
-    'mt-1 block h-10 w-full rounded-lg border border-red-500 bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:border-red-500 dark:bg-slate-900 dark:text-white';
+    'app-date-field mt-1 block h-10 w-full border-red-500 focus:border-red-500 focus:ring-red-500/30 dark:border-red-500 dark:focus:border-red-500';
 
   const minScheduleLocal = formatLocalDatetimeInput(validationNow);
 

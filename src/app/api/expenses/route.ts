@@ -4,6 +4,8 @@ import { createActivity } from '@/lib/activity';
 import { formatCurrencyAmount } from '@/lib/utils/currency';
 import { INSIGHT_THRESHOLDS } from '@/lib/insights/constants';
 import { notifyBusinessEvent } from '@/services/notifications';
+import { buildExpenseFxColumns, expenseOriginalCurrency } from '@/lib/expenses/expense-base-amount';
+import { resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
 
 export async function GET(req: Request) {
   const supabase = await createClient();
@@ -90,7 +92,30 @@ export async function POST(req: Request) {
       .eq('owner_id', user.id)
       .single();
     if (!biz) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-    const cur = (biz as { currency?: string }).currency ?? 'USD';
+    const baseCur = String((biz as { currency?: string }).currency ?? 'USD')
+      .trim()
+      .toUpperCase() || 'USD';
+    const bodyCur =
+      body.currency != null && String(body.currency).trim() !== ''
+        ? String(body.currency).trim().toUpperCase()
+        : baseCur;
+    let fxRate = Number(body.exchange_rate);
+    if (bodyCur !== baseCur && (!Number.isFinite(fxRate) || fxRate <= 0)) {
+      try {
+        fxRate = await resolveExchangeRateToBase(bodyCur, baseCur, null);
+      } catch {
+        return NextResponse.json(
+          { error: 'Could not resolve exchange rate. Enter an exchange rate or try again.' },
+          { status: 400 }
+        );
+      }
+    }
+    let fxCols: ReturnType<typeof buildExpenseFxColumns>;
+    try {
+      fxCols = buildExpenseFxColumns(amount, bodyCur, baseCur, bodyCur === baseCur ? 1 : fxRate);
+    } catch {
+      return NextResponse.json({ error: 'Invalid exchange rate' }, { status: 400 });
+    }
 
     const { data: row, error } = await supabase
       .from('expenses')
@@ -100,6 +125,10 @@ export async function POST(req: Request) {
         description,
         category,
         amount,
+        currency: fxCols.currency,
+        base_currency: fxCols.base_currency,
+        base_amount: fxCols.base_amount,
+        exchange_rate: fxCols.exchange_rate,
         attachment_url: attachmentUrl,
         attachment_name: attachmentName,
         attachment_type: attachmentType,
@@ -110,17 +139,19 @@ export async function POST(req: Request) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const hi = amount >= INSIGHT_THRESHOLDS.highExpenseActivityAmount;
+    const expenseCur = expenseOriginalCurrency(row as Record<string, unknown>, baseCur);
+    const baseAmount = fxCols.base_amount;
+    const hi = baseAmount >= INSIGHT_THRESHOLDS.highExpenseActivityAmount;
     await createActivity(supabase, {
       business_id: businessId,
       eventType: hi ? 'high_expense_created' : 'expense_created',
       title: hi ? 'High expense recorded' : 'Expense recorded',
-      description: `${formatCurrencyAmount(amount, cur)} — ${description} (${category})`,
+      description: `${formatCurrencyAmount(amount, expenseCur)} — ${description} (${category})`,
       entityType: 'expense',
       entityId: (row as { id: string }).id,
       severity: hi ? 'warning' : 'info',
-      amount,
-      currencyCode: cur,
+      amount: baseAmount,
+      currencyCode: baseCur,
       metadata: { category },
     });
 
@@ -129,7 +160,7 @@ export async function POST(req: Request) {
         businessId,
         eventType: 'high_expense_created',
         title: 'High expense recorded',
-        message: `${formatCurrencyAmount(amount, cur)} recorded in ${category}.`,
+        message: `${formatCurrencyAmount(amount, expenseCur)} (${baseCur}) recorded in ${category}.`,
         entityType: 'expense',
         entityId: (row as { id: string }).id,
         severity: 'warning',
@@ -138,11 +169,11 @@ export async function POST(req: Request) {
         groupKey: `high_expense_created:${category}:${new Date().toISOString().slice(0, 10)}`,
         internalEmail: {
           subject: 'High expense alert',
-          textBody: `A high expense was recorded: ${formatCurrencyAmount(amount, cur)} (${category}).`,
+          textBody: `A high expense was recorded: ${formatCurrencyAmount(amount, expenseCur)} (${category}).`,
           templateEnvKey: 'POSTMARK_TEMPLATE_HIGH_EXPENSE_INTERNAL',
           templateModel: {
             amount,
-            currency: cur,
+            currency: expenseCur,
             category,
             description,
           },

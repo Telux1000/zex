@@ -12,14 +12,21 @@ import type { QuoteIssuerInfo } from '@/lib/quotes/issuer';
 import type { CustomerSnapshotInput } from '@/lib/quotes/address-format';
 import { formatAddressBlockLines } from '@/lib/quotes/address-format';
 import { ItemNameInput } from '@/components/items/ItemNameInput';
-import { persistSavedLineItemsFromSave } from '@/lib/items/saved-line-items-store';
+import { applySavedLineItemToQuoteRow } from '@/components/items/apply-saved-line-item';
 import { SearchableCustomerSelect } from '@/components/customers/SearchableCustomerSelect';
 import { CustomerRequiredModal } from '@/components/customers/CustomerRequiredModal';
 import { CustomerNeededSoftPrompt } from '@/components/customers/CustomerNeededSoftPrompt';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
+import { SavingOverlay } from '@/components/feedback/SavingOverlay';
 
 const quoteItemRemoveButtonClass =
   'inline-flex h-10 min-h-10 shrink-0 items-center justify-center rounded-lg p-2 px-3 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500/40 sm:text-sm dark:text-red-400 dark:hover:bg-red-900/20 dark:focus-visible:outline-red-400/35';
+
+const quoteInputBaseClass =
+  'app-input mt-0 w-full placeholder:text-slate-400 dark:placeholder:text-slate-500';
+
+const quoteInputErrorClass =
+  'border-red-500 focus:border-red-500 focus:ring-red-500/30 dark:border-red-500 dark:focus:border-red-500 dark:focus:ring-red-500/35';
 
 type CustomerRow = {
   id: string;
@@ -518,20 +525,16 @@ export function QuoteForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not save quote');
-      persistSavedLineItemsFromSave(
-        businessId,
-        payload.items.map((i) => ({
-          name: i.name,
-          unitPrice: i.unit_price,
-          description: i.description,
-          taxPercent: i.tax_percent,
-        }))
-      );
       router.push(`/dashboard/quotes/${mode === 'create' ? data.id : initialQuote?.id}`);
       router.refresh();
       showSuccessToast('Quote saved');
     } catch (err) {
-      showErrorToast('Something went wrong. Please retry');
+      const raw = err instanceof Error ? err.message : '';
+      const msg =
+        !raw || /^could not save quote\.?$/i.test(String(raw).trim())
+          ? 'Could not save quote. Please try again.'
+          : raw;
+      showErrorToast(msg);
       setError(null);
     } finally {
       setSaving(false);
@@ -550,7 +553,7 @@ export function QuoteForm({
 
   return (
     <>
-    <form onSubmit={onSubmit} className="mx-auto max-w-6xl">
+    <form onSubmit={onSubmit} className="relative mx-auto max-w-6xl" aria-busy={saving}>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           {mode === 'create' ? 'Create Quote' : 'Edit Quote'}
@@ -567,7 +570,8 @@ export function QuoteForm({
         <CustomerNeededSoftPrompt variant="quote" returnTo={quoteReturnTo} />
       ) : null}
 
-      <div className="grid gap-8 xl:grid-cols-[1fr_minmax(300px,420px)]">
+      <div className="relative grid min-h-0 gap-8 xl:grid-cols-[1fr_minmax(300px,420px)]">
+        <SavingOverlay active={saving} message="Saving quote…" />
         <div className="min-w-0 space-y-6">
           <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2">
             {mode === 'edit' && initialQuote?.quote_number ? (
@@ -577,7 +581,7 @@ export function QuoteForm({
                   type="text"
                   readOnly
                   value={initialQuote.quote_number}
-                  className="w-full cursor-default rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+                  className={cn(quoteInputBaseClass, 'cursor-default bg-[var(--background)]')}
                   aria-readonly
                 />
               </div>
@@ -613,7 +617,7 @@ export function QuoteForm({
                   type="checkbox"
                   checked={useDeliveryAddress}
                   onChange={(e) => setUseDeliveryAddress(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                  className="h-4 w-4 rounded border border-[var(--card-border)] bg-[var(--background)] accent-indigo-600 focus:ring-2 focus:ring-indigo-500/40 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 Use different delivery address
               </label>
@@ -624,7 +628,7 @@ export function QuoteForm({
                     <input
                       value={deliveryAddressLine1}
                       onChange={(e) => setDeliveryAddressLine1(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                   <label className="space-y-1 text-sm md:col-span-2">
@@ -632,7 +636,7 @@ export function QuoteForm({
                     <input
                       value={deliveryAddressLine2}
                       onChange={(e) => setDeliveryAddressLine2(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                   <label className="space-y-1 text-sm">
@@ -640,7 +644,7 @@ export function QuoteForm({
                     <input
                       value={deliveryCity}
                       onChange={(e) => setDeliveryCity(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                   <label className="space-y-1 text-sm">
@@ -648,7 +652,7 @@ export function QuoteForm({
                     <input
                       value={deliveryState}
                       onChange={(e) => setDeliveryState(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                   <label className="space-y-1 text-sm">
@@ -656,7 +660,7 @@ export function QuoteForm({
                     <input
                       value={deliveryPostalCode}
                       onChange={(e) => setDeliveryPostalCode(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                   <label className="space-y-1 text-sm">
@@ -664,7 +668,7 @@ export function QuoteForm({
                     <input
                       value={deliveryCountry}
                       onChange={(e) => setDeliveryCountry(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={quoteInputBaseClass}
                     />
                   </label>
                 </div>
@@ -677,10 +681,10 @@ export function QuoteForm({
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
                 className={cn(
-                  'w-full rounded-lg border bg-white px-3 py-2 text-slate-900 dark:bg-slate-800 dark:text-slate-100',
+                  quoteInputBaseClass,
                   submitAttempted && currencyError
-                    ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-500 dark:focus-visible:ring-red-500/35'
-                    : 'border-slate-300 dark:border-slate-700'
+                    ? quoteInputErrorClass
+                    : null
                 )}
                 required
                 aria-invalid={submitAttempted && currencyError ? true : undefined}
@@ -749,7 +753,7 @@ export function QuoteForm({
               </div>
               <div className="grid min-w-0 gap-1 md:col-span-2">
                 <div className="text-right text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Quantity
+                  Qty
                 </div>
                 <div className="text-right text-xs font-medium text-slate-500 dark:text-slate-400">
                   Unit Price
@@ -780,20 +784,13 @@ export function QuoteForm({
                         currencyCode={currency}
                         value={item.name}
                         onChange={(v) => updateItem(index, { name: v })}
-                        onPickSuggestion={(s) =>
-                          updateItem(index, {
-                            name: s.name,
-                            description: s.description ?? '',
-                            unit_price: formatNumberForInput(s.unitPrice, false),
-                            tax_percent: formatNumberForInput(s.taxPercent ?? 0, false),
-                          })
-                        }
+                        onPickSuggestion={(s) => updateItem(index, applySavedLineItemToQuoteRow(s))}
                         placeholder="Item"
                         className={cn(
-                          'w-full rounded-lg border px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100',
+                          quoteInputBaseClass + ' text-sm',
                           submitAttempted && itemFieldErrors[index]?.name
-                            ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-500 dark:focus-visible:ring-red-500/35'
-                            : 'border-slate-300 dark:border-slate-700'
+                            ? quoteInputErrorClass
+                            : null
                         )}
                         required={false}
                         id={`quote-line-${index}-name`}
@@ -805,7 +802,7 @@ export function QuoteForm({
                         value={item.description}
                         onChange={(e) => updateItem(index, { description: e.target.value })}
                         placeholder="Description"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        className={quoteInputBaseClass + ' text-sm'}
                       />
                     </div>
                     <div className="flex min-w-0 max-w-full flex-col gap-2 max-sm:w-full sm:max-w-[11rem] sm:flex-row sm:flex-nowrap sm:items-end sm:gap-2 md:col-span-2 md:max-w-none md:flex-col md:gap-2">
@@ -822,10 +819,10 @@ export function QuoteForm({
                         onBlur={() => updateItem(index, { quantity: normalizeQuantityOnBlur(item.quantity) })}
                         placeholder="Qty"
                         className={cn(
-                          'h-10 min-h-10 w-full min-w-0 shrink-0 rounded-lg border px-2.5 py-2 text-right text-sm tabular-nums sm:w-20 dark:bg-slate-800 dark:text-slate-100 md:w-full',
+                          `${quoteInputBaseClass} h-10 min-h-10 w-full min-w-0 shrink-0 px-2.5 py-2 text-right text-sm tabular-nums sm:w-20 md:w-full`,
                           submitAttempted && itemFieldErrors[index]?.quantity
-                            ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-500 dark:focus-visible:ring-red-500/35'
-                            : 'border-slate-300 dark:border-slate-700'
+                            ? quoteInputErrorClass
+                            : null
                         )}
                         aria-invalid={submitAttempted && itemFieldErrors[index]?.quantity ? true : undefined}
                       />
@@ -842,10 +839,10 @@ export function QuoteForm({
                         onBlur={() => updateItem(index, { unit_price: normalizeUnitPriceOnBlur(item.unit_price) })}
                         placeholder="Price"
                         className={cn(
-                          'h-10 min-h-10 w-full min-w-0 shrink-0 rounded-lg border px-2.5 py-2 text-right text-sm tabular-nums sm:w-24 dark:bg-slate-800 dark:text-slate-100 md:w-full',
+                          `${quoteInputBaseClass} h-10 min-h-10 w-full min-w-0 shrink-0 px-2.5 py-2 text-right text-sm tabular-nums sm:w-24 md:w-full`,
                           submitAttempted && itemFieldErrors[index]?.unit_price
-                            ? 'border-red-500 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-500 dark:focus-visible:ring-red-500/35'
-                            : 'border-slate-300 dark:border-slate-700'
+                            ? quoteInputErrorClass
+                            : null
                         )}
                         aria-invalid={submitAttempted && itemFieldErrors[index]?.unit_price ? true : undefined}
                       />
@@ -876,7 +873,7 @@ export function QuoteForm({
                           onBlur={() => updateItem(index, { tax_percent: normalizeTaxOnBlur(item.tax_percent) })}
                           placeholder="0"
                           aria-label="Tax percent"
-                          className="h-10 min-h-10 w-full rounded-lg border border-slate-300 px-3 py-2 pr-8 text-right text-sm tabular-nums dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                          className={`${quoteInputBaseClass} h-10 min-h-10 w-full pr-8 text-right text-sm tabular-nums`}
                         />
                         <span
                           className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500 dark:text-slate-400"
@@ -924,7 +921,7 @@ export function QuoteForm({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className={quoteInputBaseClass}
               />
             </label>
           </div>
@@ -935,8 +932,8 @@ export function QuoteForm({
               <p className="text-slate-600 dark:text-slate-300">Tax: {formatCurrencyAmount(totals.tax, currency)}</p>
               <p className="font-semibold text-slate-900 dark:text-white">Total: {formatCurrencyAmount(totals.total, currency)}</p>
             </div>
-            <button type="submit" disabled={saving} className="app-btn-primary">
-              {saving ? 'Saving...' : mode === 'create' ? 'Create Quote' : 'Save Quote'}
+            <button type="submit" disabled={saving} className="app-btn-primary" aria-busy={saving}>
+              {saving ? 'Saving…' : mode === 'create' ? 'Create Quote' : 'Save Quote'}
             </button>
           </div>
 

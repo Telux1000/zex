@@ -43,7 +43,7 @@ export default async function ActivityPage() {
     supabase
       .from('expenses')
       .select(
-        'id, expense_date, category, amount, created_at, updated_at, description, attachment_url'
+        'id, expense_date, category, amount, currency, base_amount, exchange_rate, created_at, updated_at, description, attachment_url'
       )
       .eq('business_id', business.id)
       .gte('expense_date', horizonKey)

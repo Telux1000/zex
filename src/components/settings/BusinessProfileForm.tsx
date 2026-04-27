@@ -423,7 +423,8 @@ export function BusinessProfileForm({
             .from('business-logos')
             .upload(objectKey, logoFile, {
               contentType: logoFile.type || 'application/octet-stream',
-              upsert: true,
+              // New key every save (logo-{timestamp}); upsert is unnecessary and needs extra storage SELECT/UPDATE.
+              upsert: false,
             });
           if (error) {
             setLogoError(

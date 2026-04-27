@@ -2,13 +2,21 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createActivity, getChangedExpenseFields } from '@/lib/activity';
 import { formatCurrencyAmount } from '@/lib/utils/currency';
+import {
+  buildExpenseFxColumns,
+  expenseAmountInBase,
+  expenseOriginalCurrency,
+} from '@/lib/expenses/expense-base-amount';
+import { resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
 
 type Ctx = { params: Promise<{ id: string }> };
 
 async function assertExpenseOwner(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, id: string) {
   const { data: row, error } = await supabase
     .from('expenses')
-    .select('id, business_id, attachment_url, description, category, amount')
+    .select(
+      'id, business_id, attachment_url, description, category, amount, currency, base_currency, base_amount, exchange_rate'
+    )
     .eq('id', id)
     .single();
   if (error || !row) return { error: 'Not found' as const, status: 404 as const };
@@ -44,6 +52,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const n = Number(body.amount);
       if (!Number.isFinite(n)) return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
       updates.amount = n;
+    }
+    if (body.currency !== undefined) {
+      updates.currency =
+        body.currency != null && String(body.currency).trim() !== ''
+          ? String(body.currency).trim().toUpperCase()
+          : null;
+    }
+    if (body.exchange_rate !== undefined) {
+      const r = Number(body.exchange_rate);
+      if (body.exchange_rate != null && (!Number.isFinite(r) || r <= 0)) {
+        return NextResponse.json({ error: 'Invalid exchange rate' }, { status: 400 });
+      }
+      updates.exchange_rate = body.exchange_rate != null ? r : null;
     }
     if (body.expense_date != null) {
       updates.expense_date = String(body.expense_date).slice(0, 10);
@@ -81,15 +102,60 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    const prev = check.row;
-    const { data: row, error } = await supabase.from('expenses').update(updates).eq('id', id).select('*').single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const prev = check.row as Record<string, unknown>;
     const { data: biz } = await supabase
       .from('businesses')
       .select('currency')
-      .eq('id', prev.business_id)
+      .eq('id', prev.business_id as string)
       .single();
-    const cur = (biz as { currency?: string } | null)?.currency ?? 'USD';
+    const baseCur = String((biz as { currency?: string } | null)?.currency ?? 'USD')
+      .trim()
+      .toUpperCase() || 'USD';
+
+    const fxTouched =
+      updates.amount !== undefined || updates.currency !== undefined || updates.exchange_rate !== undefined;
+    if (fxTouched) {
+      const amt = Number(updates.amount !== undefined ? updates.amount : prev.amount);
+      if (!Number.isFinite(amt)) {
+        return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+      }
+      const mergedCurrency =
+        updates.currency !== undefined ? (updates.currency as string | null) : (prev.currency as string | null);
+      const curFx = (
+        mergedCurrency != null && String(mergedCurrency).trim() !== '' ? String(mergedCurrency).trim() : baseCur
+      ).toUpperCase();
+      let rate =
+        updates.exchange_rate !== undefined
+          ? (updates.exchange_rate as number | null)
+          : (prev.exchange_rate as number | null);
+      let rateN = rate != null ? Number(rate) : NaN;
+      if (curFx === baseCur) {
+        rateN = 1;
+      } else if (!Number.isFinite(rateN) || rateN <= 0) {
+        try {
+          rateN = await resolveExchangeRateToBase(curFx, baseCur, null);
+        } catch {
+          return NextResponse.json(
+            { error: 'Could not resolve exchange rate. Enter an exchange rate or try again.' },
+            { status: 400 }
+          );
+        }
+      }
+      let fxCols: ReturnType<typeof buildExpenseFxColumns>;
+      try {
+        fxCols = buildExpenseFxColumns(amt, curFx, baseCur, rateN);
+      } catch {
+        return NextResponse.json({ error: 'Invalid exchange rate' }, { status: 400 });
+      }
+      updates.currency = fxCols.currency;
+      updates.base_currency = fxCols.base_currency;
+      updates.base_amount = fxCols.base_amount;
+      updates.exchange_rate = fxCols.exchange_rate;
+    }
+
+    const { data: row, error } = await supabase.from('expenses').update(updates).eq('id', id).select('*').single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const cur = baseCur;
     const hadAtt = Boolean(String(prev.attachment_url ?? '').trim());
     const nowAtt = Boolean(String((row as { attachment_url?: string }).attachment_url ?? '').trim());
     const changed = getChangedExpenseFields(
@@ -98,7 +164,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     );
     if (!hadAtt && nowAtt) {
       await createActivity(supabase, {
-        business_id: prev.business_id,
+        business_id: prev.business_id as string,
         eventType: 'expense_attachment_added',
         title: 'Expense attachment added',
         description: String((row as { description?: string }).description ?? prev.description ?? ''),
@@ -107,14 +173,16 @@ export async function PATCH(req: Request, ctx: Ctx) {
       });
     }
     if (changed.length > 0) {
+      const rowRec = row as Record<string, unknown>;
+      const dispCur = expenseOriginalCurrency(rowRec, cur);
       await createActivity(supabase, {
-        business_id: prev.business_id,
+        business_id: prev.business_id as string,
         eventType: 'expense_updated',
         title: 'Expense updated',
-        description: `${formatCurrencyAmount(Number((row as { amount?: number }).amount ?? prev.amount), cur)} — ${String((row as { description?: string }).description ?? prev.description)}`,
+        description: `${formatCurrencyAmount(Number((row as { amount?: number }).amount ?? prev.amount), dispCur)} — ${String((row as { description?: string }).description ?? prev.description)}`,
         entityType: 'expense',
         entityId: id,
-        amount: Number((row as { amount?: number }).amount ?? prev.amount),
+        amount: expenseAmountInBase(rowRec, cur),
         currencyCode: cur,
         metadata: { changed_fields: changed },
       });
@@ -138,21 +206,24 @@ export async function DELETE(_req: Request, ctx: Ctx) {
     return NextResponse.json({ error: check.error }, { status: check.status });
   }
 
-  const snap = check.row;
+  const snap = check.row as Record<string, unknown>;
   const { data: biz } = await supabase
     .from('businesses')
     .select('currency')
-    .eq('id', snap.business_id)
+    .eq('id', snap.business_id as string)
     .single();
-  const cur = (biz as { currency?: string } | null)?.currency ?? 'USD';
+  const cur = String((biz as { currency?: string } | null)?.currency ?? 'USD')
+    .trim()
+    .toUpperCase() || 'USD';
+  const dispCur = expenseOriginalCurrency(snap, cur);
   await createActivity(supabase, {
-    business_id: snap.business_id,
+    business_id: snap.business_id as string,
     eventType: 'expense_deleted',
     title: 'Expense deleted',
-    description: `${formatCurrencyAmount(Number(snap.amount), cur)} — ${String(snap.description ?? '')}`,
+    description: `${formatCurrencyAmount(Number(snap.amount), dispCur)} — ${String(snap.description ?? '')}`,
     entityType: 'expense',
     entityId: id,
-    amount: Number(snap.amount),
+    amount: expenseAmountInBase(snap, cur),
     currencyCode: cur,
   });
   const { error } = await supabase.from('expenses').delete().eq('id', id);

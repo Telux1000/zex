@@ -76,6 +76,8 @@ export type SavedInvoice = {
   /** Draft invoice: when the invoice will be emailed automatically. */
   scheduled_send_at?: string | null;
   scheduled_send_timezone?: string | null;
+  /** Document layout: classic | modern | minimal | bold | elegant. Omitted or unknown → classic. */
+  template_id?: string | null;
   payment_schedule?: {
     id: string;
     description: string;

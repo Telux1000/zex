@@ -1,5 +1,6 @@
 import { formatCurrencyAmount } from '@/lib/utils/currency';
 import { INSIGHT_THRESHOLDS } from '@/lib/insights/constants';
+import { expenseAmountInBase, expenseOriginalCurrency } from '@/lib/expenses/expense-base-amount';
 
 export type ActivityFeedItem = {
   id: string;
@@ -26,6 +27,9 @@ export type ExpenseActivityRow = {
   description: string;
   category?: string | null;
   amount: number | string | null;
+  currency?: string | null;
+  base_amount?: number | string | null;
+  exchange_rate?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
   expense_date?: string | null;
@@ -143,16 +147,22 @@ export function buildActivityFeedItems(options: {
     if (!id || hasExpenseLogged.has(id)) continue;
     const created = ex.created_at;
     if (!created) continue;
-    const amt = Math.max(0, num(ex.amount));
-    const isHigh = amt >= INSIGHT_THRESHOLDS.highExpenseActivityAmount;
+    const baseAmt = expenseAmountInBase(ex, currency);
+    const isHigh = baseAmt >= INSIGHT_THRESHOLDS.highExpenseActivityAmount;
     const cat = String(ex.category || 'General');
+    const origCur = expenseOriginalCurrency(ex, currency);
+    const origFmt = formatCurrencyAmount(Math.max(0, num(ex.amount)), origCur);
+    const approx =
+      origCur !== currency.toUpperCase()
+        ? ` (≈ ${formatCurrencyAmount(baseAmt, currency)})`
+        : '';
     synthetic.push({
       id: `syn-exp-${id}`,
       eventType: 'Expense',
       title: isHigh ? 'High expense recorded' : 'Expense recorded',
       description: isHigh
-        ? `${formatCurrencyAmount(amt, currency)} added (${cat}) — ${ex.description?.slice(0, 80) || 'Expense'}`
-        : `${formatCurrencyAmount(amt, currency)} — ${ex.description?.slice(0, 80) || cat}`,
+        ? `${origFmt}${approx} added (${cat}) — ${ex.description?.slice(0, 80) || 'Expense'}`
+        : `${origFmt}${approx} — ${ex.description?.slice(0, 80) || cat}`,
       timestamp: created,
       severity: 'neutral',
       href: '/dashboard/expenses',

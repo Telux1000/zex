@@ -1,11 +1,11 @@
-export type AddressParts = {
-  line1?: string | null;
-  line2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  postal_code?: string | null;
-  country?: string | null;
-};
+import type { AddressParts } from '@/lib/addresses/address-block-format';
+import {
+  formatAddressBlock,
+  formatAddressBlockLines,
+} from '@/lib/addresses/address-block-format';
+
+export type { AddressParts };
+export { formatAddressBlock, formatAddressBlockLines };
 
 export type CustomerSnapshotInput = {
   name?: string | null;
@@ -26,25 +26,6 @@ export type CustomerSnapshotInput = {
   delivery_postal_code?: string | null;
   delivery_country?: string | null;
 };
-
-export function formatAddressBlockLines(parts: AddressParts): string[] {
-  const lines: string[] = [];
-  const l1 = parts.line1?.trim();
-  const l2 = parts.line2?.trim();
-  if (l1) lines.push(l1);
-  if (l2) lines.push(l2);
-  const city = parts.city?.trim();
-  const state = parts.state?.trim();
-  const pc = parts.postal_code?.trim();
-  const cityState = [city, state].filter(Boolean).join(', ');
-  const cityLine = [cityState, pc].filter(Boolean).join(cityState && pc ? ' ' : '');
-  if (cityLine) lines.push(cityLine);
-  const country = parts.country?.trim();
-  if (country) lines.push(country);
-  return lines;
-}
-
-export const formatAddressBlock = formatAddressBlockLines;
 
 export function formatCustomerSnapshotToLines(snapshot: CustomerSnapshotInput | null | undefined): string[] {
   if (!snapshot) return [];

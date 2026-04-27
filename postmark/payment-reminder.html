@@ -3,17 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Payment reminder</title>
+    <title>{{subject}}</title>
   </head>
   <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #0f172a;">
-    <p>Hi {{customerName}},</p>
-    <p>
-      This is a friendly reminder from <strong>{{companyName}}</strong> regarding invoice
-      <strong>{{invoiceNumber}}</strong>, due <strong>{{dueDate}}</strong>.
+    <p style="font-size: 12px; color: #64748b; margin: 0 0 12px 0">
+      <strong>{{business_name}}</strong>
     </p>
-    <p>
-      Amount due: <strong>{{amountDue}} {{currency}}</strong>
-    </p>
+    <!-- Pre-escaped safe HTML from Zenzex (Placeholders like amount are already in the message text) -->
+    <div style="margin: 0 0 16px 0">{{{reminder_message}}}</div>
     {{#if hasPaymentUrl}}
     <p>
       <a
@@ -22,7 +19,10 @@
         >{{paymentLinkText}}</a
       >
     </p>
+    <p style="font-size: 12px; color: #64748b; margin-top: 8px">Or open: {{payment_link}}</p>
     {{/if}}
-    <p style="font-size: 12px; color: #64748b;">Thank you.</p>
+    <p style="font-size: 12px; color: #64748b; margin-top: 16px">
+      Questions? Reply to this email or contact {{support_email}}.
+    </p>
   </body>
 </html>

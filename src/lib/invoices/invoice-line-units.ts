@@ -1,3 +1,8 @@
+import { formatMoneyCodeFirst } from '@/lib/utils/currency';
+import { normalizeLineItemName } from '@/lib/saved-line-items/names';
+
+export { normalizeLineItemName };
+
 /**
  * Shared invoice line billing units (goods + services).
  * Stored in `invoice_items.unit_label` as a short lowercase slug; displayed with formatting helpers.
@@ -83,6 +88,85 @@ export function formatInvoiceUnitLabelForDisplay(stored: string | null | undefin
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+function formatQuantityNumberForDisplay(q: number): string {
+  if (!Number.isFinite(q)) return '0';
+  if (Math.abs(q - Math.round(q)) < 1e-7) return String(Math.round(q));
+  const t = (Math.round(q * 100) / 100).toString();
+  return t;
+}
+
+/**
+ * Suffix for rate (per unit), e.g. "USD 10.00/hr" — not including leading space.
+ * Custom slugs use the stored slug to stay readable in tight tables.
+ */
+export function getInvoicePerRateSuffix(stored: string | null | undefined): string {
+  const v = normalizeInvoiceUnitLabel(stored);
+  if (v === 'item') return '/item';
+  if (v === 'hour') return '/hr';
+  if (v === 'day') return '/day';
+  if (v === 'week') return '/wk';
+  if (v === 'month') return '/mo';
+  if (v === 'session') return '/session';
+  if (v === 'project') return '/project';
+  return `/${v}`;
+}
+
+/**
+ * Quantity plus billing unit for invoice previews (no separate "Unit" column).
+ */
+export function formatQuantityWithUnit(quantity: number, unit: string | null | undefined): string {
+  if (!Number.isFinite(quantity)) return '0';
+  const s = formatQuantityNumberForDisplay(quantity);
+  const n = Math.abs(quantity) < 1e-7 ? 0 : quantity;
+  const v = normalizeInvoiceUnitLabel(unit);
+  const isOne = Math.abs(n - 1) < 1e-7;
+  if (v === 'hour') {
+    return isOne ? `${s} hr` : `${s} hrs`;
+  }
+  if (v === 'day') {
+    return isOne ? `${s} day` : `${s} days`;
+  }
+  if (v === 'item') {
+    return isOne ? `${s} item` : `${s} items`;
+  }
+  if (v === 'week') {
+    return isOne ? `${s} week` : `${s} weeks`;
+  }
+  if (v === 'month') {
+    return isOne ? `${s} month` : `${s} months`;
+  }
+  if (v === 'session') {
+    return isOne ? `${s} session` : `${s} sessions`;
+  }
+  if (v === 'project') {
+    return isOne ? `${s} project` : `${s} projects`;
+  }
+  const w = formatInvoiceUnitLabelForDisplay(v).toLowerCase();
+  if (Math.abs(n - 1) < 1e-7) return `${s} ${w}`;
+  return `${s} ${w}${w.endsWith('s') ? '' : 's'}`;
+}
+
+export type FormatRateWithUnitOptions = {
+  /** When false, return money only (e.g. synthetic PDF rows with no per-unit rate). */
+  withPerUnitSuffix?: boolean;
+};
+
+/**
+ * Formatted money plus optional /unit suffix for invoice previews and PDFs.
+ * Uses the same “code first” style as the app: `formatMoneyCodeFirst` + /hr, /day, /item, etc.
+ */
+export function formatRateWithUnit(
+  rate: number,
+  currency: string,
+  unit: string | null | undefined,
+  options?: FormatRateWithUnitOptions
+): string {
+  const withSuffix = options?.withPerUnitSuffix !== false;
+  const money = formatMoneyCodeFirst(rate, currency);
+  if (!withSuffix) return money;
+  return `${money}${getInvoicePerRateSuffix(unit)}`;
 }
 
 /**

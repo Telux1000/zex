@@ -5,6 +5,7 @@ import type { Business } from '@/lib/database.types';
 import { BUSINESS_MEMBER_ROLES, type BusinessMemberRole } from '@/lib/rbac/types';
 import { workspaceRoleLabelFromUnknown } from '@/lib/roles/workspace-roles';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { isSettingsPagePerfEnabled, settingsPagePerfLog } from '@/lib/dev/settings-page-perf';
 
 type TeamMember = {
   user_id: string;
@@ -87,11 +88,15 @@ export function TeamPanel({ business }: Props) {
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
+    const t0 = Date.now();
     try {
       const res = await fetch(`/api/businesses/${business.id}/team`);
       const data = (await res.json()) as TeamPayload | { error?: string };
       if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to load team');
       setPayload(data as TeamPayload);
+      if (isSettingsPagePerfEnabled()) {
+        settingsPagePerfLog('settings: team_members_client_fetch_ms', { ms: Date.now() - t0 });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load team');
     } finally {

@@ -1,13 +1,17 @@
 import { addDays, formatISO } from 'date-fns';
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { buildInvoiceEmailSubject } from '@/lib/invoices/email-subject';
 import { notifyBusinessEvent } from '@/services/notifications';
 
 function asDateOnly(iso: string) {
   return iso.slice(0, 10);
 }
 
+/**
+ * Internal follow-up digests (quotes, etc.). Customer invoice payment reminders are sent only
+ * from `processInvoiceReminders` + `deliverInvoicePaymentReminder` (see `/api/cron/invoice-reminders`)
+ * to avoid duplicate emails.
+ */
 export async function POST(req: Request) {
   const secret = process.env.NOTIFICATION_CRON_SECRET;
   if (secret) {
@@ -20,111 +24,14 @@ export async function POST(req: Request) {
   const supabase = await createServiceClient();
   const now = new Date();
   const today = asDateOnly(formatISO(now));
-  const inThreeDays = asDateOnly(formatISO(addDays(now, 3)));
 
   const { data: businesses } = await supabase
     .from('businesses')
-    .select('id, name')
+    .select('id')
     .order('created_at', { ascending: true });
 
   for (const b of businesses ?? []) {
-    const businessId = String((b as any).id);
-    const { data: dueSoon } = await supabase
-      .from('invoices')
-      .select('id, invoice_number, due_date, customer_email, customer_name, total, currency, status, balance_due')
-      .eq('business_id', businessId)
-      .in('status', ['sent', 'viewed', 'partially_paid', 'overdue'])
-      .gte('due_date', today)
-      .lte('due_date', inThreeDays)
-      .gt('balance_due', 0)
-      .limit(50);
-
-    for (const inv of dueSoon ?? []) {
-      const customerEmail = String((inv as any).customer_email ?? '').trim();
-      if (!customerEmail) continue;
-      const invoiceNumber = String((inv as any).invoice_number ?? '');
-      const dueDate = String((inv as any).due_date ?? '');
-      await notifyBusinessEvent(supabase, {
-        businessId,
-        eventType: 'payment_reminder_upcoming',
-        title: `Payment reminder: ${invoiceNumber}`,
-        message: `Invoice ${invoiceNumber} is due on ${dueDate}.`,
-        entityType: 'invoice',
-        entityId: String((inv as any).id),
-        severity: 'info',
-        groupKey: `payment_reminder:${String((inv as any).id)}:${dueDate}`,
-        email: {
-          to: customerEmail,
-          subject: buildInvoiceEmailSubject({
-            state: 'reminder',
-            invoiceNumber,
-            companyName: String((b as any)?.name ?? ''),
-            dueDate,
-          }),
-          textBody: `Invoice ${invoiceNumber} is due on ${dueDate}.`,
-          templateEnvKey: 'POSTMARK_TEMPLATE_PAYMENT_REMINDER',
-          templateModel: {
-            invoiceNumber,
-            companyName: String((b as any)?.name ?? ''),
-            dueDate,
-            customerName: String((inv as any).customer_name ?? ''),
-            amountDue: Number((inv as any).balance_due ?? (inv as any).total ?? 0),
-            currency: String((inv as any).currency ?? 'USD'),
-            paymentUrl: '',
-            paymentLinkText: 'View payment link',
-            hasPaymentUrl: false,
-          },
-          tag: 'payment_reminder_upcoming',
-        },
-      });
-    }
-
-    const { data: overdue } = await supabase
-      .from('invoices')
-      .select('id, invoice_number, due_date, customer_email, customer_name, total, currency, status, balance_due')
-      .eq('business_id', businessId)
-      .in('status', ['sent', 'viewed', 'partially_paid', 'overdue'])
-      .lt('due_date', today)
-      .gt('balance_due', 0)
-      .limit(50);
-
-    for (const inv of overdue ?? []) {
-      const customerEmail = String((inv as any).customer_email ?? '').trim();
-      if (!customerEmail) continue;
-      const invoiceNumber = String((inv as any).invoice_number ?? '');
-      const dueDate = String((inv as any).due_date ?? '');
-      await notifyBusinessEvent(supabase, {
-        businessId,
-        eventType: 'invoice_overdue_reminder',
-        title: `Invoice overdue: ${invoiceNumber}`,
-        message: `Invoice ${invoiceNumber} is overdue since ${dueDate}.`,
-        entityType: 'invoice',
-        entityId: String((inv as any).id),
-        severity: 'warning',
-        actionLabel: 'Review invoice',
-        actionTarget: `/dashboard/invoices/${String((inv as any).id)}`,
-        groupKey: `overdue_reminder:${String((inv as any).id)}:${today}`,
-        email: {
-          to: customerEmail,
-          subject: buildInvoiceEmailSubject({
-            state: 'overdue',
-            invoiceNumber,
-            companyName: String((b as any)?.name ?? ''),
-            dueDate,
-          }),
-          textBody: `Invoice ${invoiceNumber} is overdue since ${dueDate}.`,
-          templateEnvKey: 'POSTMARK_TEMPLATE_OVERDUE_REMINDER',
-          templateModel: {
-            invoiceNumber,
-            companyName: String((b as any)?.name ?? ''),
-            dueDate,
-            customerName: String((inv as any).customer_name ?? ''),
-            balanceDue: Number((inv as any).balance_due ?? 0),
-          },
-          tag: 'invoice_overdue_reminder',
-        },
-      });
-    }
+    const businessId = String((b as { id: string }).id);
 
     const { data: staleQuotes } = await supabase
       .from('quotes')
@@ -171,7 +78,7 @@ export async function POST(req: Request) {
         businessId,
         eventType: 'accepted_quote_ready_for_invoice',
         title: `${(acceptedPending ?? []).length} accepted quotes are ready to invoice`,
-        message: 'Convert accepted quotes to invoices to collect faster.',
+        message: 'Convert accepted quotes to collect faster.',
         entityType: 'quote',
         entityId: String((acceptedPending ?? [])[0]?.id ?? ''),
         severity: 'warning',
@@ -189,4 +96,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
-

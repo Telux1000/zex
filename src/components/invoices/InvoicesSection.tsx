@@ -30,6 +30,8 @@ import {
   snapshotFiltersFromUrl,
   type InvoiceFilterDraft,
 } from '@/components/invoices/InvoiceListFiltersPanel';
+import { invoiceTablePerfEnabled, invoiceTablePerfLog } from '@/lib/dev/invoice-table-perf';
+import { buildInvoiceListClientQueryParams } from '@/lib/invoices/invoice-list-client-query-params';
 
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 25;
@@ -98,6 +100,33 @@ function useClickOutside(
 
 const FILTER_PANEL_CLOSE_MS = 280;
 
+function InvoiceTableLoadingSkeleton() {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="grid grid-cols-12 gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="col-span-2 h-3 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+        ))}
+      </div>
+      {Array.from({ length: Math.min(10, 25) }).map((_, i) => (
+        <div
+          key={i}
+          className="grid grid-cols-12 gap-2 border-b border-slate-50 px-4 py-4 last:border-0 dark:border-slate-800/80"
+        >
+          <div className="col-span-2 h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+          <div className="col-span-3 h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+          <div className="col-span-2 h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+          <div className="col-span-2 h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+          <div className="col-span-3 h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+        </div>
+      ))}
+      <p className="border-t border-slate-100 px-4 py-3 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        Loading invoices…
+      </p>
+    </div>
+  );
+}
+
 export function InvoicesSection({
   customers,
   businessId,
@@ -137,6 +166,7 @@ export function InvoicesSection({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filtersEntered, setFiltersEntered] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+  const shellLoggedRef = useRef(false);
   const [filterDraft, setFilterDraft] = useState<InvoiceFilterDraft>(() =>
     snapshotFiltersFromUrl({
       status,
@@ -159,6 +189,17 @@ export function InvoicesSection({
   const isLgDown = useIsLgDown();
 
   useEffect(() => setSearchInput(q), [q]);
+
+  useEffect(() => {
+    if (shellLoggedRef.current) return;
+    shellLoggedRef.current = true;
+    const id = requestAnimationFrame(() => {
+      if (invoiceTablePerfEnabled() && typeof performance !== 'undefined') {
+        invoiceTablePerfLog('shell_ready', `+${performance.now().toFixed(1)}ms`);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     if (searchParams.has('sort')) return;
@@ -208,26 +249,64 @@ export function InvoicesSection({
     updateUrl({ q: searchInput.trim() || undefined });
   }, [searchInput, updateUrl]);
 
+  const getInvoiceListQueryParams = useCallback(
+    (includePagination: boolean) =>
+      buildInvoiceListClientQueryParams(
+        {
+          businessId,
+          q,
+          status,
+          filter,
+          balance,
+          scheduleFilter,
+          issue,
+          issue_from,
+          issue_to,
+          due,
+          due_from,
+          due_to,
+          customer,
+          sort,
+          order,
+          page,
+          page_size,
+        },
+        includePagination
+      ),
+    [
+      businessId,
+      q,
+      status,
+      filter,
+      balance,
+      scheduleFilter,
+      issue,
+      issue_from,
+      issue_to,
+      due,
+      due_from,
+      due_to,
+      customer,
+      sort,
+      order,
+      page,
+      page_size,
+    ]
+  );
+
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams();
-    params.set('business_id', businessId);
-    if (q) params.set('q', q);
-    if (status) params.set('status', status);
-    if (filter) params.set('filter', filter);
-    if (balance) params.set('balance', balance);
-    if (scheduleFilter) params.set('schedule_filter', scheduleFilter);
-    if (issue) params.set('issue', issue);
-    if (issue_from) params.set('issue_from', issue_from);
-    if (issue_to) params.set('issue_to', issue_to);
-    if (due) params.set('due', due);
-    if (due_from) params.set('due_from', due_from);
-    if (due_to) params.set('due_to', due_to);
-    if (customer) params.set('customer', customer);
-    params.set('sort', sort);
-    params.set('order', order);
-    params.set('page', String(page));
-    params.set('page_size', String(page_size));
+    const params = getInvoiceListQueryParams(true);
+
+    const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+    if (invoiceTablePerfEnabled()) {
+      invoiceTablePerfLog('fetch_start', 'client', {
+        page,
+        page_size,
+        has_q: q.trim() ? 1 : 0,
+        has_status: status ? 1 : 0,
+      });
+    }
 
     setLoading(true);
     fetch(`/api/invoices?${params.toString()}`)
@@ -235,8 +314,32 @@ export function InvoicesSection({
       .then((data) => {
         if (cancelled) return;
         if (data.error) throw new Error(data.error);
+        if (invoiceTablePerfEnabled() && typeof performance !== 'undefined') {
+          const clientFetchMs = performance.now() - t0;
+          invoiceTablePerfLog('invoice_list_query', `client_fetch_ms=${clientFetchMs.toFixed(1)}`);
+          const dbg = data._debugInvoiceListPerf as Record<string, number | boolean> | undefined;
+          if (dbg && typeof dbg === 'object') {
+            invoiceTablePerfLog('count_query', `server_ms_keys`, {
+              server_total_ms: typeof dbg.total_ms === 'number' ? dbg.total_ms : -1,
+            });
+            invoiceTablePerfLog('enrichment', `server_segments`, {
+              use_db_page: dbg.useDbPage === true ? 1 : 0,
+            });
+            invoiceTablePerfLog('summary', 'server+client', {
+              client_fetch_ms: Math.round(clientFetchMs),
+              server_total_ms: typeof dbg.total_ms === 'number' ? Math.round(dbg.total_ms) : -1,
+            });
+          }
+        }
         setInvoices(data.invoices ?? []);
         setTotalCount(data.totalCount ?? 0);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!cancelled && invoiceTablePerfEnabled() && typeof performance !== 'undefined') {
+              invoiceTablePerfLog('render', `+${(performance.now() - t0).toFixed(1)}ms_after_data`);
+            }
+          });
+        });
       })
       .catch(() => {
         if (!cancelled) {
@@ -250,26 +353,7 @@ export function InvoicesSection({
     return () => {
       cancelled = true;
     };
-  }, [
-    businessId,
-    q,
-    status,
-    filter,
-    balance,
-    scheduleFilter,
-    issue,
-    issue_from,
-    issue_to,
-    due,
-    due_from,
-    due_to,
-    customer,
-    sort,
-    order,
-    page,
-    page_size,
-    refreshKey,
-  ]);
+  }, [getInvoiceListQueryParams, refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / page_size));
   const currentPage = Math.min(page, totalPages);
@@ -699,7 +783,7 @@ export function InvoicesSection({
 
         <div
           className={cn(
-            'flex gap-2 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none]',
+            'flex gap-1.5 overflow-x-auto overscroll-x-contain pb-1 sm:gap-2 [-ms-overflow-style:none] [scrollbar-width:none]',
             '[&::-webkit-scrollbar]:hidden [-webkit-overflow-scrolling:touch]'
           )}
           role="tablist"
@@ -716,8 +800,8 @@ export function InvoicesSection({
                 aria-selected={active}
                 onClick={() => applyQuickChip(c.key)}
                 className={cn(
-                  'min-h-11 shrink-0 touch-manipulation rounded-full border px-4 py-2.5 text-sm font-medium transition-all',
-                  'active:opacity-90 sm:min-h-0 sm:py-2',
+                  'min-h-9 shrink-0 touch-manipulation rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                  'active:opacity-90 sm:min-h-0 sm:px-4 sm:py-2 sm:text-sm',
                   active
                     ? tone === 'warning'
                       ? 'border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/25 dark:border-amber-400 dark:bg-amber-600 dark:shadow-amber-900/30'
@@ -735,39 +819,14 @@ export function InvoicesSection({
       <div className="flex flex-col gap-4">
         <p className="text-sm text-slate-600 dark:text-slate-400">
           {loading
-            ? 'Fetching invoices…'
+            ? 'Loading invoices…'
             : totalCount === 0
               ? null
               : `Showing ${start}–${end} of ${totalCount}`}
         </p>
 
         {loading ? (
-          <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex flex-col items-center gap-2 text-slate-500 dark:text-slate-400">
-              <svg
-                className="h-8 w-8 animate-spin"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span className="text-sm">Fetching invoices…</span>
-            </div>
-          </div>
+          <InvoiceTableLoadingSkeleton />
         ) : totalCount === 0 && hasListFilters ? (
           <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50/80 to-white px-6 py-16 text-center dark:border-slate-800 dark:from-slate-900/80 dark:to-slate-900">
             <p className="text-base font-medium text-slate-800 dark:text-slate-100">

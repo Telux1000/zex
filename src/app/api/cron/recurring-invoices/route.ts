@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { verifyCronOrResponse } from '@/lib/cron/verify-cron-request';
-import { processInvoiceReminders } from '@/lib/invoices/reminder-cron';
 import { processScheduledInvoiceSends } from '@/lib/invoices/scheduled-invoice-send-cron';
 import { processDueRecurringInvoiceRules } from '@/lib/recurring-invoice/process-due-rules';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
@@ -22,8 +21,7 @@ async function handleCron(req: Request) {
   try {
     const recurring = await processDueRecurringInvoiceRules(supabaseAdmin, todayIso);
     const scheduledInvoiceSends = await processScheduledInvoiceSends(supabaseAdmin, new Date());
-    const invoiceReminders = await processInvoiceReminders(supabaseAdmin, new Date());
-    return NextResponse.json({ recurring, scheduledInvoiceSends, invoiceReminders });
+    return NextResponse.json({ recurring, scheduledInvoiceSends });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Cron failed';
     return NextResponse.json({ error: message }, { status: 500 });

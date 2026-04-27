@@ -166,7 +166,7 @@ export function DashboardShell({
         {assistantImmersiveMobile || supportImmersive ? null : subscriptionBanner}
         <div
           className={cn(
-            'flex-1 px-4 pt-4 pb-[max(6.5rem,calc(1rem+env(safe-area-inset-bottom)))] sm:px-6 sm:pt-6 sm:pb-[max(6.5rem,calc(1.5rem+env(safe-area-inset-bottom)))] md:p-6',
+            'min-w-0 flex-1 overflow-x-clip px-4 pt-4 pb-[max(6.5rem,calc(1rem+env(safe-area-inset-bottom)))] sm:px-6 sm:pt-6 sm:pb-[max(6.5rem,calc(1.5rem+env(safe-area-inset-bottom)))] md:p-6',
             (assistantImmersiveMobile || supportImmersive) &&
               'flex min-h-0 flex-1 flex-col !p-0 !pt-0 !pb-0 sm:!p-0 sm:!pb-0'
           )}

@@ -1,5 +1,6 @@
 import { addDays, differenceInCalendarDays, isBefore, parseISO, startOfDay } from 'date-fns';
 import type { NotificationCandidate, NotificationCategory, NotificationModel, NotificationSeverity } from './types';
+import { expenseAmountInBase } from '@/lib/expenses/expense-base-amount';
 
 type InvoiceRowForNotification = {
   id: string;
@@ -34,6 +35,9 @@ type ExpenseRowForNotification = {
   expense_date: string;
   category: string | null;
   amount: number | null;
+  currency?: string | null;
+  base_amount?: number | null;
+  exchange_rate?: number | null;
 };
 
 type PaymentRowForNotification = {
@@ -235,7 +239,10 @@ export function generateNotificationCandidates(input: NotificationEngineInput): 
     return Number.isFinite(t) && t >= THIRTY_DAYS_AGO.getTime();
   });
 
-  const expensesMonthBase = expensesThis30Days.reduce((s, e) => s + Math.max(0, num(e.amount)), 0);
+  const expensesMonthBase = expensesThis30Days.reduce(
+    (s, e) => s + Math.max(0, expenseAmountInBase(e, input.baseCurrencyCode)),
+    0
+  );
 
   const paymentsThis30Days = payments.filter((p) => {
     const t = p.created_at ? new Date(p.created_at).getTime() : null;
@@ -433,7 +440,7 @@ export function generateNotificationCandidates(input: NotificationEngineInput): 
       const m: Record<string, number> = {};
       for (const e of rows) {
         const cat = String(e.category ?? 'General').trim() || 'General';
-        m[cat] = (m[cat] ?? 0) + Math.max(0, num(e.amount));
+        m[cat] = (m[cat] ?? 0) + Math.max(0, expenseAmountInBase(e, input.baseCurrencyCode));
       }
       return m;
     };

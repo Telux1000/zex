@@ -5,15 +5,15 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import type { Business } from '@/lib/database.types';
-import { AccountSettingsForm } from './AccountSettingsForm';
+import { AccountSettingsForm, type SettingsProfileCardInitial } from './AccountSettingsForm';
 import { SecuritySettingsPanel } from './SecuritySettingsPanel';
 import { BusinessProfileForm } from './BusinessProfileForm';
 import { InvoiceSettingsForm } from './InvoiceSettingsForm';
 import { FinanceCurrencySettingsForm } from './FinanceCurrencySettingsForm';
 import { PaymentSettingsForm } from './PaymentSettingsForm';
-import { TeamPanel } from './TeamPanel';
+import { ReminderMessagingForm } from './ReminderMessagingForm';
+import { TeamPanelLazy, AuditLogGlobalPanelLazy } from './SettingsLazyPanels';
 import { NotificationPreferencesForm } from './NotificationPreferencesForm';
-import { AuditLogGlobalPanel } from './AuditLogGlobalPanel';
 import { AppearanceSettingsForm } from './AppearanceSettingsForm';
 import type { PermissionFlags } from '@/lib/rbac/permissions';
 
@@ -45,6 +45,10 @@ const SECTION_META = {
   'payment-methods': {
     label: 'Payment Methods',
     description: 'Configure payment channels and payout options.',
+  },
+  'reminder-emails': {
+    label: 'Reminder emails',
+    description: 'Default or custom wording for payment reminder emails.',
   },
   security: {
     label: 'Security',
@@ -79,6 +83,7 @@ const GROUPED_SECTIONS = [
       { id: 'finance-currency', label: 'Currency' },
       { id: 'invoice-settings', label: 'Invoice Settings' },
       { id: 'payment-methods', label: 'Payment Methods' },
+      { id: 'reminder-emails', label: 'Reminder emails' },
     ],
   },
   {
@@ -106,6 +111,7 @@ const LEGACY_SECTION_ALIAS: Record<string, SettingsSectionId> = {
   users: 'team-members',
   tax: 'invoice-settings',
   customer: 'invoice-settings',
+  reminders: 'reminder-emails',
 };
 
 export type SettingsSectionId = keyof typeof SECTION_META;
@@ -116,6 +122,8 @@ type Props = {
   hasFinancialRecords: boolean;
   /** Request-derived hint when the business row has no country yet (IP, then Accept-Language). */
   suggestedCountryCode?: string | null;
+  /** RSC-hydrated profile row so the Profile section avoids a client waterfall on `/api/profile`. */
+  profileCardInitial?: SettingsProfileCardInitial | null;
 };
 type MobileCategoryId = 'general' | 'team' | 'finance' | 'security' | 'notifications' | 'activity';
 
@@ -152,6 +160,7 @@ const MOBILE_ITEM_ICONS: Partial<Record<SettingsSectionId, string>> = {
   'finance-currency': 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
   'invoice-settings': 'M8 3h8l5 5v13H3V3h5Zm8 0v5h5',
   'payment-methods': 'M3 7h18v10H3zM3 11h18',
+  'reminder-emails': 'M4 4h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm0 4h8v2H4',
   security: 'M12 3 4 7v5c0 5 3.5 8.5 8 9 4.5-.5 8-4 8-9V7l-8-4Z',
   'email-preferences': 'M4 6h16v12H4zM4 7l8 6 8-6',
   audit: 'M3 12h4l2-6 4 12 2-6h6',
@@ -166,7 +175,12 @@ function sectionVisible(id: SettingsSectionId, flags: PermissionFlags): boolean 
 function mobileCategoryForSection(section: SettingsSectionId): MobileCategoryId {
   if (section === 'profile' || section === 'business-profile' || section === 'appearance') return 'general';
   if (section === 'team-members') return 'team';
-  if (section === 'finance-currency' || section === 'invoice-settings' || section === 'payment-methods')
+  if (
+    section === 'finance-currency' ||
+    section === 'invoice-settings' ||
+    section === 'payment-methods' ||
+    section === 'reminder-emails'
+  )
     return 'finance';
   if (section === 'security') return 'security';
   if (section === 'email-preferences') return 'notifications';
@@ -178,6 +192,7 @@ export function SettingsLayout({
   permissionFlags,
   hasFinancialRecords,
   suggestedCountryCode = null,
+  profileCardInitial = null,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -218,7 +233,7 @@ export function SettingsLayout({
   const mobileCategorySections: Record<MobileCategoryId, SettingsSectionId[]> = {
     general: ['profile', 'business-profile', 'appearance'],
     team: ['team-members'],
-    finance: ['finance-currency', 'invoice-settings', 'payment-methods'],
+    finance: ['finance-currency', 'invoice-settings', 'payment-methods', 'reminder-emails'],
     security: ['security'],
     notifications: ['email-preferences'],
     activity: ['audit'],
@@ -405,6 +420,7 @@ export function SettingsLayout({
                 )}
                 {sectionAllowed && active === 'profile' && (
                   <AccountSettingsForm
+                    profileCardInitial={profileCardInitial}
                     focusFullNameOnMount={focusFullName}
                     onSuccess={() => {
                       router.refresh();
@@ -467,6 +483,17 @@ export function SettingsLayout({
                     onClearSuccess={() => setSaveSuccess(null)}
                   />
                 )}
+                {sectionAllowed && active === 'reminder-emails' && (
+                  <ReminderMessagingForm
+                    business={business}
+                    onSuccess={() => {
+                      router.refresh();
+                      setSaveSuccess('Reminder email copy saved.');
+                      setTimeout(() => setSaveSuccess(null), 4000);
+                    }}
+                    onClearSuccess={() => setSaveSuccess(null)}
+                  />
+                )}
                 {sectionAllowed && active === 'email-preferences' && (
                   <NotificationPreferencesForm
                     onSuccess={() => {
@@ -485,8 +512,8 @@ export function SettingsLayout({
                     onClearSuccess={() => setSaveSuccess(null)}
                   />
                 )}
-                {sectionAllowed && active === 'team-members' && <TeamPanel business={business} />}
-                {sectionAllowed && active === 'audit' && <AuditLogGlobalPanel businessId={business.id} />}
+                {sectionAllowed && active === 'team-members' && <TeamPanelLazy business={business} />}
+                {sectionAllowed && active === 'audit' && <AuditLogGlobalPanelLazy businessId={business.id} />}
               </>
             )}
           </div>
@@ -545,6 +572,7 @@ export function SettingsLayout({
 
         {sectionAllowed && active === 'profile' && (
           <AccountSettingsForm
+            profileCardInitial={profileCardInitial}
             focusFullNameOnMount={focusFullName}
             onSuccess={() => {
               router.refresh();
@@ -607,6 +635,17 @@ export function SettingsLayout({
             onClearSuccess={() => setSaveSuccess(null)}
           />
         )}
+        {sectionAllowed && active === 'reminder-emails' && (
+          <ReminderMessagingForm
+            business={business}
+            onSuccess={() => {
+              router.refresh();
+              setSaveSuccess('Reminder email copy saved.');
+              setTimeout(() => setSaveSuccess(null), 4000);
+            }}
+            onClearSuccess={() => setSaveSuccess(null)}
+          />
+        )}
         {sectionAllowed && active === 'email-preferences' && (
           <NotificationPreferencesForm
             onSuccess={() => {
@@ -625,8 +664,8 @@ export function SettingsLayout({
             onClearSuccess={() => setSaveSuccess(null)}
           />
         )}
-        {sectionAllowed && active === 'team-members' && <TeamPanel business={business} />}
-        {sectionAllowed && active === 'audit' && <AuditLogGlobalPanel businessId={business.id} />}
+        {sectionAllowed && active === 'team-members' && <TeamPanelLazy business={business} />}
+        {sectionAllowed && active === 'audit' && <AuditLogGlobalPanelLazy businessId={business.id} />}
       </div>
     </div>
   );

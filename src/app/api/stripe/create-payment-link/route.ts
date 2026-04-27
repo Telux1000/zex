@@ -61,8 +61,8 @@ export async function POST(req: Request) {
 
     if (mode === 'send_invoice') {
       const st = String((invoice as { status?: string }).status ?? '').toLowerCase();
-      if (st !== 'draft' && st !== 'pending') {
-        return NextResponse.json({ error: 'Only draft invoices can be sent this way.' }, { status: 400 });
+      if (st !== 'draft' && st !== 'pending' && st !== 'sent') {
+        return NextResponse.json({ error: 'Only draft, pending, or sent invoices can be emailed.' }, { status: 400 });
       }
       const scheduledAt = (invoice as { scheduled_send_at?: string | null }).scheduled_send_at;
       const force = Boolean(body.force_clear_schedule);
@@ -128,6 +128,7 @@ export async function POST(req: Request) {
         invoiceId: String(invoice.id),
         ownerUserId: user.id,
         paymentUrl,
+        requestOrigin: new URL(req.url).origin,
       });
       invoicePdfAttachment = [
         {

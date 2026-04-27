@@ -31,6 +31,9 @@ type SearchableCustomerSelectProps = {
   disabled?: boolean;
   /** Shown when `value` is set but not in `options` (e.g. archived customer). */
   orphanValueLabel?: string;
+  /** Replaces the trigger label until options are available (e.g. async directory load). */
+  optionsLoading?: boolean;
+  loadingLabel?: string;
   /** Trigger + closed state matches Quote form controls. */
   triggerClassName?: string;
   className?: string;
@@ -59,6 +62,8 @@ export function SearchableCustomerSelect({
   placeholder = 'Select customer',
   disabled,
   orphanValueLabel,
+  optionsLoading,
+  loadingLabel = 'Loading customers…',
   triggerClassName,
   className,
 }: SearchableCustomerSelectProps) {
@@ -83,10 +88,13 @@ export function SearchableCustomerSelect({
   const selectedOpt = useMemo(() => options.find((o) => o.id === value) ?? null, [options, value]);
 
   const closedLabel = useMemo(() => {
+    if (optionsLoading) {
+      return '';
+    }
     if (selectedOpt) return selectedOpt.label;
     if (value && orphanValueLabel?.trim()) return orphanValueLabel.trim();
     return '';
-  }, [selectedOpt, value, orphanValueLabel]);
+  }, [optionsLoading, selectedOpt, value, orphanValueLabel]);
 
   useEffect(() => {
     setMounted(true);
@@ -181,7 +189,7 @@ export function SearchableCustomerSelect({
     'flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 shadow-sm outline-none transition-colors hover:border-slate-400 focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-600 dark:focus-visible:border-indigo-400 dark:focus-visible:ring-indigo-400/25';
 
   const onKeyDownTrigger = (e: React.KeyboardEvent) => {
-    if (disabled) return;
+    if (disabled || optionsLoading) return;
     if (e.key === 'Escape' && open) {
       e.preventDefault();
       setOpen(false);
@@ -305,18 +313,25 @@ export function SearchableCustomerSelect({
         ref={triggerRef}
         type="button"
         id={baseId}
-        disabled={disabled}
+        disabled={disabled || optionsLoading}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
+        aria-busy={optionsLoading || undefined}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         className={cn(defaultTrigger, triggerClassName)}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => !disabled && !optionsLoading && setOpen((o) => !o)}
         onKeyDown={onKeyDownTrigger}
       >
-        <span className={cn('min-w-0 flex-1 truncate', !closedLabel && 'text-slate-400 dark:text-slate-500')}>
-          {closedLabel || placeholder}
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate',
+            (!closedLabel && !optionsLoading) && 'text-slate-400 dark:text-slate-500',
+            optionsLoading && 'text-slate-500 dark:text-slate-400'
+          )}
+        >
+          {optionsLoading ? loadingLabel : closedLabel || placeholder}
         </span>
         <ChevronDown
           className={cn('h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400', open && 'rotate-180')}

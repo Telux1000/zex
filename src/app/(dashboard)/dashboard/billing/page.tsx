@@ -110,8 +110,11 @@ export default async function BillingPaymentsPage({
   const plan = normalizeBillingPlan((subscriberProfile as { billing_plan?: unknown } | null)?.billing_plan);
 
   const subRow = await fetchOwnerSubscriptionRow(supabase, ownerId);
-  if (subRow) await reconcileSubscriptionStatusInDb(ownerId, subRow);
-  const freshRow = (await fetchOwnerSubscriptionRow(supabase, ownerId)) ?? subRow;
+  let freshRow = subRow;
+  if (subRow) {
+    const did = await reconcileSubscriptionStatusInDb(ownerId, subRow);
+    if (did) freshRow = { ...subRow, subscription_status: 'trial_expired' as const };
+  }
 
   const { effective, trialEndsAtIso } = computeEffectiveSubscription(freshRow ?? {});
 

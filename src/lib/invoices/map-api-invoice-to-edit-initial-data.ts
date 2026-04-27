@@ -1,4 +1,5 @@
 import type { EditModeInitialData } from '@/components/invoices/ManualInvoiceForm';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 
 /**
@@ -171,6 +172,9 @@ export function mapApiInvoiceJsonToEditModeInitialData(raw: Record<string, unkno
           : null,
       metadata,
       show_time_summary: !!(raw as { show_time_summary?: boolean }).show_time_summary,
+      template_id: normalizeInvoiceTemplateId((raw as { template_id?: string | null }).template_id),
+      source_quote_id: (raw as { source_quote_id?: string | null }).source_quote_id ?? null,
+      source_quote_number: (raw as { source_quote_number?: string | null }).source_quote_number ?? null,
     },
     items,
     payment_schedule,
@@ -178,6 +182,7 @@ export function mapApiInvoiceJsonToEditModeInitialData(raw: Record<string, unkno
       id: String(business.id),
       name: business.name,
       currency: business.currency,
+      logo_url: (business as { logo_url?: string | null }).logo_url ?? null,
       address_line1: business.address_line1 ?? null,
       address_line2: business.address_line2 ?? null,
       city: business.city ?? null,

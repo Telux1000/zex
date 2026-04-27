@@ -9,6 +9,7 @@ import { deliverInvoicePaymentReminder } from '@/lib/invoices/reminder-delivery'
 import { buildInvoiceFxRow, resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
 import { normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
 import { normalizeInvoiceAssignee } from '@/lib/invoices/invoice-time-summary';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import { isLocked } from '@/lib/invoices/edit-rules';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
 import type {
@@ -275,6 +276,7 @@ export async function assistantDuplicateInvoice(
       notes: source.notes,
       terms: source.terms,
       theme_id: source.theme_id,
+      template_id: normalizeInvoiceTemplateId((source as { template_id?: string | null }).template_id),
       metadata: source.metadata,
       use_customer_reminder_defaults:
         (source as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,

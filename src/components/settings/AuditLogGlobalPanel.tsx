@@ -14,6 +14,7 @@ import {
 import { AuditLogSourceCell } from '@/components/audit/AuditLogSourceCell';
 import { AuditLogUserCell } from '@/components/audit/AuditLogUserCell';
 import { cn } from '@/lib/utils/cn';
+import { isSettingsPagePerfEnabled, settingsPagePerfLog } from '@/lib/dev/settings-page-perf';
 
 type ActorOption = { userId: string | null; label: string };
 
@@ -79,6 +80,7 @@ export function AuditLogGlobalPanel({ businessId }: Props) {
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const t0 = Date.now();
     try {
       const params = new URLSearchParams({ business_id: businessId });
       if (entityType) params.set('entity_type', entityType);
@@ -101,6 +103,9 @@ export function AuditLogGlobalPanel({ businessId }: Props) {
       setTotal(Number(data.total ?? 0));
       setAllTotal(Number(data.allTotal ?? 0));
       setTotalPages(Math.max(1, Number(data.totalPages ?? 1)));
+      if (isSettingsPagePerfEnabled()) {
+        settingsPagePerfLog('settings: audit_activity_client_fetch_ms', { ms: Date.now() - t0 });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
       setLogs([]);

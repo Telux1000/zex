@@ -210,6 +210,8 @@ export interface Business {
   payment_settings?: PaymentSettings | null;
   tax_settings?: TaxSettings | null;
   customer_settings?: CustomerSettings | null;
+  /** Custom payment reminder copy (subjects, bodies, tone). */
+  reminder_messaging?: Json | null;
   /** Stripe Connect account id (acct_xxx) when business has onboarded */
   stripe_account_id?: string | null;
   /** Stripe onboarding state: not_connected, onboarding_required, details_submitted, etc. */
@@ -287,6 +289,8 @@ export interface Invoice {
   amount_paid?: number;
   balance_due?: number;
   notes: string | null;
+  /** HTML/PDF layout preset: classic, modern, minimal, bold, elegant. */
+  template_id: string;
   theme_id: string | null;
   stripe_payment_link_id: string | null;
   stripe_payment_intent_id: string | null;
@@ -328,6 +332,24 @@ export interface InvoiceItem {
   sort_order: number;
   created_at: string;
   tax_percent?: number;
+}
+
+export interface SavedLineItem {
+  id: string;
+  business_id: string;
+  name: string;
+  normalized_name: string;
+  description: string | null;
+  unit_label: string;
+  unit_price: number;
+  currency: string;
+  tax_percent: number;
+  line_type: 'service' | 'product' | 'custom';
+  usage_count: number;
+  last_used_at: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 }
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'accepted_customer' | 'rejected_customer';

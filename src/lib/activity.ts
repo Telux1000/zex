@@ -110,6 +110,9 @@ export function getChangedExpenseFields(
   const changed: string[] = [];
   const fields = [
     'amount',
+    'currency',
+    'base_amount',
+    'exchange_rate',
     'category',
     'description',
     'expense_date',

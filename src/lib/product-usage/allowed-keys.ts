@@ -32,7 +32,17 @@ export const PAGE_SECTION_LABELS: Record<PageSectionKey, string> = {
   create: 'Create / wizard',
 };
 
-export const FEATURE_USAGE_KEYS = ['ai_assistant', 'reminders', 'scheduled_send', 'invoice_create'] as const;
+export const FEATURE_USAGE_KEYS = [
+  'ai_assistant',
+  'reminders',
+  'scheduled_send',
+  'invoice_create',
+  'line_item_suggestion_shown',
+  'line_item_suggestion_selected',
+  'saved_line_item_created',
+  'saved_line_item_updated',
+  'saved_line_item_archived',
+] as const;
 
 export type FeatureUsageKey = (typeof FEATURE_USAGE_KEYS)[number];
 
@@ -41,5 +51,9 @@ export function isAllowedPageSectionKey(k: string): k is PageSectionKey {
 }
 
 export function isAllowedFeatureKey(k: string): k is FeatureUsageKey {
+  return (FEATURE_USAGE_KEYS as readonly string[]).includes(k);
+}
+
+export function isFeatureUsageKey(k: string): k is FeatureUsageKey {
   return (FEATURE_USAGE_KEYS as readonly string[]).includes(k);
 }

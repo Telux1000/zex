@@ -2,13 +2,10 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
+import { LoginPerfDashboardShellMarker } from '@/components/dev/LoginPerfDashboardShellMarker';
 import { getSubscriberDashboardBlockReason } from '@/lib/subscriber/dashboard-access';
-import {
-  getPrimaryBusinessForUser,
-  getServerSupabaseUser,
-} from '@/lib/supabase/server-auth';
-import { runNotificationIntelligenceForBusiness } from '@/lib/notifications/notification-runner';
-import { getEffectiveBusinessRole } from '@/lib/rbac/server';
+import { getPrimaryBusinessForUser, getServerSupabaseUser } from '@/lib/supabase/server-auth';
+import { getCachedEffectiveBusinessRole } from '@/lib/rbac/server';
 import { defaultDeniedFlags, permissionFlagsForRole } from '@/lib/rbac/permissions';
 import { DashboardCoreSetupCallout } from '@/components/dashboard/DashboardCoreSetupCallout';
 import { computeSetupProgress } from '@/lib/onboarding/setup-progress';
@@ -28,7 +25,12 @@ import {
   getSystemModeMessage,
   isInternalAdminRoleValue,
 } from '@/lib/system-access';
-import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
+import {
+  deriveOnboardingEntryState,
+  getDashboardProfileRow,
+} from '@/lib/onboarding/entry-state';
+import { getCachedCustomerCountForBusiness } from '@/lib/business/customer-head-count';
+import { isLoginPerfEnabled, loginPerfLog } from '@/lib/dev/login-perf';
 
 export const metadata: Metadata = {
   robots: {
@@ -37,45 +39,52 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { supabase, user } = await getServerSupabaseUser();
-  if (!user) redirect('/login');
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const layoutStart = Date.now();
+  if (isLoginPerfEnabled()) {
+    loginPerfLog('dashboard: layout_start');
+  }
 
-  const subscriberBlock = await getSubscriberDashboardBlockReason(supabase, user.id);
+  const { supabase, user } = await getServerSupabaseUser();
+  if (!user) {
+    if (isLoginPerfEnabled()) {
+      loginPerfLog('dashboard: layout_block_ms', { ms: Date.now() - layoutStart, path: 'no_user' });
+    }
+    redirect('/login');
+  }
+
+  const [subscriberBlock, business, profileRow] = await Promise.all([
+    getSubscriberDashboardBlockReason(supabase, user.id),
+    getPrimaryBusinessForUser(user.id),
+    getDashboardProfileRow(user.id),
+  ]);
   if (subscriberBlock) {
     redirect(`/account-unavailable?reason=${subscriberBlock}`);
   }
 
-  const business = await getPrimaryBusinessForUser(user.id);
-  let permissionFlags = defaultDeniedFlags();
-  if (business) {
-    const role = await getEffectiveBusinessRole(supabase, business.id, user.id);
-    if (role) permissionFlags = permissionFlagsForRole(role);
-  }
+  const onboardingEntry = deriveOnboardingEntryState({
+    profile: profileRow,
+    primaryBusiness: business,
+  });
 
-  const { data: profileRow } = await supabase
-    .from('profiles')
-    .select('full_name, onboarding_completed_at, onboarding_pricing_completed_at, internal_admin_role, internal_admin_suspended_at')
-    .eq('id', user.id)
-    .maybeSingle();
-  const profileTyped = profileRow as {
-    full_name?: string | null;
-    onboarding_completed_at?: string | null;
-    onboarding_pricing_completed_at?: string | null;
-    internal_admin_role?: string | null;
-    internal_admin_suspended_at?: string | null;
-  } | null;
+  const [businessRole, customerCount, systemAccess, ownerSub] = await Promise.all([
+    business
+      ? getCachedEffectiveBusinessRole(business.id, user.id, business.ownerId)
+      : Promise.resolve(null),
+    business?.id ? getCachedCustomerCountForBusiness(business.id) : Promise.resolve(0),
+    (async () => {
+      const serviceAdmin = getSupabaseServiceAdmin();
+      return serviceAdmin ? fetchAppSystemSettings(serviceAdmin) : null;
+    })(),
+    business?.ownerId ? fetchOwnerSubscriptionRow(supabase, business.ownerId) : Promise.resolve(null),
+  ]);
+
+  const profileTyped = profileRow;
   const profileFullName = profileTyped?.full_name ?? null;
   const isInternalAdmin =
     isInternalAdminRoleValue(profileTyped?.internal_admin_role) &&
     !Boolean(profileTyped?.internal_admin_suspended_at);
 
-  const serviceAdmin = getSupabaseServiceAdmin();
-  const systemAccess = serviceAdmin ? await fetchAppSystemSettings(serviceAdmin) : null;
   if (
     systemAccess?.system_mode === 'EMERGENCY_LOCKDOWN' &&
     (!isInternalAdmin || !systemAccess.emergency_admin_access_enabled)
@@ -83,49 +92,16 @@ export default async function DashboardLayout({
     redirect('/account-unavailable?reason=system_emergency_lockdown');
   }
 
-  let customerCount = 0;
-  if (business?.id) {
-    const { count } = await supabase
-      .from('customers')
-      .select('id', { count: 'exact', head: true })
-      .eq('business_id', business.id);
-    customerCount = count ?? 0;
+  let permissionFlags = defaultDeniedFlags();
+  if (business && businessRole) {
+    permissionFlags = permissionFlagsForRole(businessRole);
   }
 
   const setupProgress = computeSetupProgress({ profileFullName, business, customerCount });
   const onboardingDone = isOnboardingComplete(profileTyped, business, customerCount);
   const resumeStep = onboardingResumeStep(profileTyped, business, customerCount);
-  const onboardingEntry = await fetchOnboardingEntryState(supabase, user.id, business);
   const hasSelectedPlan = !onboardingEntry.should_show_plan_selection;
-
   const showSetupCallout = shouldShowDashboardSetupCallout({ coreSetupComplete: onboardingDone });
-
-  let initialSupportUnreadCount = 0;
-  if (business?.id && permissionFlags.showSupportNav) {
-    const { data: unreadRpc } = await supabase.rpc('support_ticket_unread_for_business', {
-      p_business_id: business.id,
-    });
-    initialSupportUnreadCount = (unreadRpc ?? []).reduce((s: number, row: unknown) => {
-      const u = row as { unread_count?: number };
-      return s + Number(u.unread_count ?? 0);
-    }, 0);
-  }
-
-  let notificationBadgeCount = 0;
-  if (business) {
-    try {
-      const nowIso = new Date().toISOString();
-      const result = await runNotificationIntelligenceForBusiness({
-        supabase,
-        businessId: business.id,
-        baseCurrencyCode: business.currency ?? 'USD',
-        nowIso,
-      });
-      notificationBadgeCount = result.unreadActionableCount ?? 0;
-    } catch {
-      notificationBadgeCount = 0;
-    }
-  }
 
   const profileBanner = (
     <>
@@ -151,18 +127,16 @@ export default async function DashboardLayout({
   );
 
   let subscriptionBanner: ReactNode = null;
-  if (business?.ownerId) {
-    const subRow = await fetchOwnerSubscriptionRow(supabase, business.ownerId);
-    if (subRow) {
-      await reconcileSubscriptionStatusInDb(business.ownerId, subRow);
-      const fresh = (await fetchOwnerSubscriptionRow(supabase, business.ownerId)) ?? subRow;
-      const { effective, trialEndsAtIso } = computeEffectiveSubscription(fresh);
-      const daysLeft = trialDaysRemaining(trialEndsAtIso);
-      const urgency = trialUrgencyBannerDays(daysLeft);
-      subscriptionBanner = (
-        <DashboardSubscriptionBanner effective={effective} urgency={urgency} />
-      );
-    }
+  if (business?.ownerId && ownerSub) {
+    void reconcileSubscriptionStatusInDb(business.ownerId, ownerSub);
+    const { effective, trialEndsAtIso } = computeEffectiveSubscription(ownerSub);
+    const daysLeft = trialDaysRemaining(trialEndsAtIso);
+    const urgency = trialUrgencyBannerDays(daysLeft);
+    subscriptionBanner = <DashboardSubscriptionBanner effective={effective} urgency={urgency} />;
+  }
+
+  if (isLoginPerfEnabled()) {
+    loginPerfLog('dashboard: layout_block_ms', { ms: Date.now() - layoutStart });
   }
 
   return (
@@ -170,17 +144,18 @@ export default async function DashboardLayout({
       user={user}
       business={business}
       businessId={business?.id ?? null}
-      initialSupportUnreadCount={initialSupportUnreadCount}
+      initialSupportUnreadCount={0}
       permissionFlags={permissionFlags}
       setupProgress={setupProgress}
       isOnboardingComplete={onboardingDone}
       onboardingResumeStep={resumeStep}
       hasSelectedPlan={hasSelectedPlan}
       profileFullName={profileFullName}
-      notificationBadgeCount={notificationBadgeCount}
+      notificationBadgeCount={0}
       profileBanner={profileBanner}
       subscriptionBanner={subscriptionBanner}
     >
+      <LoginPerfDashboardShellMarker />
       {children}
     </DashboardShell>
   );

@@ -12,10 +12,8 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, Copy, ImageIcon, Loader2, Mic, Pencil, Send, X } from 'lucide-react';
-import { persistSavedLineItemsFromAiParsed } from '@/lib/items/saved-line-items-store';
 import {
   emptyInvoiceWizardDraft,
-  draftToParsedInvoice,
   type AssistantCustomerEditSessionV1,
   type InvoiceAssistantChatCard,
   type InvoiceWizardDraft,
@@ -85,15 +83,19 @@ import {
   saveAssistantThreadToSupabase,
 } from '@/lib/assistant/conversation-sync-supabase';
 import { createClient } from '@/lib/supabase/client';
-import {
-  buildConversationPdfBytes,
-  downloadPdfFile,
-} from '@/lib/assistant/conversation-export-pdf';
+import { downloadPdfFile } from '@/lib/assistant/conversation-export-pdf';
 import { useAssistantConversationRegister } from '@/components/assistant/assistant-conversation-context';
 import type { AssistantLaunchContext } from '@/lib/assistant/assistant-launch-context';
 import { AssistantOpeningContextPanels } from '@/components/invoices/AssistantOpeningContextPanels';
 import { sanitizeLegacyAssistantOpeningMessages } from '@/lib/assistant/sanitize-legacy-assistant-opening';
 import { parseConversationCommand } from '@/lib/assistant/conversation-commands';
+import {
+  assistantInvoiceChatTimingEnabled,
+  devLogAssistantInvoiceChatPhase,
+  devMarkAssistantChatFullContextReady,
+  devMarkAssistantChatInputReady,
+  devMarkAssistantChatShellVisible,
+} from '@/lib/dev/assistant-invoice-chat-timing';
 
 const ASSISTANT_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -328,7 +330,11 @@ export function InvoiceChatWizard({
   messagesRef.current = messages;
   const [composerText, setComposerText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [bootstrapLoading, setBootstrapLoading] = useState(true);
+  /** Empty-thread opening POST to `/api/ai/invoice-wizard` — never blocks the composer; UI hint only. */
+  const [openingTurnLoading, setOpeningTurnLoading] = useState(false);
+  const openingTurnInFlightRef = useRef(false);
+  /** Invalidates stale empty-thread opening responses when the user sends first or remote hydration wins. */
+  const openingBootstrapGenRef = useRef(0);
   const [wizardDraft, setWizardDraft] = useState<InvoiceWizardDraft>(() => emptyInvoiceWizardDraft());
   const [wizardStep, setWizardStep] = useState<InvoiceWizardStep | null>(null);
   const [wizardClientUi, setWizardClientUi] = useState<WizardClientUI | null>(null);
@@ -489,7 +495,7 @@ export function InvoiceChatWizard({
   }, [messages, businessId]);
 
   const flushPersistence = useCallback(() => {
-    if (!conversationPersistence || !businessId || !persistenceUserId || bootstrapLoading) return;
+    if (!conversationPersistence || !businessId || !persistenceUserId) return;
     const b = persistBundleRef.current;
     const sb = supabaseRef.current;
     const threadPayload = {
@@ -524,7 +530,6 @@ export function InvoiceChatWizard({
     businessId,
     persistenceUserId,
     wizardSessionId,
-    bootstrapLoading,
   ]);
 
   const scrollToBottom = useCallback(() => {
@@ -536,10 +541,28 @@ export function InvoiceChatWizard({
   }, [messages, loading, successInvoice, scrollToBottom]);
 
   useLayoutEffect(() => {
-    if (!scrollInstantAfterRestoreRef.current || bootstrapLoading || !persistHydrated) return;
+    if (!scrollInstantAfterRestoreRef.current || !persistHydrated) return;
     threadEndRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
     scrollInstantAfterRestoreRef.current = false;
-  }, [messages, bootstrapLoading, persistHydrated]);
+  }, [messages, persistHydrated]);
+
+  useLayoutEffect(() => {
+    if (!assistantInvoiceChatTimingEnabled()) return;
+    devMarkAssistantChatShellVisible('invoice_chat_wizard_mount');
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!assistantInvoiceChatTimingEnabled()) return;
+    if (!businessId || !persistHydrated) return;
+    devMarkAssistantChatInputReady('composer_enabled');
+  }, [businessId, persistHydrated]);
+
+  useEffect(() => {
+    if (!assistantInvoiceChatTimingEnabled()) return;
+    if (!businessId || !persistHydrated) return;
+    if (openingTurnLoading) return;
+    devMarkAssistantChatFullContextReady('persist_plus_opening_turn_settled');
+  }, [businessId, persistHydrated, openingTurnLoading]);
 
   useEffect(() => {
     onWizardStepChange?.(wizardStep);
@@ -988,7 +1011,7 @@ export function InvoiceChatWizard({
   const commitUserMessageEdit = useCallback(
     async (messageId: string, newTextRaw: string) => {
       const trimmed = newTextRaw.trim();
-      if (!trimmed || loading || bootstrapLoading || successInvoice) return;
+      if (!trimmed || loading || successInvoice) return;
 
       const idx = messagesRef.current.findIndex((m) => m.id === messageId);
       if (idx < 0) return;
@@ -1073,7 +1096,7 @@ export function InvoiceChatWizard({
         setLoading(false);
       }
     },
-    [loading, bootstrapLoading, successInvoice, postWizard]
+    [loading, successInvoice, postWizard]
   );
 
   const copyChatMessage = useCallback(
@@ -1116,7 +1139,7 @@ export function InvoiceChatWizard({
   /** Below `lg`, inline actions are hidden; ~550ms long-press on the bubble opens the mobile action sheet. */
   const handleMessageTouchStart = useCallback(
     (msg: ChatMessage) => {
-      if (editingMessageId || loading || bootstrapLoading) return;
+      if (editingMessageId || loading) return;
       cancelLongPressTimer();
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null;
@@ -1125,7 +1148,7 @@ export function InvoiceChatWizard({
         setActionSheetMessageId(msg.id);
       }, 550);
     },
-    [editingMessageId, loading, bootstrapLoading, cancelLongPressTimer]
+    [editingMessageId, loading, cancelLongPressTimer]
   );
 
   const handleMessageTouchEndOrCancel = useCallback(() => {
@@ -1134,7 +1157,7 @@ export function InvoiceChatWizard({
 
   const startCustomerInlineEdit = useCallback(
     async (customerId: string) => {
-      if (loading || bootstrapLoading || successInvoice) return;
+      if (loading || successInvoice) return;
       setLoading(true);
       try {
         const result = await postWizard({
@@ -1156,7 +1179,7 @@ export function InvoiceChatWizard({
         setLoading(false);
       }
     },
-    [loading, bootstrapLoading, successInvoice, postWizard, wizardDraft]
+    [loading, successInvoice, postWizard, wizardDraft]
   );
 
   const openCustomerFormFromAssistant = useCallback(
@@ -1292,55 +1315,60 @@ export function InvoiceChatWizard({
     }
     let cancelled = false;
     const sb = supabaseRef.current;
-    void (async () => {
-      const retention = loadMessageRetention(businessId, persistenceUserId);
-      if (!cancelled) setRetentionPolicy(retention);
 
-      const local = loadAssistantThread(businessId, persistenceUserId, wizardSessionId, retention);
-      const remote = sb
-        ? await loadAssistantThreadFromSupabase(
-            sb,
-            businessId,
-            persistenceUserId,
-            wizardSessionId,
-            retention
-          )
-        : null;
+    const applyMerged = (
+      merged: NonNullable<ReturnType<typeof mergeAssistantThreads>['merged']>,
+      migrateLocalToServer: boolean,
+      retention: MessageRetentionOption
+    ) => {
+      const cleanedMessages = sanitizeLegacyAssistantOpeningMessages(merged.messages);
+      storageHadMessagesRef.current = cleanedMessages.length > 0;
+      if (cleanedMessages.length > 0) {
+        scrollInstantAfterRestoreRef.current = true;
+        const restored = cleanedMessages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          variant: m.variant,
+          createdAt: m.createdAt ?? Date.now(),
+          editedAt: m.editedAt,
+          cards: m.cards,
+          quickReplies: m.quickReplies,
+          structured: m.structured,
+          postCardContent: m.postCardContent,
+          assistantResponseMeta: m.assistantResponseMeta,
+        }));
+        setMessages(restored);
+        assistantLastResponseMetaRef.current = lastAssistantResponseMetaFromMessages(restored);
+      }
+      setWizardDraft(merged.wizardDraft ?? emptyInvoiceWizardDraft());
+      setWizardStep(coerceLegacyWizardStep(merged.wizardStep ?? null));
+      pendingInvoiceLookupRef.current = merged.pendingInvoiceLookup ?? null;
+      pendingCustomerContextRef.current = merged.pendingCustomerContext ?? null;
+      customerEditSessionRef.current = merged.customerEditSession ?? null;
+      metricSessionContextRef.current = merged.metricSessionContext ?? null;
+      assistantActiveContextRef.current = merged.assistantActiveContext ?? null;
 
-      if (cancelled) return;
+      saveAssistantThread(
+        businessId,
+        persistenceUserId,
+        wizardSessionId,
+        {
+          messages: cleanedMessages,
+          wizardDraft: merged.wizardDraft,
+          wizardStep: merged.wizardStep,
+          pendingInvoiceLookup: merged.pendingInvoiceLookup,
+          pendingCustomerContext: merged.pendingCustomerContext,
+          customerEditSession: merged.customerEditSession,
+          metricSessionContext: merged.metricSessionContext,
+          assistantActiveContext: merged.assistantActiveContext,
+        },
+        retention
+      );
 
-      const { merged, migrateLocalToServer } = mergeAssistantThreads(remote, local);
-
-      if (merged) {
-        const cleanedMessages = sanitizeLegacyAssistantOpeningMessages(merged.messages);
-        storageHadMessagesRef.current = cleanedMessages.length > 0;
-        if (cleanedMessages.length > 0) {
-          scrollInstantAfterRestoreRef.current = true;
-          const restored = cleanedMessages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            variant: m.variant,
-            createdAt: m.createdAt ?? Date.now(),
-            editedAt: m.editedAt,
-            cards: m.cards,
-            quickReplies: m.quickReplies,
-            structured: m.structured,
-            postCardContent: m.postCardContent,
-            assistantResponseMeta: m.assistantResponseMeta,
-          }));
-          setMessages(restored);
-          assistantLastResponseMetaRef.current = lastAssistantResponseMetaFromMessages(restored);
-        }
-        setWizardDraft(merged.wizardDraft ?? emptyInvoiceWizardDraft());
-        setWizardStep(coerceLegacyWizardStep(merged.wizardStep ?? null));
-        pendingInvoiceLookupRef.current = merged.pendingInvoiceLookup ?? null;
-        pendingCustomerContextRef.current = merged.pendingCustomerContext ?? null;
-        customerEditSessionRef.current = merged.customerEditSession ?? null;
-        metricSessionContextRef.current = merged.metricSessionContext ?? null;
-        assistantActiveContextRef.current = merged.assistantActiveContext ?? null;
-
-        saveAssistantThread(
+      if (migrateLocalToServer && sb) {
+        void saveAssistantThreadToSupabase(
+          sb,
           businessId,
           persistenceUserId,
           wizardSessionId,
@@ -1349,38 +1377,54 @@ export function InvoiceChatWizard({
             wizardDraft: merged.wizardDraft,
             wizardStep: merged.wizardStep,
             pendingInvoiceLookup: merged.pendingInvoiceLookup,
-            pendingCustomerContext: merged.pendingCustomerContext,
-            customerEditSession: merged.customerEditSession,
             metricSessionContext: merged.metricSessionContext,
             assistantActiveContext: merged.assistantActiveContext,
+            updatedAt: merged.updatedAt,
           },
           retention
         );
-
-        if (migrateLocalToServer && sb) {
-          void saveAssistantThreadToSupabase(
-            sb,
-            businessId,
-            persistenceUserId,
-            wizardSessionId,
-            {
-              messages: cleanedMessages,
-              wizardDraft: merged.wizardDraft,
-              wizardStep: merged.wizardStep,
-              pendingInvoiceLookup: merged.pendingInvoiceLookup,
-              metricSessionContext: merged.metricSessionContext,
-              assistantActiveContext: merged.assistantActiveContext,
-              updatedAt: merged.updatedAt,
-            },
-            retention
-          );
-        }
-      } else {
-        storageHadMessagesRef.current = false;
       }
+    };
 
-      if (!cancelled) setPersistHydrated(true);
-    })();
+    const retention = loadMessageRetention(businessId, persistenceUserId);
+    setRetentionPolicy(retention);
+
+    const local = loadAssistantThread(businessId, persistenceUserId, wizardSessionId, retention);
+    const { merged: localMerged, migrateLocalToServer: localMigrate } = mergeAssistantThreads(null, local);
+
+    if (localMerged) {
+      applyMerged(localMerged, localMigrate, retention);
+    } else {
+      storageHadMessagesRef.current = false;
+    }
+
+    if (!cancelled) setPersistHydrated(true);
+
+    if (sb) {
+      void (async () => {
+        const remote = await loadAssistantThreadFromSupabase(
+          sb,
+          businessId,
+          persistenceUserId,
+          wizardSessionId,
+          retention
+        );
+        if (cancelled) return;
+        if (messagesRef.current.some((m) => m.role === 'user')) {
+          devLogAssistantInvoiceChatPhase('remote_thread_skipped_has_user_turn', {});
+          return;
+        }
+        if (!remote) return;
+        const local2 = loadAssistantThread(businessId, persistenceUserId, wizardSessionId, retention);
+        const { merged, migrateLocalToServer } = mergeAssistantThreads(remote, local2);
+        if (!merged || cancelled) return;
+        const cleanedRemote = sanitizeLegacyAssistantOpeningMessages(merged.messages);
+        if (cleanedRemote.length > 0) {
+          openingBootstrapGenRef.current += 1;
+        }
+        applyMerged(merged, migrateLocalToServer, retention);
+      })();
+    }
 
     return () => {
       cancelled = true;
@@ -1391,21 +1435,25 @@ export function InvoiceChatWizard({
     if (!persistHydrated || !businessId) return;
     /** Thread already has content — never re-run empty bootstrap (avoids duplicate greeting when deps change). */
     if (messagesRef.current.length > 0) {
-      setBootstrapLoading(false);
+      setOpeningTurnLoading(false);
       return;
     }
     let cancelled = false;
+    const myGen = ++openingBootstrapGenRef.current;
+    openingTurnInFlightRef.current = true;
+    setOpeningTurnLoading(true);
     void (async () => {
-      setBootstrapLoading(true);
       try {
         const result = await postWizardRef.current({ draft: emptyInvoiceWizardDraft() });
         if (cancelled) return;
+        if (myGen !== openingBootstrapGenRef.current) return;
+        if (messagesRef.current.some((m) => m.role === 'user')) return;
         if (!result) {
-          setBootstrapLoading(false);
           return;
         }
         const { res, data } = result;
         if (cancelled) return;
+        if (myGen !== openingBootstrapGenRef.current) return;
         if (!res.ok) {
           if (data?.draft && typeof data.draft === 'object') {
             applyWizardResponse(data);
@@ -1422,6 +1470,7 @@ export function InvoiceChatWizard({
           return;
         }
         if (cancelled) return;
+        if (myGen !== openingBootstrapGenRef.current) return;
         /** Restored thread, or messages added before this async finished — do not inject greeting / server echo. */
         const suppressBootstrapChat =
           storageHadMessagesRef.current || messagesRef.current.length > 0;
@@ -1436,11 +1485,12 @@ export function InvoiceChatWizard({
           pushAssistantMessage([g]);
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && myGen === openingBootstrapGenRef.current) {
           pushAssistant(['Could not start the assistant.'], 'error');
         }
       } finally {
-        if (!cancelled) setBootstrapLoading(false);
+        openingTurnInFlightRef.current = false;
+        if (!cancelled) setOpeningTurnLoading(false);
       }
     })();
     return () => {
@@ -1451,7 +1501,6 @@ export function InvoiceChatWizard({
 
   useEffect(() => {
     if (!conversationPersistence || !businessId || !persistenceUserId || !persistHydrated) return;
-    if (bootstrapLoading) return;
     const h = window.setTimeout(() => {
       flushPersistence();
     }, 0);
@@ -1466,7 +1515,6 @@ export function InvoiceChatWizard({
     wizardStep,
     retentionPolicy,
     persistHydrated,
-    bootstrapLoading,
     flushPersistence,
   ]);
 
@@ -1500,6 +1548,7 @@ export function InvoiceChatWizard({
       exportConversation: () => {
         void (async () => {
           try {
+            const { buildConversationPdfBytes } = await import('@/lib/assistant/conversation-export-pdf');
             const bytes = await buildConversationPdfBytes(
               messages.map(toPersistedChatMessage),
               'Zenzex Assistant conversation'
@@ -1514,10 +1563,10 @@ export function InvoiceChatWizard({
         })();
       },
       openRetentionModal: () => setRetentionModalOpen(true),
-      disabled: bootstrapLoading || loading,
+      disabled: loading,
     });
     return () => registerConversationMenu(null);
-  }, [registerConversationMenu, conversationPersistence, bootstrapLoading, loading, messages]);
+  }, [registerConversationMenu, conversationPersistence, loading, messages]);
 
   async function runWizardSend(userText: string, extra?: Record<string, unknown>) {
     const trimmed = userText.trim();
@@ -1531,6 +1580,10 @@ export function InvoiceChatWizard({
     }
     if (wizardStep === 'CONFIRM' && !trimmed && !confirmIdempotencyRef.current) {
       confirmIdempotencyRef.current = crypto.randomUUID();
+    }
+
+    if (openingTurnInFlightRef.current) {
+      openingBootstrapGenRef.current += 1;
     }
 
     setLoading(true);
@@ -1584,14 +1637,6 @@ export function InvoiceChatWizard({
               customer_name: inv.customer_name != null ? String(inv.customer_name) : null,
               status: inv.status != null ? String(inv.status) : null,
             });
-            try {
-              if (companyBaseCurrency && data.draft) {
-                const p = draftToParsedInvoice(data.draft as InvoiceWizardDraft, companyBaseCurrency);
-                persistSavedLineItemsFromAiParsed(wfBid, p);
-              }
-            } catch {
-              /* ignore */
-            }
             const rawLines = Array.isArray(data.assistant_lines) ? (data.assistant_lines as string[]) : [];
             const cards =
               Array.isArray(data.chat_cards) && data.chat_cards.length > 0
@@ -1663,14 +1708,6 @@ export function InvoiceChatWizard({
             customer_name: inv.customer_name != null ? String(inv.customer_name) : null,
             status: inv.status != null ? String(inv.status) : null,
           });
-          try {
-            if (companyBaseCurrency && data.draft) {
-              const p = draftToParsedInvoice(data.draft as InvoiceWizardDraft, companyBaseCurrency);
-              persistSavedLineItemsFromAiParsed(bid, p);
-            }
-          } catch {
-            /* ignore */
-          }
           const rawLines = Array.isArray(data.assistant_lines) ? (data.assistant_lines as string[]) : [];
           const cards =
             Array.isArray(data.chat_cards) && data.chat_cards.length > 0
@@ -1732,7 +1769,7 @@ export function InvoiceChatWizard({
 
   async function onSend(e?: React.FormEvent) {
     e?.preventDefault();
-    if (loading || bootstrapLoading) return;
+    if (loading || !persistHydrated) return;
     const t = composerText.trim();
     const hasPending = Boolean(pendingImage);
 
@@ -1833,7 +1870,7 @@ export function InvoiceChatWizard({
   }
 
   async function resetWizard() {
-    if (loading || bootstrapLoading) return;
+    if (loading) return;
     if (copyFlashTimeoutRef.current != null) {
       clearTimeout(copyFlashTimeoutRef.current);
       copyFlashTimeoutRef.current = null;
@@ -2032,9 +2069,9 @@ export function InvoiceChatWizard({
       wizardStep === 'COLLECT_NEW_CUSTOMER_ADDRESS' ||
       wizardStep === 'COLLECT_NEW_CUSTOMER_COUNTRY');
 
-  const composerDisabled = bootstrapLoading || loading || !businessId;
+  const composerDisabled = !persistHydrated || loading || !businessId;
 
-  const chatActionsLocked = loading || bootstrapLoading;
+  const chatActionsLocked = loading;
   const actionSheetTarget = actionSheetMessageId
     ? messages.find((m) => m.id === actionSheetMessageId)
     : undefined;
@@ -2067,10 +2104,10 @@ export function InvoiceChatWizard({
             'pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]'
         )}
       >
-        {bootstrapLoading && messages.length === 0 ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-7 w-7 animate-spin text-indigo-500" aria-hidden />
-          </div>
+        {openingTurnLoading && messages.length === 0 ? (
+          <p className="mx-auto max-w-xl px-2 pb-1 text-center text-[11px] text-[var(--muted)] sm:text-xs">
+            Preparing suggestions…
+          </p>
         ) : null}
 
         <div className="mx-auto flex max-w-xl flex-col gap-2">
@@ -2207,13 +2244,13 @@ export function InvoiceChatWizard({
                           cards={msg.cards}
                           invoiceOverlayById={effectiveInvoiceOverlayById}
                           onFollowUpMessage={(t) => {
-                            if (loading || bootstrapLoading) return;
+                            if (loading) return;
                             const text = t.trim();
                             if (!text) return;
                             pushUser(text);
                             void runWizardSend(text);
                           }}
-                          followUpDisabled={loading || bootstrapLoading}
+                          followUpDisabled={loading}
                           onOpenInvoicePreview={(ctx) => setPreviewContext(ctx)}
                           onInsightSummaryCta={openOverdueModalFromInsightCard}
                         />
@@ -2241,10 +2278,10 @@ export function InvoiceChatWizard({
                             <button
                               key={`${q.label}-${q.href ?? q.message}`.slice(0, 120)}
                               type="button"
-                              disabled={loading || bootstrapLoading}
+                              disabled={loading}
                               onTouchStart={(e) => e.stopPropagation()}
                               onClick={() => {
-                                if (loading || bootstrapLoading) return;
+                                if (loading) return;
                                 const nav = typeof q.href === 'string' ? q.href.trim() : '';
                                 if (nav) {
                                   router.push(nav);
@@ -2382,9 +2419,9 @@ export function InvoiceChatWizard({
                     !messages.some((m) => m.role === 'user') &&
                     (launchContext === 'create_invoice' || launchContext === 'create_customer')
                   }
-                  disabled={loading || bootstrapLoading || Boolean(successInvoice)}
+                  disabled={loading || Boolean(successInvoice)}
                   onChip={(text) => {
-                    if (loading || bootstrapLoading || successInvoice) return;
+                    if (loading || successInvoice) return;
                     pushUser(text);
                     void runWizardSend(text);
                   }}
@@ -2819,7 +2856,7 @@ export function InvoiceChatWizard({
                             </button>
                             <button
                               type="button"
-                              disabled={loading || bootstrapLoading || !row.invoice_number}
+                              disabled={loading || !row.invoice_number}
                               onClick={() => {
                                 if (!row.invoice_number) return;
                                 const text = `Resend invoice ${row.invoice_number}`;
@@ -2862,7 +2899,7 @@ export function InvoiceChatWizard({
         context={previewContext}
         open={previewContext != null}
         onClose={() => setPreviewContext(null)}
-        followUpDisabled={loading || bootstrapLoading}
+        followUpDisabled={loading}
         onAssistantFollowUp={(message) => {
           const text = message.trim();
           if (!text) return;

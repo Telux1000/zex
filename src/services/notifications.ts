@@ -151,16 +151,43 @@ async function resolveInternalRecipientEmail(supabase: SupabaseClient, businessI
   return email && String(email).trim() ? String(email).trim() : null;
 }
 
+const SIMPLE_EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+function hasHeaderInjection(value: string): boolean {
+  return /[\r\n]/.test(value);
+}
+
+function normalizeEmailAddress(raw: string | null | undefined): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed || hasHeaderInjection(trimmed)) return null;
+  const match = trimmed.match(/<([^>]+)>/);
+  const email = (match?.[1] ?? trimmed).trim();
+  if (!email || hasHeaderInjection(email)) return null;
+  return SIMPLE_EMAIL_RE.test(email) ? email : null;
+}
+
+function sanitizeDisplayName(raw: string | null | undefined): string {
+  return String(raw ?? '')
+    .replace(/[\r\n"]/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
+function formatReplyTo(displayName: string, email: string): string {
+  return displayName ? `"${displayName}" <${email}>` : email;
+}
+
 /** Customer-facing mail: display business name on From; Reply-To uses business email when set. */
 async function getBusinessOutboundEmailIdentity(supabase: SupabaseClient, businessId: string) {
   const { data } = await supabase
     .from('businesses')
-    .select('name, email')
+    .select('name, email, owner_id')
     .eq('id', businessId)
     .maybeSingle();
-  const row = data as { name?: string | null; email?: string | null } | null;
+  const row = data as { name?: string | null; email?: string | null; owner_id?: string | null } | null;
   const businessName = String(row?.name ?? '').trim();
-  const businessEmail = String(row?.email ?? '').trim();
+  const businessEmail = normalizeEmailAddress(row?.email ?? null);
+  const ownerId = String(row?.owner_id ?? '').trim();
 
   const verifiedFrom = process.env.POSTMARK_FROM_EMAIL?.trim();
   const displayName = businessName.replace(/[\r\n"]/g, ' ').trim().slice(0, 200);
@@ -175,10 +202,33 @@ async function getBusinessOutboundEmailIdentity(supabase: SupabaseClient, busine
     }
   }
 
-  const fallbackReply = process.env.POSTMARK_REPLY_TO?.trim();
-  const replyTo = businessEmail || fallbackReply || undefined;
+  let ownerEmail: string | null = null;
+  if (ownerId) {
+    const { data: owner } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', ownerId)
+      .maybeSingle();
+    ownerEmail = normalizeEmailAddress((owner as { email?: string | null } | null)?.email ?? null);
+  }
 
-  return { from, replyTo };
+  const supportEmail =
+    normalizeEmailAddress(process.env.SUPPORT_EMAIL) ??
+    normalizeEmailAddress(process.env.POSTMARK_REPLY_TO) ??
+    normalizeEmailAddress(process.env.POSTMARK_FROM_EMAIL) ??
+    null;
+
+  const replyEmail = businessEmail ?? ownerEmail ?? supportEmail;
+  const replyTo =
+    replyEmail == null
+      ? undefined
+      : businessEmail || ownerEmail
+        ? formatReplyTo(sanitizeDisplayName(businessName), replyEmail)
+        : replyEmail;
+  const replyToSource =
+    businessEmail != null ? 'business_email' : ownerEmail != null ? 'owner_email' : supportEmail != null ? 'support_fallback' : 'none';
+
+  return { from, replyTo, replyToSource };
 }
 
 export type NotifyBusinessEventResult = {
@@ -235,7 +285,35 @@ export async function notifyBusinessEvent(
 
   if (payload.email?.to) {
     const outbound = await getBusinessOutboundEmailIdentity(supabase, payload.businessId);
+    console.log('[postmark-outbound] reply-to resolved', {
+      eventType: payload.eventType,
+      businessId: payload.businessId,
+      tag: payload.email.tag ?? payload.eventType,
+      replyToSet: Boolean(outbound.replyTo),
+      replyToSource: outbound.replyToSource,
+    });
     const template = resolvePostmarkTemplateFromEnv(payload.email.templateEnvKey);
+    if (payload.email.tag === 'invoice_payment_reminder' || payload.email.tag === 'invoice_overdue') {
+      const hasTpl = Boolean(template.templateId || template.templateAlias);
+      const m = (payload.email.templateModel ?? {}) as Record<string, unknown>;
+      console.log('[postmark-outbound] payment reminder', {
+        to: payload.email.to,
+        tag: payload.email.tag,
+        hasTemplate: hasTpl,
+        templateEnvKey: payload.email.templateEnvKey,
+        templateId: template.templateId,
+        templateAlias: template.templateAlias,
+        hasSubject: typeof m.subject === 'string' && String(m.subject).length > 0,
+        hasReminderMessage: typeof m.reminder_message === 'string' && String(m.reminder_message).length > 0,
+        eventType: payload.eventType,
+        ...postmarkMetaBase,
+      });
+      if (!hasTpl) {
+        console.warn(
+          '[postmark-outbound] POSTMARK template env not set; using raw sendEmail. Set POSTMARK_TEMPLATE_PAYMENT_REMINDER for the branded template with {{subject}} and {{{reminder_message}}}.'
+        );
+      }
+    }
     const result =
       template.templateId || template.templateAlias
         ? await sendTemplatedEmail({

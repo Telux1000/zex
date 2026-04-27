@@ -116,10 +116,10 @@ export function ScheduleSendModal({
 
   const inputClassName = (invalid: boolean) =>
     cn(
-      'mt-1 block h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:bg-slate-900 dark:text-white',
+      'app-date-field mt-1 block h-10 w-full',
       invalid
-        ? 'border-red-500 ring-2 ring-red-500/25 dark:border-red-500 dark:ring-red-500/20'
-        : 'border-slate-300 dark:border-slate-600'
+        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/30 dark:border-red-500 dark:focus:border-red-500'
+        : undefined
     );
 
   const handleSave = async () => {

@@ -34,7 +34,17 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  const authT0 = Date.now();
   await supabase.auth.getUser();
+  if (process.env.NODE_ENV === 'development') {
+    const p = request.nextUrl.pathname;
+    if (p === '/login' || p.startsWith('/dashboard') || p.startsWith('/auth/')) {
+      const ms = Date.now() - authT0;
+      // pathname only — no query (may contain sensitive data)
+      const label = p.length > 64 ? `${p.slice(0, 61)}…` : p;
+      console.info(`[login-perf] middleware: auth_check ms=${ms} path=${label}`);
+    }
+  }
 
   return response;
 }

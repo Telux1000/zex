@@ -12,6 +12,7 @@ import { resolveInvoiceTransactionCurrency } from '@/lib/business/currency-polic
 import { buildInvoiceCustomerSnapshot } from '@/lib/invoices/customer-snapshot';
 import { invoiceCustomerSnapshotToPublic } from '@/lib/invoices/invoice-public-customer';
 import { normalizeInvoiceAssignee } from '@/lib/invoices/invoice-time-summary';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
 
 export interface CreateFromParsedInput {
   businessId: string;
@@ -272,6 +273,18 @@ export async function createInvoiceFromParsed(
     source,
     hasPaymentSchedule: !!input.parsed.use_payment_schedule && schedule.length > 0,
   });
+
+  void syncSavedLineItemsFromUsage(supabase, {
+    businessId: input.businessId,
+    currency: invoiceCurrency,
+    items: input.parsed.items.map((it) => ({
+      name: it.name,
+      description: it.description ?? null,
+      unit_label: (it as { unit_label?: string | null }).unit_label,
+      unit_price: it.unit_price,
+      tax_percent: (it as { tax_percent?: number | null }).tax_percent ?? 0,
+    })),
+  }).catch((e) => console.error('[saved-line-items]', e));
 
   return invoice;
 }

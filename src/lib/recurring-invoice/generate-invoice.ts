@@ -5,6 +5,7 @@ import { createActivity } from '@/lib/activity';
 import { logAuditEvent } from '@/lib/audit-log';
 import { buildInvoiceFxRow, resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
 import { recurringTemplateSnapshotSchema, type RecurringTemplateSnapshot } from '@/lib/recurring-invoice/types';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
 
 function addDaysUtc(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T12:00:00.000Z`);
@@ -109,6 +110,7 @@ export async function createInvoiceFromRecurringTemplate(
       notes: snap.notes ?? null,
       terms: snap.terms ?? null,
       theme_id: snap.theme_id ?? null,
+      template_id: snap.template_id ?? 'classic',
       metadata: snap.metadata ?? null,
       use_customer_reminder_defaults: snap.use_customer_reminder_defaults !== false,
       reminder_settings: snap.reminder_settings ?? null,
@@ -136,6 +138,18 @@ export async function createInvoiceFromRecurringTemplate(
       assignee: normalizeInvoiceAssignee((item as { assignee?: unknown }).assignee),
     });
   }
+
+  void syncSavedLineItemsFromUsage(supabase, {
+    businessId: input.businessId,
+    currency: invCur,
+    items: snap.items.map((item) => ({
+      name: item.name,
+      description: item.description ?? null,
+      unit_label: (item as { unit_label?: string | null }).unit_label,
+      unit_price: item.unit_price,
+      tax_percent: (item as { tax_percent?: number | null }).tax_percent ?? 0,
+    })),
+  }).catch((e) => console.error('[saved-line-items]', e));
 
   if (snap.use_payment_schedule && snap.payment_schedule_template.length > 0) {
     for (const row of snap.payment_schedule_template) {

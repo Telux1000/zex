@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { extractEmailAddress } from '@/lib/utils/email';
 import { isSupportedCurrency } from '@/lib/currency/supported';
 import { normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
+import { invoiceTemplateIdSchema } from '@/lib/invoices/invoice-template-ids';
 
 /**
  * Resolve effective discount amount from either a fixed amount or a percentage.
@@ -185,6 +186,7 @@ export const createInvoiceBodySchema = z.object({
     assignee: z.string().max(200).optional().nullable(),
   })),
   theme_id: z.string().uuid().optional().nullable(),
+  template_id: invoiceTemplateIdSchema.optional(),
   /** Optional manual override; otherwise server fetches rate when invoice currency ≠ base */
   exchange_rate_to_base: z.number().positive().max(1e12).optional(),
   use_customer_reminder_defaults: z.boolean().optional(),

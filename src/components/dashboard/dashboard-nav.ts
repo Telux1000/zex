@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import type { PermissionFlags } from '@/lib/rbac/permissions';
+import { DASHBOARD_ASSISTANT_HREF, markAssistantNavClickForDevTiming } from '@/lib/dashboard/assistant-route';
 import {
   Activity,
   Bot,
@@ -21,9 +22,11 @@ export type DashboardNavItem = {
   icon: LucideIcon;
 };
 
+export { DASHBOARD_ASSISTANT_HREF, markAssistantNavClickForDevTiming };
+
 export const dashboardNavItems: DashboardNavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/assistant', label: 'Assistant', icon: Bot },
+  { href: DASHBOARD_ASSISTANT_HREF, label: 'Assistant', icon: Bot },
   { href: '/dashboard/create', label: 'Create', icon: PlusCircle },
   { href: '/dashboard/customers', label: 'Customers', icon: Users },
   { href: '/dashboard/quotes', label: 'Quotes', icon: FileText },
@@ -39,7 +42,7 @@ export const dashboardNavItems: DashboardNavItem[] = [
 /** Shown on mobile bottom bar (primary); remaining items go in “More”. */
 export const mobileBottomPrimaryHrefs = new Set<string>([
   '/dashboard',
-  '/dashboard/assistant',
+  DASHBOARD_ASSISTANT_HREF,
   '/dashboard/invoices',
 ]);
 
@@ -75,7 +78,7 @@ export function filterDashboardNavItems(
     switch (item.href) {
       case '/dashboard/create':
         return f.createInvoice || f.createCustomer || f.showExpensesWrite;
-      case '/dashboard/assistant':
+      case DASHBOARD_ASSISTANT_HREF:
         return f.createInvoice;
       case '/settings':
         return f.showSettingsNav;
@@ -129,8 +132,8 @@ export function isNavActive(pathname: string, href: string): boolean {
   if (href === '/dashboard') {
     return pathname === '/dashboard';
   }
-  if (href === '/dashboard/assistant') {
-    return pathname === '/dashboard/assistant' || pathname.startsWith('/dashboard/assistant/');
+  if (href === DASHBOARD_ASSISTANT_HREF) {
+    return pathname === DASHBOARD_ASSISTANT_HREF || pathname.startsWith(`${DASHBOARD_ASSISTANT_HREF}/`);
   }
   if (href === '/settings') {
     return pathname.startsWith('/settings');

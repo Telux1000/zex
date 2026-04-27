@@ -1,4 +1,5 @@
 import type { RecurringTemplateSnapshot } from '@/lib/recurring-invoice/types';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 
 type SourceItem = {
   name: string;
@@ -30,6 +31,7 @@ type SourceInvoice = {
   notes?: string | null;
   terms?: string | null;
   theme_id?: string | null;
+  template_id?: string | null;
   metadata?: unknown;
   use_payment_schedule?: boolean | null;
   use_customer_reminder_defaults?: boolean | null;
@@ -100,6 +102,7 @@ export function buildTemplateSnapshotFromInvoiceSource(source: SourceInvoice | R
     notes: s.notes ?? null,
     terms: s.terms ?? null,
     theme_id: s.theme_id ? String(s.theme_id) : null,
+    template_id: normalizeInvoiceTemplateId(s.template_id),
     metadata: s.metadata ?? null,
     use_payment_schedule: useSchedule,
     use_customer_reminder_defaults: s.use_customer_reminder_defaults !== false,

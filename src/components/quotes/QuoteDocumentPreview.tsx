@@ -52,7 +52,9 @@ function LinesBlock({ lines, emptyHint }: { lines: string[]; emptyHint?: string 
     ) : null;
   }
   return (
-    <p className="whitespace-pre-line text-xs leading-relaxed text-slate-600 dark:text-slate-400">{lines.join('\n')}</p>
+    <p className="min-w-0 max-w-full whitespace-pre-line break-words text-xs leading-relaxed [overflow-wrap:anywhere] text-slate-600 dark:text-slate-400">
+      {lines.join('\n')}
+    </p>
   );
 }
 
@@ -331,7 +333,7 @@ export function QuoteDocumentPreview({
               ) : null}
               <dl className="mt-4 space-y-2.5 border-t border-slate-200 pt-4">
                 <div className="flex items-baseline justify-between gap-4 text-sm">
-                  <dt className="shrink-0 text-slate-500">Quantity</dt>
+                  <dt className="shrink-0 text-slate-500">Qty</dt>
                   <dd className="min-w-0 text-right tabular-nums font-medium text-slate-800">{qty}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4 text-sm">

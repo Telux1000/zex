@@ -12,7 +12,10 @@ import {
   isInvalidGenericCustomerName,
 } from '@/lib/customers/match-from-text';
 import { assertBusinessPermission } from '@/lib/rbac/server';
-import { probeInvoiceCreationSetup } from '@/lib/onboarding/invoice-readiness-server';
+import {
+  type InvoiceReadinessBusinessRow,
+  probeInvoiceCreationSetup,
+} from '@/lib/onboarding/invoice-readiness-server';
 import { getBusinessBaseCurrency } from '@/lib/business/currency-policy';
 import { createCustomerForBusiness } from '@/lib/customers/create-customer-server';
 import { isSupportedCurrency } from '@/lib/currency/supported';
@@ -1320,8 +1323,23 @@ export async function POST(req: Request) {
     if (!gate.ok) return gate.response;
     const { role } = gate;
 
+    const { data: business, error: businessSelectError } = await supabase
+      .from('businesses')
+      .select(
+        'id, owner_id, name, currency, timezone, address_line1, city, state, country, email, phone, invoice_settings'
+      )
+      .eq('id', businessId)
+      .maybeSingle();
+    if (businessSelectError || !business) {
+      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    }
+
     let workspaceHasNoCustomers = false;
-    const setupProbe = await probeInvoiceCreationSetup(supabase, businessId);
+    const setupProbe = await probeInvoiceCreationSetup(
+      supabase,
+      businessId,
+      business as InvoiceReadinessBusinessRow
+    );
     if (!setupProbe.ok) {
       if ('notFound' in setupProbe && setupProbe.notFound) {
         return NextResponse.json({ error: 'Business not found' }, { status: 404 });
@@ -1351,13 +1369,6 @@ export async function POST(req: Request) {
       }
       workspaceHasNoCustomers = 'missing' in setupProbe && setupProbe.missing === 'customer';
     }
-
-    const { data: business } = await supabase
-      .from('businesses')
-      .select('id, owner_id, name, currency, timezone, invoice_settings')
-      .eq('id', businessId)
-      .maybeSingle();
-    if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
     const subGate = await assertWorkspaceCoreWriteAccess(
       supabase,
@@ -1499,6 +1510,35 @@ export async function POST(req: Request) {
           }) satisfies InvoiceWizardResponse
         );
       }
+    }
+
+    /**
+     * First empty turn (new chat / opening): the full handler below is identical but runs an extra
+     * large customer list query and merge logic. Skip that work — same response as the tail `isEmptyBootstrapTurn` path.
+     * Cuts ~multi-second latency on local/dev; production benefits from less DB and CPU.
+     */
+    if (
+      requestedEmptyBootstrap &&
+      !userText &&
+      !action &&
+      !parsedBody.data.assistant_image &&
+      !pendingInvoiceLookup &&
+      !recentCreatedInvoice &&
+      pendingCustomerContext == null
+    ) {
+      const step = resolveWizardStep(draft, {
+        customerNeedsDisambiguation: false,
+        assistantCustomerEditLock: false,
+      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[invoice-wizard] empty_bootstrap_fast_path', { step, sessionId });
+      }
+      errorRecovery = { sessionId, draft };
+      return NextResponse.json(
+        buildResponse(sessionId, draft, step, null, null, null, {
+          assistant_lines_only: [],
+        }) satisfies InvoiceWizardResponse
+      );
     }
 
     if (

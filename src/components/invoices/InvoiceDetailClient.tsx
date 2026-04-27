@@ -9,6 +9,7 @@ import { CheckCircle2 } from 'lucide-react';
 import type { Customer } from '@/lib/database.types';
 import { statusLabel } from '@/lib/invoices/edit-rules';
 import { formatDisplayDate } from '@/lib/utils/date';
+import { cn } from '@/lib/utils/cn';
 import { InvoicePreviewActions } from '@/components/invoices/InvoicePreviewActions';
 import {
   InvoicePreviewSaved,
@@ -22,11 +23,12 @@ import {
   resolveInvoiceTransactionCurrency,
 } from '@/lib/business/currency-policy';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
+import { InvoiceSavedQueryToast } from '@/components/invoices/invoice-saved-query-toast';
 import { InvoiceActivitySection } from '@/components/invoices/InvoiceActivitySection';
-import type { AuditLogRow } from '@/lib/audit-log';
 import type { InvoiceRecurringSummary } from '@/lib/recurring-invoice/display';
 import { InvoiceRecurringPreviewSection } from '@/components/invoices/InvoiceRecurringPreviewSection';
 import type { AutoRemindersInitialPayload } from '@/lib/invoices/auto-reminders-eligibility';
+import type { InvoiceDetailSecondaryPayload } from '@/lib/invoices/invoice-secondary-payload';
 
 type ScheduleRow = {
   id: string;
@@ -52,7 +54,6 @@ type Props = {
   initialInvoice: SavedInvoice;
   items: SavedInvoiceItem[];
   scheduleRows: ScheduleRow[];
-  auditLogs: AuditLogRow[];
   recurringSummary?: InvoiceRecurringSummary | null;
   canManageRecurring?: boolean;
   /** Server-computed; only when a pending reminder exists. */
@@ -61,6 +62,8 @@ type Props = {
   scheduledSendLine: string | null;
   /** Business IANA timezone (scheduled send date/time). */
   accountTimezone: string;
+  /** Formatted for header metadata (e.g. from `invoices.updated_at`). */
+  savedAtDateLabel: string | null;
 };
 
 export function InvoiceDetailClient({
@@ -77,34 +80,17 @@ export function InvoiceDetailClient({
   initialInvoice,
   items,
   scheduleRows,
-  auditLogs,
   recurringSummary = null,
   canManageRecurring = false,
   nextReminderStatusLine,
   scheduledSendLine,
   accountTimezone,
+  savedAtDateLabel,
 }: Props) {
   const router = useRouter();
   const [invoice, setInvoice] = useState<SavedInvoice>(initialInvoice);
-
-  useEffect(() => {
-    setInvoice(initialInvoice);
-  }, [initialInvoice]);
-
-  /**
-   * After the scheduled instant (future at mount), refresh once so the server can send the invoice.
-   * Past-due drafts are drained on the server when this page or the list loads; Hobby crons run at most daily.
-   */
-  useEffect(() => {
-    if (String(status).toLowerCase() !== 'draft') return;
-    const iso = invoice.scheduled_send_at;
-    if (!iso || !String(iso).trim()) return;
-    const dueMs = Date.parse(String(iso));
-    if (Number.isNaN(dueMs) || dueMs <= Date.now()) return;
-    const delay = Math.min(dueMs - Date.now() + 1500, 86_400_000);
-    const id = window.setTimeout(() => router.refresh(), delay);
-    return () => window.clearTimeout(id);
-  }, [status, invoice.scheduled_send_at, router]);
+  const [secondaryPanels, setSecondaryPanels] = useState<InvoiceDetailSecondaryPayload | null>(null);
+  const [secondaryLoadFailed, setSecondaryLoadFailed] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialCustomerId);
   const [selectModalOpen, setSelectModalOpen] = useState(false);
   const [selectQuery, setSelectQuery] = useState('');
@@ -114,20 +100,71 @@ export function InvoiceDetailClient({
   const [modalOpen, setModalOpen] = useState(false);
   const { showSuccessToast, showErrorToast } = useToasts();
 
+  useEffect(() => {
+    setInvoice(initialInvoice);
+  }, [initialInvoice]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/invoices/${encodeURIComponent(invoiceId)}/secondary-panels`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok) {
+          if (!cancelled) setSecondaryLoadFailed(true);
+          return;
+        }
+        const data = (await res.json()) as InvoiceDetailSecondaryPayload;
+        if (!cancelled) {
+          setSecondaryPanels(data);
+        }
+      } catch {
+        if (!cancelled) setSecondaryLoadFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoiceId]);
+
+  const effectiveStatus = secondaryPanels?.displayStatus ?? status;
+  const effectiveShowRefund = secondaryPanels?.showRefundAction ?? showRefundAction;
+  const effectiveNextReminder = secondaryPanels?.nextReminderStatusLine ?? nextReminderStatusLine;
+  const effectiveRecurring = secondaryPanels?.recurringSummary ?? recurringSummary;
+  const activityLoading = secondaryPanels === null && !secondaryLoadFailed;
+  const activityLogs = secondaryPanels?.auditLogs ?? [];
+
+  /**
+   * After the scheduled instant (future at mount), refresh once so the server can send the invoice.
+   * Past-due drafts are drained on the server when this page or the list loads; Hobby crons run at most daily.
+   */
+  useEffect(() => {
+    if (String(effectiveStatus).toLowerCase() !== 'draft') return;
+    const iso = invoice.scheduled_send_at;
+    if (!iso || !String(iso).trim()) return;
+    const dueMs = Date.parse(String(iso));
+    if (Number.isNaN(dueMs) || dueMs <= Date.now()) return;
+    const delay = Math.min(dueMs - Date.now() + 1500, 86_400_000);
+    const t = window.setTimeout(() => router.refresh(), delay);
+    return () => window.clearTimeout(t);
+  }, [effectiveStatus, invoice.scheduled_send_at, router]);
+
   const customerMissing = useMemo(() => {
     return !selectedCustomerId || !String(invoice.customer_name ?? '').trim();
   }, [selectedCustomerId, invoice.customer_name]);
 
   const paidDateDisplay = useMemo(() => {
-    if (String(status).toLowerCase() !== 'paid') return null;
+    if (String(effectiveStatus).toLowerCase() !== 'paid') return null;
     return resolveInvoicePaidAtFormatted({
       ...invoice,
       payment_schedule: scheduleRows,
     });
-  }, [status, invoice, scheduleRows]);
+  }, [effectiveStatus, invoice, scheduleRows]);
 
   const isPaidWithDate =
-    String(status).toLowerCase() === 'paid' && Boolean(paidDateDisplay);
+    String(effectiveStatus).toLowerCase() === 'paid' && Boolean(paidDateDisplay);
 
   const filteredCustomers = useMemo(() => {
     const q = selectQuery.trim().toLowerCase();
@@ -258,80 +295,152 @@ export function InvoiceDetailClient({
     void attachCustomerToInvoice(customer);
   };
 
+  const dueDateDisplay = useMemo(() => formatDisplayDate(dueDate), [dueDate]);
+  const previewSubline = savedAtDateLabel
+    ? `Saved ${savedAtDateLabel} · due ${dueDateDisplay}`
+    : `Saved data · due ${dueDateDisplay}`;
+
+  const statusPillNode = useMemo(() => {
+    if (isPaidWithDate) {
+      return (
+        <span
+          className={cn(
+            'inline-flex max-w-full min-w-0 shrink-0 items-center gap-1.5 tabular-nums',
+            'rounded-full border border-zenzex-200/70 bg-zenzex-100 text-zenzex-800 shadow-sm',
+            'dark:border-zenzex-800/50 dark:bg-zenzex-900/45 dark:text-zenzex-200 dark:shadow-none',
+            'max-sm:px-2 max-sm:py-0.5 max-sm:text-xs',
+            'px-3 py-1.5 text-sm',
+          )}
+        >
+          <span className="font-semibold text-zenzex-900 dark:text-zenzex-200">Paid</span>
+          <span className="min-w-0 text-zenzex-800/90 max-sm:text-[11px] max-sm:leading-tight dark:text-zenzex-300/95">
+            {paidDateDisplay}
+          </span>
+        </span>
+      );
+    }
+    return (
+      <span
+        className={cn(
+          'inline-flex w-fit min-w-0 max-w-full shrink-0 items-center overflow-hidden text-ellipsis whitespace-nowrap font-medium',
+          'max-sm:rounded-full max-sm:px-2.5 max-sm:py-0.5 max-sm:text-xs',
+          'rounded-full px-3 py-1 text-sm',
+          effectiveStatus === 'paid'
+            ? 'bg-zenzex-100 text-zenzex-800 dark:bg-zenzex-900/50 dark:text-zenzex-300'
+            : effectiveStatus === 'voided'
+              ? 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
+              : effectiveStatus === 'overdue'
+                ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
+                : effectiveStatus === 'refunded' || effectiveStatus === 'partially_refunded'
+                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
+                  : effectiveStatus === 'sent' ||
+                      effectiveStatus === 'partially_paid' ||
+                      effectiveStatus === 'viewed'
+                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+        )}
+      >
+        {statusLabel(effectiveStatus)}
+      </span>
+    );
+  }, [effectiveStatus, isPaidWithDate, paidDateDisplay]);
+
   return (
     <div className="mx-auto max-w-6xl invoice-detail-page">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 sm:items-center print:hidden">
-        <div className="min-w-0 flex-1 sm:flex-none">
-          <Link href="/dashboard/invoices" className="text-sm text-slate-500 hover:text-zenzex-600">
+      <InvoiceSavedQueryToast />
+      <header
+        className={cn(
+          'print:hidden w-full min-w-0',
+          'mb-2.5 sm:mb-6',
+          'max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-2 max-sm:gap-y-1.5',
+          'sm:flex sm:items-center sm:justify-between sm:gap-4',
+        )}
+        aria-label="Invoice preview"
+      >
+        <div className="max-sm:contents sm:min-w-0 sm:flex-1 sm:flex sm:flex-col sm:gap-1">
+          <Link
+            href="/dashboard/invoices"
+            className={cn(
+              'w-fit self-start -mx-1 inline-flex items-center rounded-lg px-1 py-0.5 text-sm text-slate-500 transition-colors',
+              'max-sm:row-start-1 max-sm:col-start-1',
+              'hover:bg-indigo-500/[0.06] hover:text-indigo-600',
+              'dark:text-slate-400 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-300',
+            )}
+          >
             ← Invoices
           </Link>
-          <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <h1 className="min-w-0 text-2xl font-bold leading-tight text-slate-900 dark:text-white">
-              {invoiceNumber}
-            </h1>
-            {isPaidWithDate ? (
-              <span className="inline-flex shrink-0 items-baseline gap-1.5 sm:hidden">
-                <span className="rounded bg-zenzex-100 px-1.5 py-0.5 text-[11px] font-semibold text-zenzex-900 dark:bg-zenzex-900/35 dark:text-zenzex-200">
-                  Paid
-                </span>
-                <span className="text-[11px] tabular-nums text-slate-600 dark:text-slate-400">
-                  {paidDateDisplay}
-                </span>
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
-          <div className="flex min-w-0 sm:shrink-0 sm:justify-center">
-            {isPaidWithDate ? (
-              <span className="hidden max-w-full items-center gap-2 rounded-full border border-zenzex-200/70 bg-zenzex-100 px-3 py-1.5 text-sm shadow-sm dark:border-zenzex-800/50 dark:bg-zenzex-900/45 dark:shadow-none sm:inline-flex">
-                <span className="font-semibold text-zenzex-900 dark:text-zenzex-200">Paid</span>
-                <span className="tabular-nums text-zenzex-800/90 dark:text-zenzex-300/95">{paidDateDisplay}</span>
-              </span>
-            ) : (
-              <span
-                className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${
-                  status === 'paid'
-                    ? 'bg-zenzex-100 text-zenzex-800 dark:bg-zenzex-900/50 dark:text-zenzex-300'
-                    : status === 'voided'
-                      ? 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
-                      : status === 'overdue'
-                        ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
-                        : status === 'refunded' || status === 'partially_refunded'
-                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
-                        : status === 'sent' || status === 'partially_paid' || status === 'viewed'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
-                }`}
-              >
-                {statusLabel(status)}
-              </span>
+          <h1
+            className={cn(
+              'min-w-0 text-slate-900 dark:text-white',
+              'max-sm:row-start-2 max-sm:col-start-1 max-w-full truncate',
+              'text-lg font-semibold leading-tight tracking-tight max-sm:max-w-full',
+              'sm:mt-1 sm:text-2xl sm:font-bold',
             )}
-          </div>
-          <InvoicePreviewActions
-            businessId={businessId}
-            invoiceId={invoiceId}
-            invoiceNumber={invoiceNumber}
-            status={status}
-            showRefundAction={showRefundAction}
-            amountPaid={Number(amountPaid ?? 0)}
-            customerMissing={customerMissing}
-            dueDate={dueDate}
-            invoiceTotal={Number(invoice.total ?? 0)}
-            invoiceBalanceDue={
-              invoice.balance_due != null
-                ? Number(invoice.balance_due)
-                : Math.max(0, Number(invoice.total ?? 0) - Number(invoice.amount_paid ?? 0))
-            }
-            invoiceAmountPaid={Number(invoice.amount_paid ?? 0)}
-            scheduledSendAtIso={invoice.scheduled_send_at ?? null}
-            accountTimezone={accountTimezone}
-            autoRemindersInitial={autoRemindersInitial}
-            onAutoRemindersSaved={() => router.refresh()}
-            onScheduleSendSaved={() => router.refresh()}
-          />
+          >
+            {invoiceNumber}
+          </h1>
         </div>
-      </div>
+        <p
+          className={cn(
+            'text-slate-600 max-sm:row-start-1 max-sm:col-start-2 sm:hidden dark:text-slate-300',
+            'shrink-0 self-center justify-self-end text-sm font-bold',
+            'max-sm:leading-none',
+          )}
+        >
+          Invoice preview
+        </p>
+        <p
+          className={cn(
+            'text-xs leading-relaxed text-slate-500 dark:text-slate-400',
+            'max-sm:row-start-3 max-sm:col-start-1 sm:hidden',
+            'min-w-0 break-words pr-0',
+          )}
+        >
+          {previewSubline}
+        </p>
+        <div
+          className={cn(
+            'min-w-0',
+            'max-sm:contents sm:flex sm:shrink-0 sm:items-center sm:gap-4',
+          )}
+        >
+          <div
+            className={cn('sm:shrink-0', 'max-sm:row-start-3 max-sm:col-start-2 max-sm:justify-self-end')}
+          >
+            {statusPillNode}
+          </div>
+          <div
+            className={cn(
+              'min-w-0',
+              'max-sm:row-start-4 max-sm:col-span-2 max-sm:min-w-0 max-sm:justify-self-stretch',
+              'max-w-full',
+            )}
+          >
+            <InvoicePreviewActions
+              businessId={businessId}
+              invoiceId={invoiceId}
+              invoiceNumber={invoiceNumber}
+              status={effectiveStatus}
+              showRefundAction={effectiveShowRefund}
+              amountPaid={Number(amountPaid ?? 0)}
+              customerMissing={customerMissing}
+              dueDate={dueDate}
+              invoiceTotal={Number(invoice.total ?? 0)}
+              invoiceBalanceDue={
+                invoice.balance_due != null
+                  ? Number(invoice.balance_due)
+                  : Math.max(0, Number(invoice.total ?? 0) - Number(invoice.amount_paid ?? 0))
+              }
+              invoiceAmountPaid={Number(invoice.amount_paid ?? 0)}
+              scheduledSendAtIso={invoice.scheduled_send_at ?? null}
+              accountTimezone={accountTimezone}
+              autoRemindersInitial={autoRemindersInitial}
+              onAutoRemindersSaved={() => router.refresh()}
+              onScheduleSendSaved={() => router.refresh()}
+            />
+          </div>
+        </div>
+      </header>
 
       {scheduledSendLine ? (
         <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-indigo-200/80 bg-indigo-50/60 px-3 py-2.5 text-sm text-indigo-900 dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-100 print:hidden">
@@ -340,10 +449,10 @@ export function InvoiceDetailClient({
         </div>
       ) : null}
 
-      {nextReminderStatusLine ? (
+      {effectiveNextReminder ? (
         <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-2.5 text-sm text-slate-700 dark:border-slate-700/80 dark:bg-slate-800/40 dark:text-slate-200 print:hidden">
           <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
-          <span className="leading-snug">{nextReminderStatusLine}</span>
+          <span className="leading-snug">{effectiveNextReminder}</span>
         </div>
       ) : null}
 
@@ -369,17 +478,17 @@ export function InvoiceDetailClient({
         </div>
       )}
 
-      {status === 'voided' && (
+      {effectiveStatus === 'voided' && (
         <div className="mb-4 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-200 print:hidden">
           <span className="font-semibold uppercase tracking-wide">Voided</span>
           <span className="ml-2">This invoice is cancelled, non-payable, and locked from edits.</span>
         </div>
       )}
 
-      {recurringSummary ? (
+      {effectiveRecurring ? (
         <InvoiceRecurringPreviewSection
           businessId={businessId}
-          recurring={recurringSummary}
+          recurring={effectiveRecurring}
           canManage={canManageRecurring}
         />
       ) : null}
@@ -387,13 +496,13 @@ export function InvoiceDetailClient({
       <div className="lg:grid lg:grid-cols-[1fr_minmax(260px,320px)] lg:items-start lg:gap-8 xl:gap-10 print:grid-cols-1">
         <div className="min-w-0">
           <section>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 print:absolute print:-left-[9999px] print:invisible">
+            <h2 className="mb-2 hidden text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 sm:block print:absolute print:-left-[9999px] print:invisible">
               Invoice preview
             </h2>
-            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400 print:absolute print:-left-[9999px] print:invisible">
-              Saved data — due {formatDisplayDate(dueDate)}.
+            <p className="mb-3 hidden text-sm text-slate-600 dark:text-slate-400 sm:mb-4 sm:block print:absolute print:-left-[9999px] print:invisible">
+              {previewSubline}
             </p>
-            <div className="invoice-print-container">
+            <div className="invoice-print-container mx-auto w-full min-w-0 max-w-full overflow-x-hidden">
               <InvoicePreviewSaved
                 source="saved"
                 data={{
@@ -407,7 +516,11 @@ export function InvoiceDetailClient({
         </div>
 
         <aside className="mt-8 min-w-0 lg:mt-0 print:hidden">
-          <InvoiceActivitySection logs={auditLogs} className="lg:sticky lg:top-24" />
+          <InvoiceActivitySection
+            logs={activityLogs}
+            isLoading={activityLoading}
+            className="lg:sticky lg:top-24"
+          />
         </aside>
       </div>
 

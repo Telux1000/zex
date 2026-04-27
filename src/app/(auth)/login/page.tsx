@@ -1,11 +1,12 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
 import { normalizeBillingIntervalParam } from '@/lib/billing/pricing-cta';
+import { isLoginPerfEnabled, loginPerfLog, markLoginFlowWallStart } from '@/lib/dev/login-perf';
 
 function safeNextPath(raw: string | null): string {
   const value = (raw ?? '/dashboard').trim();
@@ -14,11 +15,16 @@ function safeNextPath(raw: string | null): string {
 }
 
 function LoginPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [loginContextReady, setLoginContextReady] = useState(false);
+  const [lastLoginAllowed, setLastLoginAllowed] = useState(true);
+  /** `Date.now()` of last successful `/api/auth/login-context` response. */
+  const [loginContextFetchedAt, setLoginContextFetchedAt] = useState(0);
   const [systemMode, setSystemMode] = useState<
     'NORMAL' | 'MAINTENANCE' | 'READ_ONLY' | 'EMERGENCY_LOCKDOWN'
   >('NORMAL');
@@ -31,11 +37,11 @@ function LoginPageContent() {
   const billing = normalizeBillingIntervalParam(searchParams.get('billing'));
   const isPricingIntent = plan === 'growth' || plan === 'professional' || plan === 'enterprise';
 
-  async function refreshLoginContext(): Promise<{
+  const refreshLoginContext = useCallback(async (): Promise<{
     loginAllowed: boolean;
     mode: 'NORMAL' | 'MAINTENANCE' | 'READ_ONLY' | 'EMERGENCY_LOCKDOWN';
     message: string | null;
-  }> {
+  }> => {
     const res = await fetch('/api/auth/login-context', { cache: 'no-store' });
     const json = (await res.json()) as {
       login_allowed?: boolean;
@@ -50,8 +56,12 @@ function LoginPageContent() {
     const msg = json.system_message ? String(json.system_message) : null;
     setSystemMode(mode);
     setSystemMessage(msg);
-    return { loginAllowed: Boolean(json.login_allowed ?? true), mode, message: msg };
-  }
+    const loginAllowed = Boolean(json.login_allowed ?? true);
+    setLastLoginAllowed(loginAllowed);
+    setLoginContextReady(true);
+    setLoginContextFetchedAt(Date.now());
+    return { loginAllowed, mode, message: msg };
+  }, []);
 
   useEffect(() => {
     void refreshLoginContext();
@@ -71,34 +81,75 @@ function LoginPageContent() {
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
+    if (isLoginPerfEnabled()) {
+      markLoginFlowWallStart();
+      loginPerfLog('client: submit_to_auth');
+    }
     setLoading(true);
     setMessage(null);
-    try {
-      const context = await refreshLoginContext();
-      if (!context.loginAllowed) {
-        setMessage({
-          type: 'error',
-          text: context.message ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
-        });
-        return;
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Could not validate system access. Please try again.' });
+
+    if (systemMode === 'EMERGENCY_LOCKDOWN') {
+      setMessage({
+        type: 'error',
+        text: systemMessage ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+      });
+      setLoading(false);
       return;
     }
+
+    const needLoginContextRefetch =
+      !loginContextReady ||
+      !lastLoginAllowed ||
+      Date.now() - loginContextFetchedAt > 20_000;
+    if (needLoginContextRefetch) {
+      try {
+        const context = await refreshLoginContext();
+        if (!context.loginAllowed) {
+          setMessage({
+            type: 'error',
+            text: context.message ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+          });
+          setLoading(false);
+          return;
+        }
+        if (context.mode === 'EMERGENCY_LOCKDOWN') {
+          setMessage({
+            type: 'error',
+            text: context.message ?? 'We’ve temporarily restricted access while we address a critical issue. Please try again later.',
+          });
+          setLoading(false);
+          return;
+        }
+      } catch {
+        setMessage({ type: 'error', text: 'Could not validate system access. Please try again.' });
+        setLoading(false);
+        return;
+      }
+    }
+
+    const authT0 = typeof performance !== 'undefined' ? performance.now() : 0;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
+    if (isLoginPerfEnabled() && typeof performance !== 'undefined') {
+      loginPerfLog('client: auth_to_password_response_ms', {
+        ms: Math.round(performance.now() - authT0),
+      });
+    }
     if (error) {
+      setLoading(false);
       setMessage({ type: 'error', text: error.message });
       return;
     }
-    setMessage({ type: 'success', text: 'Redirecting...' });
-    try {
-      await fetch('/api/auth/login-activity', { method: 'POST' });
-    } catch {
-      /* non-blocking */
+    setMessage({ type: 'success', text: 'Opening dashboard…' });
+    void fetch('/api/auth/login-activity', { method: 'POST' });
+    if (isLoginPerfEnabled()) {
+      loginPerfLog('client: auth_to_redirect');
     }
-    window.location.href = nextPath;
+    const navT0 = typeof performance !== 'undefined' ? performance.now() : 0;
+    router.replace(nextPath);
+    router.refresh();
+    if (isLoginPerfEnabled() && typeof performance !== 'undefined') {
+      loginPerfLog('client: redirect_issued_ms', { ms: Math.round(performance.now() - navT0) });
+    }
   }
 
   async function signInWithGoogle() {
@@ -224,7 +275,11 @@ function LoginPageContent() {
             </p>
           )}
           <button type="submit" disabled={loading} className="app-btn-primary w-full">
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading
+              ? message?.type === 'success'
+                ? 'Opening dashboard…'
+                : 'Signing in…'
+              : 'Sign in'}
           </button>
         </form>
 
@@ -264,7 +319,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="app-page-bg flex min-h-[50vh] items-center justify-center text-slate-500 dark:text-slate-400">
-          Loading…
+          Preparing sign-in…
         </div>
       }
     >

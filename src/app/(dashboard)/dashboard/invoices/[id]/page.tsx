@@ -3,73 +3,51 @@ import { hasPermission } from '@/lib/rbac/permissions';
 import { getEffectiveBusinessRole } from '@/lib/rbac/server';
 import { getServerSupabaseUser } from '@/lib/supabase/server-auth';
 import { InvoiceDetailClient } from '@/components/invoices/InvoiceDetailClient';
-import {
-  enrichAuditLogActorDisplayRows,
-  enrichAuditLogsWithTeamMemberDisplayNames,
-  type AuditLogRow,
-} from '@/lib/audit-log';
 import { normalizeInvoiceCurrencyFields } from '@/lib/invoices/currency-edit';
-import {
-  recurringSummaryFromRuleRow,
-  type RecurringRuleListFields,
-  type InvoiceRecurringSummary,
-} from '@/lib/recurring-invoice/display';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 import { computeInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
-import { sumRefundedSucceededAndPendingForInvoice } from '@/lib/invoices/invoice-payment-summary';
 import {
   applyRefundDisplayStatus,
   canShowRefundMenuAction,
   resolveRefundDisplayStatus,
 } from '@/lib/invoices/refund-display';
-import { fetchDedupeKeysForInvoice, resolveNextReminderForInvoiceDisplay } from '@/lib/invoices/next-pending-reminder';
 import {
   formatScheduledSendPreviewLine,
   normalizeBusinessTimezone,
 } from '@/lib/invoices/scheduled-send-time';
-import { processInvoiceReminders } from '@/lib/invoices/reminder-cron';
 import { processScheduledInvoiceSends } from '@/lib/invoices/scheduled-invoice-send-cron';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
+import { invoiceSaveTimingEnabled } from '@/lib/dev/invoice-save-timing';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
+import {
+  buildInvoiceDashboardCoreSelect,
+  buildInvoiceDashboardFallbackSelect,
+  INVOICE_BUSINESS_STANDALONE_SELECT,
+} from '@/lib/invoices/invoice-detail-core-select';
+import { formatDisplayDate } from '@/lib/utils/date';
+
 
 export default async function InvoiceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ saved?: string }> | { saved?: string };
 }) {
+  const tRsc0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
   const { supabase, user } = await getServerSupabaseUser();
   if (!user) return null;
-
   const { id } = await params;
-  const { data: rowInitial } = await supabase
-    .from('invoices')
-    .select(`
-      *,
-      invoice_items(*),
-      customers ( reminder_settings ),
-      businesses(
-        id,
-        name,
-        currency,
-        logo_url,
-        address_line1,
-        address_line2,
-        city,
-        state,
-        postal_code,
-        country,
-        tax_id,
-        payment_settings,
-        stripe_charges_enabled,
-        timezone
-      )
-    `)
-    .eq('id', id)
-    .single();
+  const sp =
+    searchParams == null
+      ? ({} as { saved?: string })
+      : searchParams instanceof Promise
+        ? await searchParams
+        : searchParams;
+  const isPostSaveNavigation = sp.saved === '1';
 
-  if (!rowInitial) notFound();
-  let row = rowInitial;
-
-  const business = row.businesses as {
+  const tInv0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
+  type BusinessRow = {
     id: string;
     name: string;
     currency: string;
@@ -84,16 +62,74 @@ export default async function InvoiceDetailPage({
     payment_settings?: Record<string, unknown> | null;
     stripe_charges_enabled?: boolean;
     timezone?: string | null;
-  } | null;
+  };
+  let { data: rowInitial, error: invErr } = await supabase
+    .from('invoices')
+    .select(buildInvoiceDashboardCoreSelect())
+    .eq('id', id)
+    .single();
+  if (invErr || !rowInitial) {
+    if (invoiceSaveTimingEnabled() && invErr) {
+      console.error(
+        '[invoice-detail] lean invoice select failed; falling back to * + embeds',
+        (invErr as { message?: string })?.message ?? invErr
+      );
+    }
+    const fb = await supabase
+      .from('invoices')
+      .select(buildInvoiceDashboardFallbackSelect())
+      .eq('id', id)
+      .single();
+    rowInitial = fb.data as typeof rowInitial;
+    invErr = fb.error;
+  }
+  if (invErr || !rowInitial) {
+    if (invoiceSaveTimingEnabled() && invErr) {
+      console.error(
+        '[invoice-detail] invoice not loadable after fallback',
+        (invErr as { message?: string })?.message ?? invErr
+      );
+    }
+    notFound();
+  }
+  if (tInv0) {
+    const ms = performance.now() - tInv0;
+    if (invoiceSaveTimingEnabled()) {
+      console.log(`[invoice-save] server invoice [id] RSC +${ms.toFixed(1)}ms step:invoice_core_query`);
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic select
+  let row: any = rowInitial;
+
+  let business = row.businesses as BusinessRow | null;
+  if (!business && row.business_id) {
+    const { data: bRow } = await supabase
+      .from('businesses')
+      .select(INVOICE_BUSINESS_STANDALONE_SELECT)
+      .eq('id', String(row.business_id))
+      .maybeSingle();
+    if (bRow) {
+      business = bRow as unknown as BusinessRow;
+    }
+  }
   if (!business) notFound();
 
   const accountTimezone = normalizeBusinessTimezone(business.timezone);
 
+  const tRole0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
   const role = await getEffectiveBusinessRole(supabase, business.id, user.id);
   if (!role || !hasPermission(role, 'view_data')) notFound();
+  if (tRole0) {
+    const ms = performance.now() - tRole0;
+    if (invoiceSaveTimingEnabled()) {
+      console.log(`[invoice-save] server invoice [id] RSC +${ms.toFixed(1)}ms step:rbac_view_data`);
+    }
+  }
 
+  /** After save, skip slow admin/cron drain + meta re-fetch; detail secondary API can refine. */
   const admin = getSupabaseServiceAdmin();
-  if (admin) {
+  if (admin && !isPostSaveNavigation) {
+    const tAdmin0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
     const rawSt = String((row as { status?: string }).status ?? '').toLowerCase();
     const schedAt = (row as { scheduled_send_at?: string | null }).scheduled_send_at;
     if (rawSt === 'draft' && schedAt && String(schedAt).trim() !== '') {
@@ -104,22 +140,22 @@ export default async function InvoiceDetailPage({
         } catch (e) {
           console.error('[scheduled-invoice-send] invoice detail page drain failed', e);
         }
-        const { data: fresh } = await supabase.from('invoices').select('*').eq('id', id).single();
+        const { data: fresh } = await supabase
+          .from('invoices')
+          .select(buildInvoiceDashboardCoreSelect())
+          .eq('id', id)
+          .single();
         if (fresh) {
+          const f = fresh as unknown as Record<string, unknown>;
           row = {
             ...(row as Record<string, unknown>),
-            ...(fresh as Record<string, unknown>),
+            ...f,
             businesses: (row as { businesses?: unknown }).businesses,
             invoice_items: (row as { invoice_items?: unknown }).invoice_items,
             customers: (row as { customers?: unknown }).customers,
-          } as typeof rowInitial;
+          } as any;
         }
       }
-    }
-    try {
-      await processInvoiceReminders(admin, new Date(), { businessId: business.id });
-    } catch (e) {
-      console.error('[invoice-reminders] invoice detail drain failed', e);
     }
     const { data: metaFresh } = await supabase
       .from('invoices')
@@ -131,12 +167,22 @@ export default async function InvoiceDetailPage({
     if (metaFresh) {
       row = {
         ...(row as Record<string, unknown>),
-        ...(metaFresh as Record<string, unknown>),
+        ...(metaFresh as unknown as Record<string, unknown>),
         businesses: (row as { businesses?: unknown }).businesses,
         invoice_items: (row as { invoice_items?: unknown }).invoice_items,
         customers: (row as { customers?: unknown }).customers,
-      } as typeof rowInitial;
+      } as any;
     }
+    if (tAdmin0) {
+      const ms = performance.now() - tAdmin0;
+      if (invoiceSaveTimingEnabled()) {
+        console.log(`[invoice-save] server invoice [id] RSC +${ms.toFixed(1)}ms step:admin_cron_drain_and_meta`);
+      }
+    }
+  } else if (isPostSaveNavigation && invoiceSaveTimingEnabled()) {
+    console.log(
+      `[invoice-save] server invoice [id] RSC step:admin_cron_drain_and_meta SKIPPED (saved=1 first paint)`
+    );
   }
 
   const items = (row.invoice_items ?? []) as {
@@ -248,6 +294,8 @@ export default async function InvoiceDetailPage({
     } | null) ?? null,
     scheduled_send_at: (row as { scheduled_send_at?: string | null }).scheduled_send_at ?? null,
     scheduled_send_timezone: (row as { scheduled_send_timezone?: string | null }).scheduled_send_timezone ?? null,
+    show_time_summary: !!(row as { show_time_summary?: boolean }).show_time_summary,
+    template_id: normalizeInvoiceTemplateId((row as { template_id?: string | null }).template_id),
   };
 
   const savedItems = items.map((i) => ({
@@ -260,53 +308,21 @@ export default async function InvoiceDetailPage({
     tax_percent: i.tax_percent != null ? Number(i.tax_percent) : 0,
   }));
 
+  const tSched0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
   const { data: scheduleRows } = await supabase
     .from('invoice_payment_schedule_items')
     .select('id, description, amount, due_date, status, paid_at')
     .eq('invoice_id', row.id)
     .order('due_date', { ascending: true });
-
-  const { data: refundRows } = await supabase
-    .from('payment_refunds')
-    .select('amount, status')
-    .eq('invoice_id', row.id);
-  const refundedTotal = sumRefundedSucceededAndPendingForInvoice(refundRows ?? []);
-
-  const { data: auditRowsRaw } = await supabase
-    .from('audit_logs')
-    .select('*')
-    .eq('business_id', business.id)
-    .eq('entity_type', 'invoice')
-    .eq('entity_id', row.id)
-    .order('created_at', { ascending: false });
-  let auditRows = (auditRowsRaw ?? []) as AuditLogRow[];
-  auditRows = await enrichAuditLogsWithTeamMemberDisplayNames(supabase, auditRows);
-  auditRows = await enrichAuditLogActorDisplayRows(supabase, auditRows);
-
-  const recurringRid = String((row as { recurring_rule_id?: string | null }).recurring_rule_id ?? '').trim() || null;
-  let recurringSummary: InvoiceRecurringSummary | null = null;
-  if (recurringRid) {
-    const { data: ruleRow, error: recErr } = await supabase
-      .from('recurring_invoice_rules')
-      .select('id, source_invoice_id, frequency, next_run_date, automation_mode, status')
-      .eq('business_id', business.id)
-      .eq('id', recurringRid)
-      .maybeSingle();
-    if (!recErr && ruleRow) {
-      recurringSummary = recurringSummaryFromRuleRow(ruleRow as RecurringRuleListFields, 'generated');
+  if (tSched0) {
+    const ms = performance.now() - tSched0;
+    if (invoiceSaveTimingEnabled()) {
+      console.log(`[invoice-save] server invoice [id] RSC +${ms.toFixed(1)}ms step:payment_schedule_query`);
     }
   }
-  if (!recurringSummary) {
-    const { data: ruleRow, error: recErr2 } = await supabase
-      .from('recurring_invoice_rules')
-      .select('id, source_invoice_id, frequency, next_run_date, automation_mode, status')
-      .eq('business_id', business.id)
-      .eq('source_invoice_id', row.id)
-      .maybeSingle();
-    if (!recErr2 && ruleRow) {
-      recurringSummary = recurringSummaryFromRuleRow(ruleRow as RecurringRuleListFields, 'template');
-    }
-  }
+
+  /** Refined in GET /api/.../secondary-panels; first paint uses invoice.total_refunded only. */
+  const refundedTotal = Number((row as { total_refunded?: number | null }).total_refunded ?? 0);
 
   const canManageRecurring =
     hasPermission(role, 'create_invoice') || hasPermission(role, 'manage_invoices');
@@ -342,27 +358,23 @@ export default async function InvoiceDetailPage({
     grossPaidSucceeded: amountPaidNum,
     refundedSucceededAndPending: refundedTotal,
   });
-  const sentKeys = await fetchDedupeKeysForInvoice(supabase, row.id);
   const scheduledAtRaw = (row as { scheduled_send_at?: string | null }).scheduled_send_at;
   const scheduledSendLine =
     String(row.status ?? '').toLowerCase() === 'draft' && scheduledAtRaw
       ? formatScheduledSendPreviewLine(String(scheduledAtRaw), accountTimezone)
       : null;
 
-  const nextReminder = resolveNextReminderForInvoiceDisplay({
-    inv: {
-      status: derivedStatus,
-      total: Number(row.total),
-      amount_paid: amountPaidNum,
-      balance_due: balanceDueNum,
-      due_date: String(row.due_date ?? ''),
-      use_customer_reminder_defaults:
-        (row as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
-      reminder_settings: (row as { reminder_settings?: unknown }).reminder_settings ?? null,
-      customer_reminder_settings: customerReminderSettings,
-    },
-    sentDedupeKeys: sentKeys,
-  });
+  if (invoiceSaveTimingEnabled()) {
+    const totalMs = performance.now() - tRsc0;
+    console.log(
+      `[invoice-save] server invoice [id] RSC (core first-paint ready) +${totalMs.toFixed(1)}ms id:…${id.slice(
+        -4
+      )} savedNav=${isPostSaveNavigation ? '1' : '0'}`
+    );
+  }
+
+  const updatedAtVal = (row as { updated_at?: string | null }).updated_at;
+  const savedAtDateLabel = updatedAtVal ? formatDisplayDate(String(updatedAtVal)) : null;
 
   return (
     <InvoiceDetailClient
@@ -374,9 +386,10 @@ export default async function InvoiceDetailPage({
       invoiceNumber={row.invoice_number}
       dueDate={row.due_date}
       amountPaid={Number(row.amount_paid ?? 0)}
-      nextReminderStatusLine={nextReminder.next_reminder_status_line}
+      nextReminderStatusLine={null}
       scheduledSendLine={scheduledSendLine}
       accountTimezone={accountTimezone}
+      savedAtDateLabel={savedAtDateLabel}
       autoRemindersInitial={{
         useCustomerReminderDefaults:
           (row as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
@@ -394,8 +407,7 @@ export default async function InvoiceDetailPage({
         status: (String(r.status) === 'paid' ? 'paid' : 'pending') as 'pending' | 'paid',
         paid_at: r.paid_at ?? null,
       }))}
-      auditLogs={auditRows}
-      recurringSummary={recurringSummary}
+      recurringSummary={null}
       canManageRecurring={canManageRecurring}
     />
   );

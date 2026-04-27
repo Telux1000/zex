@@ -1,5 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import type { InvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import type { InvoiceDocumentPayload, InvoiceDocTextLine } from '@/lib/invoices/invoice-document-payload';
+import { getInvoicePdfPaint, type PdfRgb } from '@/lib/invoices/invoice-pdf-paint';
 
 function clampText(s: string, max = 3000) {
   const t = String(s ?? '').trim();
@@ -109,11 +111,24 @@ function flattenBillToLines(lines: InvoiceDocTextLine[]): string[] {
 
 export async function buildInvoicePdfBase64(
   doc: InvoiceDocumentPayload,
-  paymentUrl?: string | null
+  paymentUrl?: string | null,
+  templateId: InvoiceTemplateId = 'classic'
 ): Promise<string> {
+  const paint = getInvoicePdfPaint(templateId);
+  const c = (t: PdfRgb) => rgb(t[0], t[1], t[2]);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([...A4]);
   const { width, height } = page.getSize();
+  if (paint.topAccent) {
+    page.drawRectangle({
+      x: 0,
+      y: height - 4,
+      width,
+      height: 4,
+      color: c(paint.topAccent),
+      borderWidth: 0,
+    });
+  }
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
@@ -190,7 +205,7 @@ export async function buildInvoicePdfBase64(
     y: leftCursorY,
     size: 12,
     font: fontBold,
-    color: rgb(0.12, 0.13, 0.16),
+    color: c(paint.companyName),
     maxWidth: leftColW,
   });
   leftCursorY -= 16;
@@ -201,7 +216,7 @@ export async function buildInvoicePdfBase64(
       y: leftCursorY,
       size: 9,
       font: fontRegular,
-      color: rgb(0.38, 0.4, 0.45),
+      color: c(paint.address),
       maxWidth: leftColW,
     });
     leftCursorY -= 11;
@@ -212,75 +227,53 @@ export async function buildInvoicePdfBase64(
       y: leftCursorY,
       size: 8.5,
       font: fontRegular,
-      color: rgb(0.5, 0.52, 0.56),
+      color: c(paint.taxId),
       maxWidth: leftColW,
     });
     leftCursorY -= 11;
   }
 
   const rightX = width - marginX;
-  const rightBlockLeft = width * 0.52;
   let rightY = ctx.y - 2;
-
-  drawRight('INVOICE', rightX, rightY, 26, fontBold, rgb(0.08, 0.09, 0.12));
-  rightY -= 30;
-
-  drawRight(`# ${doc.invoiceMeta.invoiceNumber}`, rightX, rightY, 11, fontBold, rgb(0.22, 0.24, 0.3));
-  rightY -= 16;
-
-  drawText('Issue date', {
-    x: rightBlockLeft,
-    y: rightY,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.5, 0.52, 0.56),
-  });
-  drawRight(doc.invoiceMeta.issueDateFormatted, rightX, rightY, 9, fontBold, rgb(0.2, 0.22, 0.28));
-  rightY -= 13;
-
-  drawText('Due date', {
-    x: rightBlockLeft,
-    y: rightY,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.5, 0.52, 0.56),
-  });
-  drawRight(doc.invoiceMeta.dueDateFormatted, rightX, rightY, 9, fontBold, rgb(0.2, 0.22, 0.28));
-  rightY -= 13;
-
-  drawText('Currency', {
-    x: rightBlockLeft,
-    y: rightY,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.5, 0.52, 0.56),
-  });
-  drawRight(doc.invoiceMeta.currency, rightX, rightY, 9, fontBold, rgb(0.2, 0.22, 0.28));
-  rightY -= 14;
-
+  if (templateId === 'modern') {
+    const labelY = rightY;
+    const numY = rightY - 14;
+    drawText('Invoice', {
+      x: width * 0.52,
+      y: labelY,
+      size: 7.5,
+      font: fontBold,
+      color: c(paint.rightBlockLabel),
+    });
+    drawRight(doc.invoiceMeta.invoiceNumber, rightX, numY, 14, fontBold, c(paint.rightTitle));
+    rightY = numY - 18;
+  } else {
+    drawRight('INVOICE', rightX, rightY, paint.rightTitleSize, fontBold, c(paint.rightTitle));
+    rightY -= 30;
+    drawRight(`# ${doc.invoiceMeta.invoiceNumber}`, rightX, rightY, 11, fontBold, c(paint.rightInvoiceSub));
+    rightY -= 16;
+  }
+  if (templateId === 'bold') {
+    const lineY = Math.min(leftCursorY, rightY) - 6;
+    ctx.page.drawLine({
+      start: { x: marginX, y: lineY + 0.5 },
+      end: { x: width - marginX, y: lineY + 0.5 },
+      thickness: 2,
+      color: c(paint.body),
+    });
+  }
   const headerBottom = Math.min(leftCursorY, rightY) - 8;
+  if (templateId === 'classic' || templateId === 'modern') {
+    const hRule = Math.min(leftCursorY, rightY) - 2;
+    ctx.page.drawLine({
+      start: { x: marginX, y: hRule - 0.5 },
+      end: { x: width - marginX, y: hRule - 0.5 },
+      thickness: 0.4,
+      color: c(paint.table.rowLine),
+    });
+  }
   ctx.y = headerBottom;
-
-  const amountBandH = 52;
-  ensureSpace(ctx, amountBandH + 24, marginBottom, stampVoid);
-  ctx.page.drawRectangle({
-    x: marginX,
-    y: ctx.y - amountBandH,
-    width: width - marginX * 2,
-    height: amountBandH,
-    color: rgb(0.97, 0.98, 0.99),
-    borderColor: rgb(0.9, 0.91, 0.94),
-    borderWidth: 0.75,
-  });
-  drawText('Amount due', {
-    x: marginX + 16,
-    y: ctx.y - 22,
-    size: 9,
-    font: fontBold,
-    color: rgb(0.38, 0.4, 0.46),
-  });
-  drawRight(doc.totals.balanceDue, rightX - 16, ctx.y - 28, 20, fontBold, rgb(0.06, 0.08, 0.12));
-  ctx.y -= amountBandH + 20;
+  ctx.y -= 18;
 
   const billW = width - marginX * 2;
   const billLeftX = marginX;
@@ -292,7 +285,7 @@ export async function buildInvoicePdfBase64(
     y: ctx.y,
     size: 8,
     font: fontBold,
-    color: rgb(0.55, 0.57, 0.62),
+    color: c(paint.billToLabel),
   });
   ctx.y -= 14;
 
@@ -308,46 +301,70 @@ export async function buildInvoicePdfBase64(
       y: yL,
       size: 9,
       font: fontRegular,
-      color: rgb(0.18, 0.2, 0.24),
+      color: c(paint.body),
       maxWidth: billW,
     });
     yL -= 11;
   }
   ctx.y = yL - 18;
+  const billToBottomY = ctx.y;
+  ctx.page.drawLine({
+    start: { x: marginX, y: billToBottomY - 0.5 },
+    end: { x: width - marginX, y: billToBottomY - 0.5 },
+    thickness: 0.5,
+    color: c(paint.table.rowLine),
+  });
+  ctx.y = billToBottomY - 12;
 
-  const metaLines: string[] = [];
-  if (doc.invoiceMeta.referencePo) metaLines.push(`Reference / PO: ${doc.invoiceMeta.referencePo}`);
-  if (doc.invoiceMeta.sourceQuoteNumber) metaLines.push(`From quote: ${doc.invoiceMeta.sourceQuoteNumber}`);
-  if (metaLines.length > 0) {
-    ensureSpace(ctx, metaLines.length * 12 + 8, marginBottom, stampVoid);
-    for (const ml of metaLines) {
-      drawText(ml, {
-        x: marginX,
-        y: ctx.y,
-        size: 8.5,
-        font: fontRegular,
-        color: rgb(0.45, 0.47, 0.52),
-        maxWidth: width - marginX * 2,
-      });
-      ctx.y -= 12;
-    }
-    ctx.y -= 6;
+  ensureSpace(ctx, 120, marginBottom, stampVoid);
+  const metaLine = (label: string, value: string, emphasisValue = false) => {
+    drawText(label, {
+      x: marginX + 8,
+      y: ctx.y,
+      size: 8,
+      font: fontRegular,
+      color: c(paint.totals.key),
+    });
+    drawRight(
+      value,
+      width - marginX - 8,
+      ctx.y,
+      8.5,
+      emphasisValue ? fontBold : fontRegular,
+      c(emphasisValue ? paint.totals.valueStrong : paint.totals.value)
+    );
+    ctx.y -= 12;
+  };
+  metaLine('Invoice #', doc.invoiceMeta.invoiceNumber, true);
+  if (doc.invoiceMeta.sourceQuoteNumber) {
+    metaLine('From Quote', doc.invoiceMeta.sourceQuoteNumber);
   }
+  if (doc.invoiceMeta.referencePo) {
+    metaLine('Reference / PO', String(doc.invoiceMeta.referencePo));
+  }
+  metaLine('Issue date', doc.invoiceMeta.issueDateFormatted);
+  metaLine('Due date', doc.invoiceMeta.dueDateFormatted);
+  const metaBlockBottom = ctx.y - 2;
+  ctx.page.drawLine({
+    start: { x: marginX, y: metaBlockBottom - 0.5 },
+    end: { x: width - marginX, y: metaBlockBottom - 0.5 },
+    thickness: 0.5,
+    color: c(paint.table.rowLine),
+  });
+  ctx.y = metaBlockBottom - 12;
 
   const tableX = marginX;
   const tableW = width - marginX * 2;
   const descW = Math.floor(tableW * 0.34);
-  const qtyW = Math.floor(tableW * 0.08);
-  const unitLblW = Math.floor(tableW * 0.1);
-  const rateW = Math.floor(tableW * 0.16);
+  const qtyW = Math.floor(tableW * 0.12);
+  const rateW = Math.floor(tableW * 0.2);
   const taxW = Math.floor(tableW * 0.1);
   const col = {
     desc: descW,
     qty: qtyW,
-    unitLabel: unitLblW,
     rate: rateW,
     tax: taxW,
-    total: tableW - descW - qtyW - unitLblW - rateW - taxW,
+    total: tableW - descW - qtyW - rateW - taxW,
   };
 
   ensureSpace(ctx, 36, marginBottom + 60, stampVoid);
@@ -359,9 +376,9 @@ export async function buildInvoicePdfBase64(
     y: ctx.y - headerH,
     width: tableW,
     height: headerH,
-    color: rgb(0.96, 0.97, 0.99),
-    borderColor: rgb(0.9, 0.91, 0.94),
-    borderWidth: 0.5,
+    color: c(paint.table.head.fill),
+    borderColor: c(paint.table.head.border),
+    borderWidth: paint.table.head.borderW,
   });
   const headerY = ctx.y - 15;
   drawText('Description', {
@@ -369,13 +386,12 @@ export async function buildInvoicePdfBase64(
     y: headerY,
     size: 8.5,
     font: fontBold,
-    color: rgb(0.42, 0.44, 0.5),
+    color: c(paint.table.head.text),
   });
-  drawRight('Qty', tableX + col.desc + col.qty - 4, headerY, 8.5, fontBold, rgb(0.42, 0.44, 0.5));
-  drawRight('Unit', tableX + col.desc + col.qty + col.unitLabel - 4, headerY, 8.5, fontBold, rgb(0.42, 0.44, 0.5));
-  drawRight('Rate', tableX + col.desc + col.qty + col.unitLabel + col.rate - 4, headerY, 8.5, fontBold, rgb(0.42, 0.44, 0.5));
-  drawRight('Tax', tableX + col.desc + col.qty + col.unitLabel + col.rate + col.tax - 4, headerY, 8.5, fontBold, rgb(0.42, 0.44, 0.5));
-  drawRight('Amount', tableX + tableW - 10, headerY, 8.5, fontBold, rgb(0.42, 0.44, 0.5));
+  drawRight('Qty', tableX + col.desc + col.qty - 4, headerY, 8.5, fontBold, c(paint.table.head.text));
+  drawRight('Rate', tableX + col.desc + col.qty + col.rate - 4, headerY, 8.5, fontBold, c(paint.table.head.text));
+  drawRight('Tax', tableX + col.desc + col.qty + col.rate + col.tax - 4, headerY, 8.5, fontBold, c(paint.table.head.text));
+  drawRight('Amount', tableX + tableW - 10, headerY, 8.5, fontBold, c(paint.table.head.text));
   ctx.y -= headerH;
 
   const rows = doc.lineItems.length > 0 ? doc.lineItems : [
@@ -383,7 +399,7 @@ export async function buildInvoicePdfBase64(
       name: 'Invoice amount',
       description: null,
       quantity: '1',
-      unitLabelDisplay: 'Item',
+      quantityDisplay: '1',
       unitPriceDisplay: doc.totals.total,
       taxPercentDisplay: '—',
       lineTotalDisplay: doc.totals.total,
@@ -404,7 +420,7 @@ export async function buildInvoicePdfBase64(
       start: { x: tableX, y: ctx.y },
       end: { x: tableX + tableW, y: ctx.y },
       thickness: 0.35,
-      color: rgb(0.91, 0.92, 0.94),
+      color: c(paint.table.rowLine),
     });
 
     let descY = ctx.y - 12;
@@ -414,39 +430,31 @@ export async function buildInvoicePdfBase64(
         y: descY,
         size: 9,
         font: fontRegular,
-        color: rgb(0.14, 0.16, 0.2),
+        color: c(paint.table.cell),
         maxWidth: col.desc - 8,
       });
       descY -= 10;
     }
 
     const numY = ctx.y - 14;
-    drawRight(item.quantity, tableX + col.desc + col.qty - 4, numY, 9, fontRegular, rgb(0.22, 0.24, 0.28));
-    drawRight(
-      item.unitLabelDisplay,
-      tableX + col.desc + col.qty + col.unitLabel - 4,
-      numY,
-      9,
-      fontRegular,
-      rgb(0.22, 0.24, 0.28)
-    );
+    drawRight(item.quantityDisplay, tableX + col.desc + col.qty - 4, numY, 9, fontRegular, c(paint.table.num));
     drawRight(
       item.unitPriceDisplay,
-      tableX + col.desc + col.qty + col.unitLabel + col.rate - 4,
+      tableX + col.desc + col.qty + col.rate - 4,
       numY,
       9,
       fontRegular,
-      rgb(0.22, 0.24, 0.28)
+      c(paint.table.num)
     );
     drawRight(
       item.taxPercentDisplay,
-      tableX + col.desc + col.qty + col.unitLabel + col.rate + col.tax - 4,
+      tableX + col.desc + col.qty + col.rate + col.tax - 4,
       numY,
       9,
       fontRegular,
-      rgb(0.22, 0.24, 0.28)
+      c(paint.table.num)
     );
-    drawRight(item.lineTotalDisplay, tableX + tableW - 10, numY, 9, fontBold, rgb(0.1, 0.12, 0.16));
+    drawRight(item.lineTotalDisplay, tableX + tableW - 10, numY, 9, fontBold, c(paint.table.lineTotal));
 
     ctx.y -= rowH;
   }
@@ -455,7 +463,7 @@ export async function buildInvoicePdfBase64(
     start: { x: tableX, y: ctx.y },
     end: { x: tableX + tableW, y: ctx.y },
     thickness: 0.5,
-    color: rgb(0.88, 0.89, 0.92),
+    color: c(paint.table.bottom),
   });
   ctx.y -= 14;
 
@@ -471,7 +479,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y - 10,
       size: 8.5,
       font: fontBold,
-      color: rgb(0.42, 0.44, 0.5),
+      color: c(paint.timeSummary.heading),
     });
     ctx.y -= 18;
     for (const ln of captionLines) {
@@ -481,7 +489,7 @@ export async function buildInvoicePdfBase64(
         y: ctx.y - 8,
         size: 7.5,
         font: fontRegular,
-        color: rgb(0.45, 0.47, 0.52),
+        color: c(paint.timeSummary.caption),
         maxWidth: tableW - 4,
       });
       ctx.y -= 9;
@@ -495,18 +503,18 @@ export async function buildInvoicePdfBase64(
         y: rowY,
         size: 9,
         font: fontRegular,
-        color: rgb(0.14, 0.16, 0.2),
+        color: c(paint.timeSummary.line),
         maxWidth: col.desc,
       });
-      drawRight(row.detail, tableX + col.desc + col.qty + col.unitLabel + col.rate - 4, rowY, 9, fontRegular, rgb(0.22, 0.24, 0.28));
-      drawRight(row.amount, tableX + tableW - 10, rowY, 9, fontBold, rgb(0.1, 0.12, 0.16));
+      drawRight(row.detail, tableX + col.desc + col.qty + col.rate - 4, rowY, 9, fontRegular, c(paint.table.num));
+      drawRight(row.amount, tableX + tableW - 10, rowY, 9, fontBold, c(paint.timeSummary.footer));
       ctx.y -= 14;
     }
     ctx.page.drawLine({
       start: { x: tableX, y: ctx.y },
       end: { x: tableX + tableW, y: ctx.y },
       thickness: 0.35,
-      color: rgb(0.91, 0.92, 0.94),
+      color: c(paint.table.rowLine),
     });
     ctx.y -= 12;
     const footY = ctx.y - 10;
@@ -515,9 +523,9 @@ export async function buildInvoicePdfBase64(
       y: footY,
       size: 9,
       font: fontBold,
-      color: rgb(0.12, 0.13, 0.16),
+      color: c(paint.timeSummary.footer),
     });
-    drawRight(doc.timeSummary.footer.hours, tableX + tableW - 10, footY, 9, fontBold, rgb(0.12, 0.13, 0.16));
+    drawRight(doc.timeSummary.footer.hours, tableX + tableW - 10, footY, 9, fontBold, c(paint.timeSummary.footer));
     ctx.y -= 22;
   } else {
     ctx.y -= 6;
@@ -547,7 +555,7 @@ export async function buildInvoicePdfBase64(
     y: ty,
     size: 8,
     font: fontBold,
-    color: rgb(0.42, 0.44, 0.5),
+    color: c(paint.totals.heading),
   });
   ty -= 14;
   for (const [k, v, emphasize] of totalsRows) {
@@ -557,9 +565,16 @@ export async function buildInvoicePdfBase64(
       y: ty,
       size: sz,
       font: emphasize ? fontBold : fontRegular,
-      color: emphasize ? rgb(0.1, 0.11, 0.14) : rgb(0.38, 0.4, 0.45),
+      color: emphasize ? c(paint.totals.mut) : c(paint.totals.key),
     });
-    drawRight(v, totalsRight, ty, sz, emphasize ? fontBold : fontRegular, emphasize ? rgb(0.06, 0.08, 0.12) : rgb(0.28, 0.3, 0.34));
+    drawRight(
+      v,
+      totalsRight,
+      ty,
+      sz,
+      emphasize ? fontBold : fontRegular,
+      emphasize ? c(paint.totals.valueStrong) : c(paint.totals.value)
+    );
     ty -= emphasize ? 18 : 16;
   }
   ctx.y = ty - 8;
@@ -572,8 +587,8 @@ export async function buildInvoicePdfBase64(
       y: ctx.y - 58,
       width: width - marginX * 2,
       height: 58,
-      color: rgb(0.98, 0.99, 0.99),
-      borderColor: rgb(0.91, 0.92, 0.94),
+      color: c(paint.earlyPay.fill),
+      borderColor: c(paint.earlyPay.border),
       borderWidth: 0.5,
     });
     drawText('Early payment discount', {
@@ -581,21 +596,21 @@ export async function buildInvoicePdfBase64(
       y: ctx.y - 14,
       size: 9,
       font: fontBold,
-      color: rgb(0.32, 0.34, 0.4),
+      color: c(paint.earlyPay.title),
     });
     drawText(`Original total  ${doc.totals.earlyPayment.originalTotal}`, {
       x: marginX + 12,
       y: ctx.y - 28,
       size: 8.5,
       font: fontRegular,
-      color: rgb(0.35, 0.37, 0.42),
+      color: c(paint.earlyPay.line),
     });
     drawText(`${doc.totals.earlyPayment.discountLabel}  ${doc.totals.earlyPayment.discountAmount}`, {
       x: marginX + 12,
       y: ctx.y - 40,
       size: 8.5,
       font: fontRegular,
-      color: rgb(0.35, 0.37, 0.42),
+      color: c(paint.earlyPay.line),
       maxWidth: width - marginX * 2 - 24,
     });
     drawText(`Effective payable  ${doc.totals.earlyPayment.payableAmount}`, {
@@ -603,7 +618,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y - 52,
       size: 9,
       font: fontBold,
-      color: rgb(0.12, 0.14, 0.18),
+      color: c(paint.earlyPay.strong),
     });
     ctx.y -= 66;
     drawText(doc.totals.earlyPayment.footnote, {
@@ -611,7 +626,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y,
       size: 8,
       font: fontRegular,
-      color: rgb(0.48, 0.5, 0.55),
+      color: c(paint.earlyPay.foot),
       maxWidth: width - marginX * 2,
     });
     ctx.y -= 12;
@@ -625,7 +640,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y,
       size: 10,
       font: fontBold,
-      color: rgb(0.22, 0.24, 0.3),
+      color: c(paint.schedule.title),
     });
     ctx.y -= 16;
     for (const row of doc.schedule.slice(0, 20)) {
@@ -636,7 +651,7 @@ export async function buildInvoicePdfBase64(
         y: ctx.y,
         size: 8.5,
         font: fontRegular,
-        color: rgb(0.28, 0.3, 0.34),
+        color: c(paint.schedule.line),
         maxWidth: width - marginX * 2,
       });
       ctx.y -= 12;
@@ -674,7 +689,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y,
       size: 8.5,
       font: fontBold,
-      color: rgb(0.5, 0.52, 0.56),
+      color: c(paint.payment.cap),
     });
     ctx.y -= 16;
 
@@ -687,7 +702,7 @@ export async function buildInvoicePdfBase64(
           y: yLeft,
           size: 9.5,
           font: fontBold,
-          color: rgb(0.2, 0.22, 0.28),
+          color: c(paint.payment.title),
         });
         yLeft -= 12;
         for (const field of doc.paymentMethods.bankTransfer.fields) {
@@ -696,7 +711,7 @@ export async function buildInvoicePdfBase64(
             y: yLeft,
             size: 8.5,
             font: fontRegular,
-            color: rgb(0.32, 0.34, 0.38),
+            color: c(paint.payment.field),
             maxWidth: colW,
           });
           yLeft -= 10;
@@ -708,7 +723,7 @@ export async function buildInvoicePdfBase64(
           y: yRight,
           size: 9.5,
           font: fontBold,
-          color: rgb(0.2, 0.22, 0.28),
+          color: c(paint.payment.title),
         });
         yRight -= 12;
         for (const field of doc.paymentMethods.internationalBankTransfer.fields) {
@@ -717,7 +732,7 @@ export async function buildInvoicePdfBase64(
             y: yRight,
             size: 8.5,
             font: fontRegular,
-            color: rgb(0.32, 0.34, 0.38),
+            color: c(paint.payment.field),
             maxWidth: colW,
           });
           yRight -= 10;
@@ -732,7 +747,7 @@ export async function buildInvoicePdfBase64(
         y: ctx.y,
         size: 9.5,
         font: fontBold,
-        color: rgb(0.2, 0.22, 0.28),
+        color: c(paint.payment.title),
       });
       ctx.y -= 12;
       for (const ln of block.lines) {
@@ -742,7 +757,7 @@ export async function buildInvoicePdfBase64(
             y: ctx.y,
             size: 8.5,
             font: fontRegular,
-            color: rgb(0.32, 0.34, 0.38),
+            color: c(paint.payment.field),
             maxWidth: width - marginX * 2,
           });
           ctx.y -= 10;
@@ -760,7 +775,7 @@ export async function buildInvoicePdfBase64(
       y: ctx.y,
       size: 9,
       font: fontBold,
-      color: rgb(0.45, 0.47, 0.52),
+      color: c(paint.notes.title),
     });
     ctx.y -= 13;
     if (doc.notesTerms.notes) {
@@ -771,7 +786,7 @@ export async function buildInvoicePdfBase64(
           y: ctx.y,
           size: 8,
           font: fontRegular,
-          color: rgb(0.38, 0.4, 0.44),
+          color: c(paint.notes.body),
           maxWidth: width - marginX * 2,
         });
         ctx.y -= 10;
@@ -786,7 +801,7 @@ export async function buildInvoicePdfBase64(
           y: ctx.y,
           size: 8,
           font: fontRegular,
-          color: rgb(0.38, 0.4, 0.44),
+          color: c(paint.notes.body),
           maxWidth: width - marginX * 2,
         });
         ctx.y -= 10;

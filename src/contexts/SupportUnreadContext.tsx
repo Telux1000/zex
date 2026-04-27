@@ -90,6 +90,11 @@ export function SupportUnreadProvider({
     }
   }, []);
 
+  useEffect(() => {
+    if (!enabled || !businessId) return;
+    void refreshTotals();
+  }, [enabled, businessId, refreshTotals]);
+
   const setActiveTicketId = useCallback((id: string | null) => {
     activeTicketIdRef.current = id;
   }, []);

@@ -74,8 +74,8 @@ export async function deliverInvoiceSendEmail(
   const invoice = fresh as InvoiceRow;
 
   const st = String(invoice.status ?? '').toLowerCase();
-  if (st !== 'draft' && st !== 'pending') {
-    return { ok: false, error: 'Invoice must be a draft to send' };
+  if (st !== 'draft' && st !== 'pending' && st !== 'sent') {
+    return { ok: false, error: 'Invoice must be draft, pending, or sent to email' };
   }
 
   const amountPaid = Number(invoice.amount_paid ?? 0);

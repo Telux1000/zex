@@ -27,6 +27,9 @@ async function newSubscriberProfileDefaults(): Promise<{
   };
 }
 
+/** Fields returned by GET (avoid `select('*')`); keep in sync with `serializeProfileRow` consumers. */
+const PROFILE_GET_COLUMNS = 'id, full_name, email, role, account_number, theme';
+
 function serializeProfileRow(p: Record<string, unknown> | null | undefined) {
   if (!p) return p;
   const acct = p.account_number != null ? String(p.account_number).trim() : '';
@@ -84,36 +87,36 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  let activeBusinessId: string | null = null;
-  const { data: ownedBusiness } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (ownedBusiness?.id) {
-    activeBusinessId = String(ownedBusiness.id);
-  } else {
-    const { data: membership } = await supabase
+  const [{ data: ownedBusiness }, { data: membership }] = await Promise.all([
+    supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase
       .from('business_members')
       .select('business_id')
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
       .limit(1)
-      .maybeSingle();
-    if (membership?.business_id) activeBusinessId = String(membership.business_id);
-  }
+      .maybeSingle(),
+  ]);
+  const activeBusinessId = ownedBusiness?.id
+    ? String(ownedBusiness.id)
+    : membership?.business_id
+      ? String(membership.business_id)
+      : null;
 
-  const businessRole = activeBusinessId
-    ? await getEffectiveBusinessRole(supabase, activeBusinessId, user.id)
-    : null;
+  const [businessRole, existingResult] = await Promise.all([
+    activeBusinessId
+      ? getEffectiveBusinessRole(supabase, activeBusinessId, user.id)
+      : Promise.resolve(null),
+    supabase.from('profiles').select(PROFILE_GET_COLUMNS).eq('id', user.id).maybeSingle(),
+  ]);
 
-  const { data: existing, error: selectError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle();
+  const { data: existing, error: selectError } = existingResult;
 
   if (selectError) return NextResponse.json({ error: selectError.message }, { status: 500 });
 
@@ -147,7 +150,7 @@ export async function GET() {
     if (insertError.code === '23505') {
       const { data: raced, error: again } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_GET_COLUMNS)
         .eq('id', user.id)
         .maybeSingle();
       if (!again && raced) {

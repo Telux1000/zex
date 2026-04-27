@@ -8,6 +8,7 @@ import {
   tryInferCountryFromAddressText,
 } from './new-customer-onboarding';
 import { emptyInvoiceWizardDraft } from './draft';
+import type { InvoiceWizardDraft } from './types';
 
 describe('normalizeCountryCode (US aliases)', () => {
   it('maps United States and USA to US', () => {
@@ -87,7 +88,7 @@ describe('sanitizeWizardContactVsPhone', () => {
 describe('finalizeWizardNewCustomerExtractFields', () => {
   it('dedupes, strips phone-as-contact, and infers country', () => {
     const line = '1958 E Brown Rd, Mesa, Arizona, United States';
-    let d = {
+    let d: InvoiceWizardDraft = {
       ...emptyInvoiceWizardDraft(),
       isNewCustomer: true,
       customerEmail: 'a@b.co',

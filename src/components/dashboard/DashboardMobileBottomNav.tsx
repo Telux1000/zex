@@ -9,6 +9,7 @@ import type { DashboardCreateAction, DashboardNavItem } from '@/components/dashb
 import {
   isMoreMenuActive,
   isNavActive,
+  markAssistantNavClickForDevTiming,
   mobileMoreFromNavItems,
   mobilePrimaryFromNavItems,
 } from '@/components/dashboard/dashboard-nav';
@@ -134,6 +135,7 @@ export function DashboardMobileBottomNav({
               <Link
                 key={href}
                 href={href}
+                onClick={() => markAssistantNavClickForDevTiming(href)}
                 className={cn(
                   'flex min-h-[3rem] min-w-0 flex-1 flex-col items-center justify-end gap-0.5 px-0.5 pb-0.5 pt-1 text-[10px] font-medium transition-colors active:scale-[0.98]',
                   active
@@ -190,6 +192,7 @@ export function DashboardMobileBottomNav({
               <Link
                 key={href}
                 href={href}
+                onClick={() => markAssistantNavClickForDevTiming(href)}
                 className={cn(
                   'flex min-h-[3rem] min-w-0 flex-1 flex-col items-center justify-end gap-0.5 px-0.5 pb-0.5 pt-1 text-[10px] font-medium transition-colors active:scale-[0.98]',
                   active
@@ -257,7 +260,10 @@ export function DashboardMobileBottomNav({
                   <li key={href}>
                     <Link
                       href={href}
-                      onClick={closeSheets}
+                      onClick={() => {
+                        markAssistantNavClickForDevTiming(href);
+                        closeSheets();
+                      }}
                       className={cn(
                         'flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors active:scale-[0.99]',
                         active

@@ -7,7 +7,6 @@ import {
   type AuditAction,
   type InvoiceMutationSource,
 } from '@/lib/audit-log';
-import { buildInvoiceEmailSubject } from '@/lib/invoices/email-subject';
 import { notifyBusinessEvent } from '@/services/notifications';
 import { canEdit, canEditFully, canEditPaymentSchedule, isLocked } from '@/lib/invoices/edit-rules';
 import { resolveDiscountAmount } from '@/lib/validations/invoice';
@@ -49,6 +48,20 @@ import {
 import { computeInvoiceBalanceDue, resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
 import { hasPermission } from '@/lib/rbac/permissions';
 import { getEffectiveBusinessRole } from '@/lib/rbac/server';
+import {
+  createServerInvoiceSaveTimer,
+  invoiceSaveTimingEnabled,
+  voidLogAsyncDuration,
+  type InvoiceSaveServerSummaryMeta,
+} from '@/lib/dev/invoice-save-timing';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
+import {
+  buildPostmarkPaymentReminderTemplateModel,
+  buildReminderRenderVariables,
+  normalizePostmarkPaymentReminderModel,
+  resolveOutboundSupportEmail,
+} from '@/lib/invoices/reminder-messaging';
 
 function scheduleRowType(description: string): 'deposit' | 'installment' {
   const t = String(description ?? '').trim().toLowerCase();
@@ -162,6 +175,8 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
+  const _idSuf = id.length >= 4 ? id.slice(-4) : '****';
+  const invTimer = createServerInvoiceSaveTimer('PATCH', { invoiceIdSuffix: _idSuf });
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
@@ -169,21 +184,23 @@ export async function PATCH(
     )
     .eq('id', id)
     .single();
-
+  invTimer.mark('load_invoice');
   if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const prevAmountPaid = Number((invoice as any).amount_paid ?? 0);
 
   const { data: business } = await supabase
     .from('businesses')
-    .select('id, currency, timezone')
+    .select('id, currency, timezone, name, email, reminder_messaging')
     .eq('id', invoice.business_id)
     .eq('owner_id', user.id)
     .single();
+  invTimer.mark('load_business');
   if (!business) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const businessTimezone = normalizeBusinessTimezone((business as { timezone?: string | null }).timezone);
 
   const actorName = (await resolveActorDisplayName(supabase, user.id)) ?? user.email ?? 'User';
+  invTimer.mark('resolve_actor_display_name');
 
   const status = deriveInvoiceStatus({
     status: invoice.status as string,
@@ -205,12 +222,13 @@ export async function PATCH(
   }
 
   const body = await req.json();
-
+  invTimer.mark('parse_json_body');
   const { data: bizForSub } = await supabase
     .from('businesses')
     .select('owner_id')
     .eq('id', invoice.business_id)
     .maybeSingle();
+  invTimer.mark('load_business_owner_for_sub');
   if (
     bizForSub &&
     isInvoiceIssuancePayload(body as Record<string, unknown>, String((invoice as { status?: string }).status ?? ''))
@@ -219,7 +237,10 @@ export async function PATCH(
       supabase,
       String((bizForSub as { owner_id: string }).owner_id)
     );
+    invTimer.mark('subscription_gate');
     if (!subGate.ok) return subGate.response;
+  } else {
+    invTimer.mark('subscription_gate_skipped');
   }
   const reminderTouchedEarly =
     body.use_customer_reminder_defaults !== undefined || body.reminder_settings !== undefined;
@@ -241,6 +262,7 @@ export async function PATCH(
 
   const allowedFully = [
     'customer_name', 'customer_email', 'customer_id', 'due_date', 'issue_date', 'notes', 'theme_id',
+    'template_id',
     'status', 'subtotal', 'tax_amount', 'total',
     'discount_amount', 'reference_po', 'terms', 'metadata',
     'currency',
@@ -253,9 +275,13 @@ export async function PATCH(
   for (const k of allowed) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
+  if (updates.template_id !== undefined) {
+    updates.template_id = normalizeInvoiceTemplateId(String(updates.template_id));
+  }
 
   const serviceAdmin = getSupabaseServiceAdmin();
   const platformSettings = serviceAdmin ? await fetchAdminPlatformSettings(serviceAdmin) : null;
+  invTimer.mark('admin_platform_settings');
 
   if (reminderTouchedEarly) {
     if (platformSettings && !platformSettings.feature_reminders_enabled) {
@@ -596,6 +622,7 @@ export async function PATCH(
     updates.due_date = schedule.map((r: any) => String(r.due_date)).sort().slice(-1)[0];
   }
 
+  invTimer.mark('body_updates_scheduled_send_and_reminders');
   const rawDbStatus = String((invoice as { status?: string }).status ?? '');
   const isDraft = canEditInvoiceCurrency(rawDbStatus);
   const baseCurBiz = String((business as { currency?: string }).currency ?? 'USD').toUpperCase();
@@ -694,6 +721,7 @@ export async function PATCH(
       ),
     });
   }
+  invTimer.mark('fx_and_base_amounts');
 
   if (String(updates.status ?? '') !== 'voided' && (monetaryChanged || !!items)) {
     const finalTotal = Number(updates.total ?? (invoice as { total?: number }).total ?? 0);
@@ -727,6 +755,7 @@ export async function PATCH(
         : ((invoice as any).customer_email as string | null);
     updates.metadata = withSyncedPublicCustomerSnapshot(metaBase, nm, em);
   }
+  invTimer.mark('public_customer_snapshot_in_metadata');
 
   if (Object.keys(updates).length > 0) {
     const { error: updateErr } = await supabase
@@ -735,28 +764,51 @@ export async function PATCH(
       .eq('id', id);
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
+  invTimer.mark('invoice_row_update');
 
   if (items && items.length >= 0) {
     await supabase.from('invoice_items').delete().eq('invoice_id', id);
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const amount = Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
-      await supabase.from('invoice_items').insert({
-        invoice_id: id,
-        name: it.name ?? 'Item',
-        description: it.description ?? null,
-        quantity: Number(it.quantity) ?? 1,
-        unit_price: Number(it.unit_price) ?? 0,
-        amount,
-        unit_label: normalizeInvoiceUnitLabel(
-          (it as { unit_label?: string | null }).unit_label ?? 'item'
-        ),
-        sort_order: i,
-        tax_percent: it.tax_percent != null ? Number(it.tax_percent) : 0,
-        assignee: normalizeInvoiceAssignee((it as { assignee?: unknown }).assignee),
+    if (items.length > 0) {
+      const insertRows = items.map((it: (typeof items)[number], i: number) => {
+        const amount = Number(it.quantity ?? 0) * Number(it.unit_price ?? 0);
+        return {
+          invoice_id: id,
+          name: it.name ?? 'Item',
+          description: it.description ?? null,
+          quantity: Number(it.quantity) ?? 1,
+          unit_price: Number(it.unit_price) ?? 0,
+          amount,
+          unit_label: normalizeInvoiceUnitLabel(
+            (it as { unit_label?: string | null }).unit_label ?? 'item'
+          ),
+          sort_order: i,
+          tax_percent: it.tax_percent != null ? Number(it.tax_percent) : 0,
+          assignee: normalizeInvoiceAssignee((it as { assignee?: unknown }).assignee),
+        };
       });
+      const { error: lineInsErr } = await supabase.from('invoice_items').insert(insertRows);
+      if (lineInsErr) return NextResponse.json({ error: lineInsErr.message }, { status: 500 });
+    }
+    const nextCur = String(updates.currency ?? (invoice as { currency?: string }).currency ?? 'USD')
+      .toUpperCase()
+      .slice(0, 3);
+    if (items.length > 0) {
+      const syncP = syncSavedLineItemsFromUsage(supabase, {
+        businessId: String((invoice as { business_id: string }).business_id),
+        currency: nextCur,
+        items: (items as Array<Record<string, unknown>>).map((it) => ({
+          name: String(it.name ?? ''),
+          description: (it.description as string | null | undefined) ?? null,
+          unit_label: (it as { unit_label?: string | null }).unit_label,
+          unit_price: Number(it.unit_price) || 0,
+          tax_percent: it.tax_percent != null ? Number(it.tax_percent) : 0,
+        })),
+      });
+      voidLogAsyncDuration('saved_line_items', syncP);
+      void syncP.catch((e) => console.error('[saved-line-items]', e));
     }
   }
+  invTimer.mark('line_items_delete_insert');
 
   if (useSchedule && schedule) {
     // Keep paid rows stable; allow editing pending rows. Upsert by id, delete removed pending rows.
@@ -817,6 +869,9 @@ export async function PATCH(
         await supabase.from('invoice_payment_schedule_items').delete().eq('id', r.id).eq('invoice_id', id);
       }
     }
+    invTimer.mark('payment_schedule_rows');
+  } else {
+    invTimer.mark('payment_schedule_rows_skipped');
   }
 
   const { data: updated, error: err } = await supabase
@@ -826,273 +881,311 @@ export async function PATCH(
     .single();
 
   if (err) return NextResponse.json({ error: err.message }, { status: 500 });
+  invTimer.mark('select_invoice_with_line_and_schedule_embeds');
 
   const invoiceNumberForAudit = String(
     (updated as any)?.invoice_number || (invoice as any)?.invoice_number || id
   ).trim();
 
-  let loggedAutoReminderSpecific = false;
-  if (reminderTouchedEarly) {
-    const { data: custBefore } = await supabase
-      .from('customers')
-      .select('reminder_settings')
-      .eq('id', String((invoice as { customer_id?: string | null }).customer_id ?? '').trim())
-      .maybeSingle();
-    const { data: custAfter } = await supabase
-      .from('customers')
-      .select('reminder_settings')
-      .eq('id', String((updated as { customer_id?: string | null }).customer_id ?? '').trim())
-      .maybeSingle();
-    const nowTs = new Date();
-    const fpBefore = reminderConfigFingerprint(
-      (invoice as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
-      custBefore?.reminder_settings ?? null,
-      (invoice as { reminder_settings?: unknown }).reminder_settings
-    );
-    const fpAfter = reminderConfigFingerprint(
-      (updated as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
-      custAfter?.reminder_settings ?? null,
-      (updated as { reminder_settings?: unknown }).reminder_settings
-    );
-    const beforeEff = resolveEffectiveReminderConfig(
-      (invoice as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
-      custBefore?.reminder_settings ?? null,
-      (invoice as { reminder_settings?: unknown }).reminder_settings
-    );
-    const afterEff = resolveEffectiveReminderConfig(
-      (updated as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
-      custAfter?.reminder_settings ?? null,
-      (updated as { reminder_settings?: unknown }).reminder_settings
-    );
-    const beforeM = effectiveReminderMeaningful(beforeEff, nowTs);
-    const afterM = effectiveReminderMeaningful(afterEff, nowTs);
-    let action: AuditAction | null = null;
-    if (!beforeM && afterM) action = 'auto_reminders_enabled';
-    else if (beforeM && !afterM) action = 'auto_reminders_disabled';
-    else if (beforeM && afterM && fpBefore !== fpAfter) action = 'auto_reminders_updated';
-    if (action) {
-      await logAuditEvent(supabase, {
-        businessId: String((business as { id: string }).id),
-        entityType: 'invoice',
-        entityId: String(id),
-        action,
-        performedByUserId: user.id,
-        performedByName: actorName,
-        metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit }),
-      });
-      loggedAutoReminderSpecific = true;
-    }
-  }
-
-  const nextAmountPaid = Number((updated as any)?.amount_paid ?? 0);
-  const updatedDerivedStatus = deriveInvoiceStatus({
-    status: String((updated as any)?.status ?? ''),
-    total: Number((updated as any)?.total ?? 0),
-    amount_paid: nextAmountPaid,
-    balance_due:
-      (updated as any)?.balance_due != null
-        ? Number((updated as any).balance_due)
-        : Math.max(0, Number((updated as any)?.total ?? 0) - nextAmountPaid),
-    total_refunded: Number((updated as any)?.total_refunded ?? 0),
-  });
-  const afterSnapshot = {
-    total: Number((updated as any)?.total ?? 0),
-    due_date: String((updated as any)?.due_date ?? ''),
-    currency: String((updated as any)?.currency ?? ''),
-    customer_id: String((updated as any)?.customer_id ?? ''),
-    customer_name: String((updated as any)?.customer_name ?? ''),
-    status: updatedDerivedStatus,
-  };
-  const changedFields = getChangedInvoiceFields(beforeSnapshot, afterSnapshot);
-  if (changedFields.length > 0) {
-    const invoiceNumber = String((updated as any)?.invoice_number || (invoice as any)?.invoice_number || id).trim();
-    const humanField =
-      changedFields.includes('total')
-        ? 'amount'
-        : changedFields.includes('due_date')
-          ? 'due date'
-          : changedFields.includes('currency')
-            ? 'currency'
-            : changedFields.includes('customer_id') || changedFields.includes('customer_name')
-              ? 'customer'
-              : 'status';
-    await createActivity(supabase, {
-      business_id: String((business as any).id),
-      eventType: 'invoice_updated',
-      title: `Invoice ${invoiceNumber} updated`,
-      description: `Invoice ${invoiceNumber} updated (${humanField} changed)`,
-      entityType: 'invoice',
-      entityId: String(id),
-      amount: Number((updated as any)?.total ?? 0),
-      currencyCode: String((updated as any)?.currency ?? (business as any)?.currency ?? 'USD'),
-      metadata: { changed_fields: changedFields, source: mutationSource },
-    });
-  }
-  if (beforeSnapshot.status !== 'overdue' && afterSnapshot.status === 'overdue') {
-    const invoiceNumber = String((updated as any)?.invoice_number || (invoice as any)?.invoice_number || id).trim();
-    await createActivity(supabase, {
-      business_id: String((business as any).id),
-      eventType: 'invoice_overdue',
-      title: `Invoice ${invoiceNumber} is overdue`,
-      description: `Invoice ${invoiceNumber} moved to overdue status`,
-      entityType: 'invoice',
-      entityId: String(id),
-      severity: 'warning',
-      amount: Number((updated as any)?.balance_due ?? 0),
-      currencyCode: String((updated as any)?.currency ?? (business as any)?.currency ?? 'USD'),
-    });
-    await notifyBusinessEvent(supabase, {
-      businessId: String((business as any).id),
-      eventType: 'invoice_overdue',
-      title: `Invoice ${invoiceNumber} is overdue`,
-      message: `Invoice ${invoiceNumber} is overdue and requires follow-up.`,
-      entityType: 'invoice',
-      entityId: String(id),
-      severity: 'warning',
-      actionLabel: 'Review invoice',
-      actionTarget: `/dashboard/invoices/${String(id)}`,
-      groupKey: `invoice_overdue:${String(id)}`,
-      email: {
-        to: String((updated as any)?.customer_email ?? (invoice as any)?.customer_email ?? '').trim() || null,
-        subject: buildInvoiceEmailSubject({
-          state: 'overdue',
-          invoiceNumber,
-          companyName: String((business as any)?.name ?? ''),
-          dueDate: String((updated as any)?.due_date ?? (invoice as any)?.due_date ?? ''),
-        }),
-        textBody: `Invoice ${invoiceNumber} is overdue. Please review and settle the outstanding balance.`,
-        templateEnvKey: 'POSTMARK_TEMPLATE_OVERDUE_REMINDER',
-        templateModel: {
-          invoiceNumber,
-          companyName: String((business as any)?.name ?? ''),
-          customerName: String((updated as any)?.customer_name ?? (invoice as any)?.customer_name ?? ''),
-          dueDate: String((updated as any)?.due_date ?? (invoice as any)?.due_date ?? ''),
-          balanceDue: Number((updated as any)?.balance_due ?? 0),
-        },
-        tag: 'invoice_overdue',
-      },
-    });
-  }
-  const receivedDelta = Math.max(0, nextAmountPaid - prevAmountPaid);
-  if (receivedDelta > 0.0001) {
-    const currencyCode =
-      String((updated as any)?.currency || (business as any)?.currency || 'USD').toUpperCase();
-    const invoiceNumber = String((updated as any)?.invoice_number || id).trim();
-    const nowIso = new Date().toISOString();
-    const remainingBalance =
-      (updated as any)?.balance_due != null
-        ? Number((updated as any).balance_due)
-        : Math.max(0, Number((updated as any)?.total ?? 0) - nextAmountPaid);
-    await createPaymentActivity(supabase, {
-      business_id: String((business as any).id),
-      invoice_id: String(id),
-      invoice_number: invoiceNumber,
-      amount: receivedDelta,
-      currency: currencyCode,
-      remaining_balance: remainingBalance,
-      timestamp: nowIso,
-      source_payment_id: `manual:${String(id)}:${nowIso}:${Math.round(receivedDelta * 100)}`,
-    });
-    await logAuditEvent(supabase, {
-      businessId: String((business as any).id),
-      entityType: 'invoice',
-      entityId: String(id),
-      action: 'payment_recorded',
-      performedByUserId: user.id,
-      performedByName: actorName,
-      metadata: {
-        invoice_number: invoiceNumber,
-        amount: receivedDelta,
-        currency: currencyCode,
-        source: 'invoice_patch',
-      },
-    });
-    if (updatedDerivedStatus === 'paid') {
-      await logAuditEvent(supabase, {
-        businessId: String((business as any).id),
-        entityType: 'invoice',
-        entityId: String(id),
-        action: 'marked_paid',
-        performedByUserId: user.id,
-        performedByName: actorName,
-        metadata: invAuditMeta({ invoice_number: invoiceNumber }),
-      });
-    } else if (updatedDerivedStatus === 'partially_paid') {
-      await logAuditEvent(supabase, {
-        businessId: String((business as any).id),
-        entityType: 'invoice',
-        entityId: String(id),
-        action: 'partially_paid',
-        performedByUserId: user.id,
-        performedByName: actorName,
-        metadata: invAuditMeta({ invoice_number: invoiceNumber }),
-      });
-    }
-  }
-
-  const wasVoidedTransition = String((updated as any)?.status) === 'voided' && rawDbStatus !== 'voided';
-  if (wasVoidedTransition) {
-    await logAuditEvent(supabase, {
-      businessId: String((business as any).id),
-      entityType: 'invoice',
-      entityId: String(id),
-      action: 'voided',
-      performedByUserId: user.id,
-      performedByName: actorName,
-      metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit }),
-    });
-  } else {
-    const scheduleTouched = canMutateSchedule && (body.use_payment_schedule !== undefined || schedule);
-    const prevUseSchedule = Boolean((invoice as { use_payment_schedule?: boolean }).use_payment_schedule);
-
-    if (scheduleTouched) {
-      if (useSchedule && schedule && (schedule as unknown[]).length > 0) {
-        const planAction = !prevUseSchedule ? 'payment_plan_created' : 'payment_plan_updated';
+  void (async () => {
+    const defBlock0 = invoiceSaveTimingEnabled() ? performance.now() : 0;
+    let loggedAutoReminderSpecific = false;
+    if (reminderTouchedEarly) {
+      const { data: custBefore } = await supabase
+        .from('customers')
+        .select('reminder_settings')
+        .eq('id', String((invoice as { customer_id?: string | null }).customer_id ?? '').trim())
+        .maybeSingle();
+      const { data: custAfter } = await supabase
+        .from('customers')
+        .select('reminder_settings')
+        .eq('id', String((updated as { customer_id?: string | null }).customer_id ?? '').trim())
+        .maybeSingle();
+      const nowTs = new Date();
+      const fpBefore = reminderConfigFingerprint(
+        (invoice as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
+        custBefore?.reminder_settings ?? null,
+        (invoice as { reminder_settings?: unknown }).reminder_settings
+      );
+      const fpAfter = reminderConfigFingerprint(
+        (updated as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
+        custAfter?.reminder_settings ?? null,
+        (updated as { reminder_settings?: unknown }).reminder_settings
+      );
+      const beforeEff = resolveEffectiveReminderConfig(
+        (invoice as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
+        custBefore?.reminder_settings ?? null,
+        (invoice as { reminder_settings?: unknown }).reminder_settings
+      );
+      const afterEff = resolveEffectiveReminderConfig(
+        (updated as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
+        custAfter?.reminder_settings ?? null,
+        (updated as { reminder_settings?: unknown }).reminder_settings
+      );
+      const beforeM = effectiveReminderMeaningful(beforeEff, nowTs);
+      const afterM = effectiveReminderMeaningful(afterEff, nowTs);
+      let action: AuditAction | null = null;
+      if (!beforeM && afterM) action = 'auto_reminders_enabled';
+      else if (beforeM && !afterM) action = 'auto_reminders_disabled';
+      else if (beforeM && afterM && fpBefore !== fpAfter) action = 'auto_reminders_updated';
+      if (action) {
         await logAuditEvent(supabase, {
-          businessId: String((business as any).id),
+          businessId: String((business as { id: string }).id),
           entityType: 'invoice',
           entityId: String(id),
-          action: planAction,
+          action,
           performedByUserId: user.id,
           performedByName: actorName,
           metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit }),
         });
-      } else if (!useSchedule && prevUseSchedule) {
-        await logAuditEvent(supabase, {
-          businessId: String((business as any).id),
-          entityType: 'invoice',
-          entityId: String(id),
-          action: 'payment_plan_updated',
-          performedByUserId: user.id,
-          performedByName: actorName,
-          metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit, change: 'removed' }),
-        });
+        loggedAutoReminderSpecific = true;
       }
     }
 
-    const hadEdit =
-      items !== null ||
-      changedFields.length > 0 ||
-      (reminderTouchedEarly && !loggedAutoReminderSpecific) ||
-      (canEditFully(status) && body.client_billing !== undefined);
-    if (hadEdit) {
+    const nextAmountPaid = Number((updated as any)?.amount_paid ?? 0);
+    const updatedDerivedStatus = deriveInvoiceStatus({
+      status: String((updated as any)?.status ?? ''),
+      total: Number((updated as any)?.total ?? 0),
+      amount_paid: nextAmountPaid,
+      balance_due:
+        (updated as any)?.balance_due != null
+          ? Number((updated as any).balance_due)
+          : Math.max(0, Number((updated as any)?.total ?? 0) - nextAmountPaid),
+      total_refunded: Number((updated as any)?.total_refunded ?? 0),
+    });
+    const afterSnapshot = {
+      total: Number((updated as any)?.total ?? 0),
+      due_date: String((updated as any)?.due_date ?? ''),
+      currency: String((updated as any)?.currency ?? ''),
+      customer_id: String((updated as any)?.customer_id ?? ''),
+      customer_name: String((updated as any)?.customer_name ?? ''),
+      status: updatedDerivedStatus,
+    };
+    const changedFields = getChangedInvoiceFields(beforeSnapshot, afterSnapshot);
+    if (changedFields.length > 0) {
+      const invoiceNumber = String((updated as any)?.invoice_number || (invoice as any)?.invoice_number || id).trim();
+      const humanField =
+        changedFields.includes('total')
+          ? 'amount'
+          : changedFields.includes('due_date')
+            ? 'due date'
+            : changedFields.includes('currency')
+              ? 'currency'
+              : changedFields.includes('customer_id') || changedFields.includes('customer_name')
+                ? 'customer'
+                : 'status';
+      await createActivity(supabase, {
+        business_id: String((business as any).id),
+        eventType: 'invoice_updated',
+        title: `Invoice ${invoiceNumber} updated`,
+        description: `Invoice ${invoiceNumber} updated (${humanField} changed)`,
+        entityType: 'invoice',
+        entityId: String(id),
+        amount: Number((updated as any)?.total ?? 0),
+        currencyCode: String((updated as any)?.currency ?? (business as any)?.currency ?? 'USD'),
+        metadata: { changed_fields: changedFields, source: mutationSource },
+      });
+    }
+    if (beforeSnapshot.status !== 'overdue' && afterSnapshot.status === 'overdue') {
+      const invoiceNumber = String((updated as any)?.invoice_number || (invoice as any)?.invoice_number || id).trim();
+      await createActivity(supabase, {
+        business_id: String((business as any).id),
+        eventType: 'invoice_overdue',
+        title: `Invoice ${invoiceNumber} is overdue`,
+        description: `Invoice ${invoiceNumber} moved to overdue status`,
+        entityType: 'invoice',
+        entityId: String(id),
+        severity: 'warning',
+        amount: Number((updated as any)?.balance_due ?? 0),
+        currencyCode: String((updated as any)?.currency ?? (business as any)?.currency ?? 'USD'),
+      });
+      const bRow = business as { name?: string; email?: string | null; reminder_messaging?: unknown | null };
+      const balanceDueN = Number((updated as any)?.balance_due ?? 0);
+      const dueForMail = String((updated as any)?.due_date ?? (invoice as any)?.due_date ?? '');
+      const invCur = String((updated as any)?.currency ?? 'USD');
+      const { subject: overdueSubj, messagePlain: overduePlain, templateModel: overdueModelRaw } =
+        buildPostmarkPaymentReminderTemplateModel({
+          st: bRow.reminder_messaging ?? null,
+          preset: 'overdue',
+          vars: buildReminderRenderVariables({
+            customerName: String(
+              (updated as any)?.customer_name ?? (invoice as any)?.customer_name ?? ''
+            ),
+            businessName: String(bRow.name ?? ''),
+            invoiceNumber,
+            amount: balanceDueN,
+            currency: invCur,
+            dueDateIso: dueForMail,
+            paymentUrl: '',
+            supportEmail: resolveOutboundSupportEmail(bRow.email),
+          }),
+          hasPaymentUrl: false,
+          rawAmount: balanceDueN,
+          currencyCode: invCur,
+        });
+      const overdueModel = normalizePostmarkPaymentReminderModel(overdueModelRaw as Record<string, unknown>);
+      await notifyBusinessEvent(supabase, {
+        businessId: String((business as any).id),
+        eventType: 'invoice_overdue',
+        title: `Invoice ${invoiceNumber} is overdue`,
+        message: `Invoice ${invoiceNumber} is overdue and requires follow-up.`,
+        entityType: 'invoice',
+        entityId: String(id),
+        severity: 'warning',
+        actionLabel: 'Review invoice',
+        actionTarget: `/dashboard/invoices/${String(id)}`,
+        groupKey: `invoice_overdue:${String(id)}`,
+        email: {
+          to: String((updated as any)?.customer_email ?? (invoice as any)?.customer_email ?? '').trim() || null,
+          subject: overdueSubj,
+          textBody: overduePlain,
+          templateEnvKey: 'POSTMARK_TEMPLATE_PAYMENT_REMINDER',
+          templateModel: overdueModel,
+          tag: 'invoice_overdue',
+        },
+      });
+    }
+    const receivedDelta = Math.max(0, nextAmountPaid - prevAmountPaid);
+    if (receivedDelta > 0.0001) {
+      const currencyCode =
+        String((updated as any)?.currency || (business as any)?.currency || 'USD').toUpperCase();
+      const invoiceNumber = String((updated as any)?.invoice_number || id).trim();
+      const nowIso = new Date().toISOString();
+      const remainingBalance =
+        (updated as any)?.balance_due != null
+          ? Number((updated as any).balance_due)
+          : Math.max(0, Number((updated as any)?.total ?? 0) - nextAmountPaid);
+      await createPaymentActivity(supabase, {
+        business_id: String((business as any).id),
+        invoice_id: String(id),
+        invoice_number: invoiceNumber,
+        amount: receivedDelta,
+        currency: currencyCode,
+        remaining_balance: remainingBalance,
+        timestamp: nowIso,
+        source_payment_id: `manual:${String(id)}:${nowIso}:${Math.round(receivedDelta * 100)}`,
+      });
       await logAuditEvent(supabase, {
         businessId: String((business as any).id),
         entityType: 'invoice',
         entityId: String(id),
-        action: 'edited',
+        action: 'payment_recorded',
         performedByUserId: user.id,
         performedByName: actorName,
-        metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit, changed_fields: changedFields }),
+        metadata: {
+          invoice_number: invoiceNumber,
+          amount: receivedDelta,
+          currency: currencyCode,
+          source: 'invoice_patch',
+        },
       });
+      if (updatedDerivedStatus === 'paid') {
+        await logAuditEvent(supabase, {
+          businessId: String((business as any).id),
+          entityType: 'invoice',
+          entityId: String(id),
+          action: 'marked_paid',
+          performedByUserId: user.id,
+          performedByName: actorName,
+          metadata: invAuditMeta({ invoice_number: invoiceNumber }),
+        });
+      } else if (updatedDerivedStatus === 'partially_paid') {
+        await logAuditEvent(supabase, {
+          businessId: String((business as any).id),
+          entityType: 'invoice',
+          entityId: String(id),
+          action: 'partially_paid',
+          performedByUserId: user.id,
+          performedByName: actorName,
+          metadata: invAuditMeta({ invoice_number: invoiceNumber }),
+        });
+      }
     }
-  }
+
+    const wasVoidedTransition = String((updated as any)?.status) === 'voided' && rawDbStatus !== 'voided';
+    if (wasVoidedTransition) {
+      await logAuditEvent(supabase, {
+        businessId: String((business as any).id),
+        entityType: 'invoice',
+        entityId: String(id),
+        action: 'voided',
+        performedByUserId: user.id,
+        performedByName: actorName,
+        metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit }),
+      });
+    } else {
+      const scheduleTouched = canMutateSchedule && (body.use_payment_schedule !== undefined || schedule);
+      const prevUseSchedule = Boolean((invoice as { use_payment_schedule?: boolean }).use_payment_schedule);
+
+      if (scheduleTouched) {
+        if (useSchedule && schedule && (schedule as unknown[]).length > 0) {
+          const planAction = !prevUseSchedule ? 'payment_plan_created' : 'payment_plan_updated';
+          await logAuditEvent(supabase, {
+            businessId: String((business as any).id),
+            entityType: 'invoice',
+            entityId: String(id),
+            action: planAction,
+            performedByUserId: user.id,
+            performedByName: actorName,
+            metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit }),
+          });
+        } else if (!useSchedule && prevUseSchedule) {
+          await logAuditEvent(supabase, {
+            businessId: String((business as any).id),
+            entityType: 'invoice',
+            entityId: String(id),
+            action: 'payment_plan_updated',
+            performedByUserId: user.id,
+            performedByName: actorName,
+            metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit, change: 'removed' }),
+          });
+        }
+      }
+
+      const hadEdit =
+        items !== null ||
+        changedFields.length > 0 ||
+        (reminderTouchedEarly && !loggedAutoReminderSpecific) ||
+        (canEditFully(status) && body.client_billing !== undefined);
+      if (hadEdit) {
+        await logAuditEvent(supabase, {
+          businessId: String((business as any).id),
+          entityType: 'invoice',
+          entityId: String(id),
+          action: 'edited',
+          performedByUserId: user.id,
+          performedByName: actorName,
+          metadata: invAuditMeta({ invoice_number: invoiceNumberForAudit, changed_fields: changedFields }),
+        });
+      }
+    }
+    if (invoiceSaveTimingEnabled() && defBlock0) {
+      const ms = Math.round(performance.now() - defBlock0);
+      console.log(
+        `[invoice-save] server:PATCH-deferred activity_audit_notify +${ms}ms (async after response body built)`
+      );
+    }
+  })().catch((e) => {
+    console.error('[invoice PATCH] deferred side effects', e);
+  });
 
   const invTotalOut = Number((updated as any)?.total ?? 0);
   const paymentScheduleOut = buildPaymentScheduleResponse(
     (updated as any)?.invoice_payment_schedule_items,
     invTotalOut
   );
+
+  const lineItemCount = items?.length ?? 0;
+  let customerMode: InvoiceSaveServerSummaryMeta['customerMode'] = 'none';
+  if (canEditFully(status) && body.customer_id != null) customerMode = 'lookup_only';
+  else if (canEditFully(status) && body.client_billing !== undefined) customerMode = 'unknown';
+
+  invTimer.summary({
+    lineItemCount,
+    customerMode,
+    hasPaymentSchedule: Boolean(useSchedule && schedule),
+    invoiceIdSuffix: _idSuf,
+  });
 
   return NextResponse.json({
     ...(updated as object),

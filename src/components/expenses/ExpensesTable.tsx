@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Filter, Inbox, Paperclip, MoreVertical, Search, X } from 'lucide-react';
 import { formatDisplayDate } from '@/lib/utils/date';
 import { formatCurrencyAmount } from '@/lib/utils/currency';
+import { expenseAmountInBase, expenseOriginalCurrency } from '@/lib/expenses/expense-base-amount';
 import ExpenseFormModal, { type ExpenseRow } from './ExpenseFormModal';
 import ExpenseAttachmentPreviewModal from './ExpenseAttachmentPreviewModal';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
@@ -27,16 +28,48 @@ function rowMatchesSearch(row: ExpenseRow, q: string, currency: string) {
   if (!q) return true;
   const needle = q.toLowerCase();
   const amountStr = String(row.amount ?? '');
-  const money = formatCurrencyAmount(Number(row.amount), currency).toLowerCase();
+  const origCur = expenseOriginalCurrency(row, currency);
+  const origMoney = formatCurrencyAmount(Number(row.amount), origCur).toLowerCase();
+  const baseMoney = formatCurrencyAmount(expenseAmountInBase(row, currency), currency).toLowerCase();
   const haystacks = [
     row.description,
     row.category,
     row.notes ?? '',
     amountStr,
-    money,
+    origMoney,
+    baseMoney,
+    origCur.toLowerCase(),
     row.attachment_name ?? '',
   ].map((s) => String(s).toLowerCase());
   return haystacks.some((h) => h.includes(needle));
+}
+
+function ExpenseAmountDisplay({
+  row,
+  baseCurrency,
+  primaryClassName,
+  align = 'right',
+}: {
+  row: ExpenseRow;
+  baseCurrency: string;
+  primaryClassName?: string;
+  align?: 'left' | 'right';
+}) {
+  const orig = expenseOriginalCurrency(row, baseCurrency);
+  const primary = formatCurrencyAmount(Number(row.amount), orig);
+  const baseCode = baseCurrency.trim().toUpperCase();
+  const showBase = orig !== baseCode;
+  const baseEq = expenseAmountInBase(row, baseCurrency);
+  return (
+    <div className={`leading-tight ${align === 'right' ? 'text-right' : 'text-left'}`}>
+      <span className={`tabular-nums ${primaryClassName ?? ''}`}>{primary}</span>
+      {showBase ? (
+        <span className="mt-0.5 block text-xs font-normal text-slate-500 tabular-nums dark:text-slate-400">
+          ≈ {formatCurrencyAmount(baseEq, baseCurrency)}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function ExpenseStatusBadge({ row }: { row: ExpenseRow }) {
@@ -136,11 +169,11 @@ export default function ExpensesTable({ businessId, currency, initialExpenses }:
       const rowDate = expenseDateKey(row.expense_date);
       if (dateFrom && rowDate < dateFrom) return false;
       if (dateTo && rowDate > dateTo) return false;
-      const amt = Number(row.amount);
+      const amtBase = expenseAmountInBase(row, currency);
       const minN = amountMin.trim() === '' ? NaN : Number(amountMin);
       const maxN = amountMax.trim() === '' ? NaN : Number(amountMax);
-      if (Number.isFinite(minN) && amt < minN) return false;
-      if (Number.isFinite(maxN) && amt > maxN) return false;
+      if (Number.isFinite(minN) && amtBase < minN) return false;
+      if (Number.isFinite(maxN) && amtBase > maxN) return false;
       return true;
     });
   }, [
@@ -767,9 +800,13 @@ export default function ExpensesTable({ businessId, currency, initialExpenses }:
                         {row.description?.trim() || 'Untitled expense'}
                       </p>
                     </div>
-                    <p className="shrink-0 text-right text-lg font-bold tabular-nums tracking-tight text-slate-900 dark:text-white">
-                      {formatCurrencyAmount(Number(row.amount), currency)}
-                    </p>
+                    <div className="shrink-0">
+                      <ExpenseAmountDisplay
+                        row={row}
+                        baseCurrency={currency}
+                        primaryClassName="text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+                      />
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
                     <span className="rounded-md bg-slate-100/90 px-2 py-0.5 text-slate-700 dark:bg-slate-800/90 dark:text-slate-200">
@@ -883,7 +920,7 @@ export default function ExpensesTable({ businessId, currency, initialExpenses }:
                         {row.category || '—'}
                       </td>
                       <td className="app-td-num whitespace-nowrap font-medium text-slate-900 dark:text-white">
-                        {formatCurrencyAmount(Number(row.amount), currency)}
+                        <ExpenseAmountDisplay row={row} baseCurrency={currency} />
                       </td>
                       <td className="app-td text-center">
                         {row.attachment_url?.trim() ? (
@@ -1095,6 +1132,7 @@ export default function ExpensesTable({ businessId, currency, initialExpenses }:
         }}
         onSaved={refetch}
         businessId={businessId}
+        baseCurrency={currency}
         expense={editing}
       />
       {activeExpenseMenuId && menuPosition && isMdUp && typeof document !== 'undefined' && (() => {
@@ -1134,9 +1172,14 @@ export default function ExpensesTable({ businessId, currency, initialExpenses }:
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount</p>
-                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {formatCurrencyAmount(Number(selectedExpense.amount), currency)}
-                </p>
+                <div className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+                  <ExpenseAmountDisplay
+                    row={selectedExpense}
+                    baseCurrency={currency}
+                    align="left"
+                    primaryClassName="font-medium"
+                  />
+                </div>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Date</p>

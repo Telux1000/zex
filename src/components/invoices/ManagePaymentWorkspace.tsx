@@ -298,7 +298,7 @@ export function ManagePaymentWorkspace({
               const scheduleStillEnabled = Boolean(d?.use_payment_schedule);
               const hasPaid = rows.some((r) => String((r as { status?: string }).status ?? '') === 'paid');
               if (hasPaid) {
-                window.location.href = `/dashboard/invoices/${invoiceId}`;
+                window.location.href = `/dashboard/invoices/${invoiceId}?saved=1`;
                 return;
               }
               if (!scheduleStillEnabled) {
@@ -315,7 +315,10 @@ export function ManagePaymentWorkspace({
                 });
               }
               setSaveNotice('Payment schedule saved.');
-              router.refresh();
+              void router.refresh();
+              requestAnimationFrame(() => {
+                showSuccessToast('Invoice saved');
+              });
             }}
           />
         </div>

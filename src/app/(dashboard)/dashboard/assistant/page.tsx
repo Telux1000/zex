@@ -1,13 +1,11 @@
 'use client';
 
-import { Suspense, useCallback, useState, useEffect } from 'react';
+import { Suspense, useCallback, useState, useEffect, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, Lock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  AssistantConversationProvider,
-} from '@/components/assistant/assistant-conversation-context';
+import { AssistantConversationProvider } from '@/components/assistant/assistant-conversation-context';
 import { AssistantConversationMenu } from '@/components/assistant/AssistantConversationMenu';
 import { InvoiceChatWizard } from '@/components/invoices/InvoiceChatWizard';
 import { InvoiceCustomerSetupPanel } from '@/components/onboarding/InvoiceCustomerSetupPanel';
@@ -16,10 +14,18 @@ import { greetingFirstNameFromProfileAndUser } from '@/lib/user/greeting-first-n
 import { useIsLgDown } from '@/hooks/use-is-lg-down';
 import { cn } from '@/lib/utils/cn';
 import { ZenzexLogoMark } from '@/components/branding/AppLogoInline';
-import { resolveAssistantWizardSessionWithServer } from '@/lib/assistant/conversation-sync-supabase';
+import {
+  persistExplicitAssistantSessionPointer,
+  resolveAssistantWizardSessionWithServer,
+} from '@/lib/assistant/conversation-sync-supabase';
 import { parseAssistantLaunchContextParam } from '@/lib/assistant/assistant-launch-context';
 import { hasPlanFeature } from '@/lib/billing/plans';
 import { useBillingPlan } from '@/hooks/use-billing-plan';
+import {
+  assistantInvoiceChatTimingEnabled,
+  devEnsureAssistantInvoiceChatClickT0,
+  devLogAssistantInvoiceChatPhase,
+} from '@/lib/dev/assistant-invoice-chat-timing';
 
 type CustomerRow = {
   id: string;
@@ -36,7 +42,6 @@ function AssistantPageContent() {
   const isLgDown = useIsLgDown();
   const sessionParam = searchParams.get('session');
   const launchContext = parseAssistantLaunchContextParam(searchParams.get('context'));
-  /** Stable thread id from localStorage pointer (or `?session=`) — not a new UUID on every visit. */
   const [resolvedWizardSessionId, setResolvedWizardSessionId] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -48,7 +53,6 @@ function AssistantPageContent() {
   );
   const [userFirstName, setUserFirstName] = useState<string | null>(null);
   const [assistantUserId, setAssistantUserId] = useState<string | null>(null);
-  /** Avoid mounting Assistant chat until auth is resolved so persistence keys never remount with a null user id. */
   const [assistantAuthReady, setAssistantAuthReady] = useState(false);
   const { plan: billingPlan, loading: planLoading } = useBillingPlan();
 
@@ -59,20 +63,35 @@ function AssistantPageContent() {
   }, [supabase]);
 
   useEffect(() => {
+    devEnsureAssistantInvoiceChatClickT0();
+    devLogAssistantInvoiceChatPhase('assistant_page_component_mount', {});
+  }, []);
+
+  useEffect(() => {
+    if (planLoading || !assistantInvoiceChatTimingEnabled()) return;
+    devLogAssistantInvoiceChatPhase('billing_plan_fetch_done', {
+      hasAiAssistant: hasPlanFeature(billingPlan, 'ai_assistant'),
+    });
+  }, [planLoading, billingPlan]);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
+      devLogAssistantInvoiceChatPhase('auth_workspace_check_start', {});
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (cancelled) return;
       setAssistantUserId(user?.id ?? null);
       setAssistantAuthReady(true);
-      if (!user) return;
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
+      if (!user) {
+        devLogAssistantInvoiceChatPhase('auth_workspace_check_done', { signedIn: false });
+        return;
+      }
+      const [{ data: prof }, { data: bizRows }] = await Promise.all([
+        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+        supabase.from('businesses').select('id, currency, invoice_settings').limit(1),
+      ]);
       if (cancelled) return;
       setUserFirstName(
         greetingFirstNameFromProfileAndUser(
@@ -80,30 +99,58 @@ function AssistantPageContent() {
           user
         ) || null
       );
+      const row = bizRows?.[0] as
+        | {
+            id?: string;
+            currency?: string | null;
+            invoice_settings?: { default_currency?: string | null } | null;
+          }
+        | undefined;
+      const bid = row?.id != null ? String(row.id) : null;
+      setBusinessId(bid);
+      if (row) {
+        setCompanyBaseCurrency(getBusinessBaseCurrency(row));
+      } else {
+        setCompanyBaseCurrency(null);
+      }
+      devLogAssistantInvoiceChatPhase('auth_workspace_check_done', { signedIn: true });
+      devLogAssistantInvoiceChatPhase('business_settings_fetch_done', { hasBusinessId: Boolean(bid) });
     })();
     return () => {
       cancelled = true;
     };
   }, [supabase]);
 
-  useEffect(() => {
-    void loadBusiness().then((id) => setBusinessId(id));
-  }, [loadBusiness]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!businessId || !assistantUserId) {
       setResolvedWizardSessionId(null);
       return;
     }
+    const ex = sessionParam?.trim() ?? '';
+    if (ex.length >= 8) {
+      const id = persistExplicitAssistantSessionPointer(businessId, assistantUserId, sessionParam);
+      setResolvedWizardSessionId(id);
+      devLogAssistantInvoiceChatPhase('wizard_session_resolved_explicit', {});
+    }
+  }, [businessId, assistantUserId, sessionParam]);
+
+  useEffect(() => {
+    if (!businessId || !assistantUserId) return;
+    const ex = sessionParam?.trim() ?? '';
+    if (ex.length >= 8) return;
     let cancelled = false;
+    devLogAssistantInvoiceChatPhase('wizard_session_resolve_implicit_start', {});
     void (async () => {
       const id = await resolveAssistantWizardSessionWithServer(
         supabase,
         businessId,
         assistantUserId,
-        sessionParam
+        null
       );
-      if (!cancelled) setResolvedWizardSessionId(id);
+      if (!cancelled) {
+        setResolvedWizardSessionId(id);
+        devLogAssistantInvoiceChatPhase('wizard_session_resolve_implicit_done', {});
+      }
     })();
     return () => {
       cancelled = true;
@@ -116,6 +163,7 @@ function AssistantPageContent() {
       return;
     }
     setCustomersFetchState('loading');
+    devLogAssistantInvoiceChatPhase('customers_fetch_start', {});
     void supabase
       .from('customers')
       .select('id, name, company, email, preferred_currency_code')
@@ -123,31 +171,10 @@ function AssistantPageContent() {
       .order('created_at', { ascending: false })
       .limit(80)
       .then(({ data }) => {
-        setAllCustomers((data ?? []) as CustomerRow[]);
+        const rows = (data ?? []) as CustomerRow[];
+        setAllCustomers(rows);
         setCustomersFetchState('resolved');
-      });
-  }, [businessId, supabase]);
-
-  useEffect(() => {
-    if (!businessId) {
-      setCompanyBaseCurrency(null);
-      return;
-    }
-    void supabase
-      .from('businesses')
-      .select('currency, invoice_settings')
-      .eq('id', businessId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        setCompanyBaseCurrency(
-          getBusinessBaseCurrency(
-            data as {
-              currency?: string | null;
-              invoice_settings?: { default_currency?: string | null } | null;
-            }
-          )
-        );
+        devLogAssistantInvoiceChatPhase('customers_fetch_done', { count: rows.length });
       });
   }, [businessId, supabase]);
 
@@ -182,9 +209,6 @@ function AssistantPageContent() {
     customersFetchState === 'resolved' &&
     allCustomers.length === 0;
 
-  const waitingForCustomersList =
-    launchContext === 'create_invoice' && customersFetchState !== 'resolved';
-
   const createInvoiceSubtitle = createInvoiceNeedsCustomer
     ? 'Add a customer first, then you can create invoices here.'
     : 'Create an invoice — share customer, line items, rates, and due date.';
@@ -211,6 +235,11 @@ function AssistantPageContent() {
       </div>
     );
   }
+
+  const showCustomerListBanner =
+    launchContext === 'create_invoice' &&
+    customersFetchState === 'loading' &&
+    Boolean(businessId && resolvedWizardSessionId);
 
   return (
     <AssistantConversationProvider>
@@ -263,6 +292,10 @@ function AssistantPageContent() {
           </header>
         )}
 
+        {showCustomerListBanner ? (
+          <p className="text-center text-[11px] text-[var(--muted)] sm:text-xs">Loading customer list…</p>
+        ) : null}
+
         {createInvoiceNeedsCustomer ? (
           <div
             className={cn(
@@ -270,14 +303,6 @@ function AssistantPageContent() {
             )}
           >
             <InvoiceCustomerSetupPanel returnTo={assistantReturnTo} />
-          </div>
-        ) : waitingForCustomersList ? (
-          <div className="flex min-h-[420px] flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] px-4 text-sm text-[var(--muted)] sm:min-h-[min(680px,calc(100dvh-11rem))] sm:rounded-3xl">
-            <span
-              className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 dark:border-slate-600 dark:border-t-indigo-400"
-              aria-hidden
-            />
-            <p>Loading…</p>
           </div>
         ) : businessId && resolvedWizardSessionId ? (
           <InvoiceChatWizard

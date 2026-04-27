@@ -149,8 +149,31 @@ export async function fetchLatestAssistantSessionId(
 }
 
 /**
- * Session id for `/dashboard/assistant`: `?session=`, else local pointer, else latest Supabase conversation, else new UUID.
+ * Browser-only: persist `?session=` to the active pointer and return the trimmed id.
+ * Safe to call from `useLayoutEffect` so the Assistant page can resolve the wizard id before paint.
  */
+export function persistExplicitAssistantSessionPointer(
+  businessId: string,
+  userId: string,
+  sessionQueryParam: string | null | undefined
+): string {
+  const explicit = typeof sessionQueryParam === 'string' ? sessionQueryParam.trim() : '';
+  if (typeof window === 'undefined') {
+    return explicit || `asst_ssr_${Date.now()}`;
+  }
+  const pointerKey = getActiveAssistantSessionPointerKey(businessId, userId);
+  if (explicit) {
+    try {
+      localStorage.setItem(pointerKey, explicit);
+    } catch {
+      /* quota */
+    }
+    return explicit;
+  }
+  return explicit;
+}
+
+/** Resolves wizard `session_id`: explicit `?session=`, else local pointer, else latest server row, else new UUID. */
 export async function resolveAssistantWizardSessionWithServer(
   supabase: SupabaseClient,
   businessId: string,
@@ -165,12 +188,7 @@ export async function resolveAssistantWizardSessionWithServer(
   }
 
   if (explicit) {
-    try {
-      localStorage.setItem(pointerKey, explicit);
-    } catch {
-      /* quota */
-    }
-    return explicit;
+    return persistExplicitAssistantSessionPointer(businessId, userId, sessionQueryParam);
   }
 
   try {

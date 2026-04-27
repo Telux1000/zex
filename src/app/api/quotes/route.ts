@@ -6,6 +6,7 @@ import { customerLabelFromSnapshot } from '@/lib/quotes/customer-label';
 import { notifyBusinessEvent } from '@/services/notifications';
 import { assertInvoiceCreationReadiness } from '@/lib/onboarding/invoice-readiness-server';
 import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
 
 function calculateTotals(items: Array<{ quantity: number; unit_price: number; tax_percent?: number }>) {
   let subtotal = 0;
@@ -128,6 +129,20 @@ export async function POST(req: Request) {
       sort_order: i,
     });
   }
+
+  void syncSavedLineItemsFromUsage(supabase, {
+    businessId: String(business.id),
+    currency: String(p.currency)
+      .toUpperCase()
+      .slice(0, 3),
+    items: p.items.map((item) => ({
+      name: item.name,
+      description: item.description ?? null,
+      unit_label: 'item',
+      unit_price: item.unit_price,
+      tax_percent: item.tax_percent ?? 0,
+    })),
+  }).catch((e) => console.error('[saved-line-items]', e));
 
   const custLabel = customerLabelFromSnapshot(p.customer_snapshot);
   const createdLine = `Quote ${quoteNumber} created for ${custLabel}`;

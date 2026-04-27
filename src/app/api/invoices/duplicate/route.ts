@@ -5,6 +5,8 @@ import { logAuditEvent, resolveActorDisplayName } from '@/lib/audit-log';
 import { buildInvoiceFxRow, resolveExchangeRateToBase } from '@/lib/invoices/fx-snapshot';
 import { normalizeInvoiceUnitLabel } from '@/lib/invoices/invoice-line-units';
 import { normalizeInvoiceAssignee } from '@/lib/invoices/invoice-time-summary';
+import { syncSavedLineItemsFromUsage } from '@/lib/saved-line-items/sync-saved-line-items';
+import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 
 export async function POST(req: Request) {
   const supabase = await createClient();
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
       notes: source.notes,
       terms: source.terms,
       theme_id: source.theme_id,
+      template_id: normalizeInvoiceTemplateId((source as { template_id?: string | null }).template_id),
       metadata: source.metadata,
       use_customer_reminder_defaults:
         (source as { use_customer_reminder_defaults?: boolean }).use_customer_reminder_defaults !== false,
@@ -131,6 +134,18 @@ export async function POST(req: Request) {
       assignee: normalizeInvoiceAssignee(item.assignee),
     });
   }
+
+  void syncSavedLineItemsFromUsage(supabase, {
+    businessId: String(business.id),
+    currency: invCur,
+    items: items.map((item) => ({
+      name: item.name,
+      description: item.description ?? null,
+      unit_label: item.unit_label,
+      unit_price: item.unit_price,
+      tax_percent: item.tax_percent ?? 0,
+    })),
+  }).catch((e) => console.error('[saved-line-items]', e));
 
   const scheduleRows = (source.invoice_payment_schedule_items ?? []) as {
     description: string;

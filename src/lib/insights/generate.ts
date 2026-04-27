@@ -2,6 +2,7 @@ import type { NormalizedInvoiceRecord } from '@/lib/invoices/normalize';
 import { normalizeInvoiceRecord, getInvoiceBaseAmount } from '@/lib/invoices/normalize';
 import { getPaymentBaseAmount, normalizePaymentRecord } from '@/lib/payments/normalize';
 import { INSIGHT_THRESHOLDS } from '@/lib/insights/constants';
+import { expenseAmountInBase } from '@/lib/expenses/expense-base-amount';
 import {
   getCurrentMonthRange,
   getPreviousMonthRange,
@@ -25,6 +26,9 @@ export type ExpenseRowInput = {
   expense_date: string;
   category?: string | null;
   amount: number | string | null;
+  currency?: string | null;
+  base_amount?: number | string | null;
+  exchange_rate?: number | string | null;
   created_at?: string | null;
 };
 
@@ -45,12 +49,13 @@ function paidToBase(inv: NormalizedInvoiceRecord, baseCode: string): number {
 function sumExpensesByExpenseDate(
   expenses: ExpenseRowInput[],
   startKey: string,
-  endKey: string
+  endKey: string,
+  baseCode: string
 ): number {
   return expenses.reduce((s, e) => {
     const key = String(e.expense_date ?? '').slice(0, 10);
     if (!key || !isDateKeyInRange(key, startKey, endKey)) return s;
-    return s + Math.max(0, num(e.amount));
+    return s + Math.max(0, expenseAmountInBase(e, baseCode));
   }, 0);
 }
 
@@ -100,14 +105,15 @@ function sumRevenueInvoicedInRange(
 function categoryTotalsMonth(
   expenses: ExpenseRowInput[],
   startKey: string,
-  endKey: string
+  endKey: string,
+  baseCode: string
 ): Record<string, number> {
   const m: Record<string, number> = {};
   for (const e of expenses) {
     const key = String(e.expense_date ?? '').slice(0, 10);
     if (!key || !isDateKeyInRange(key, startKey, endKey)) continue;
     const cat = String(e.category || 'General').trim() || 'General';
-    m[cat] = (m[cat] ?? 0) + Math.max(0, num(e.amount));
+    m[cat] = (m[cat] ?? 0) + Math.max(0, expenseAmountInBase(e, baseCode));
   }
   return m;
 }
@@ -120,13 +126,16 @@ function weekdayIndexFromDateKey(key: string): number | null {
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function highestExpenseWeekday(expenses: ExpenseRowInput[]): { day: string; amount: number; count: number } | null {
+function highestExpenseWeekday(
+  expenses: ExpenseRowInput[],
+  baseCode: string
+): { day: string; amount: number; count: number } | null {
   const byDay: Record<number, { amount: number; count: number }> = {};
   for (const e of expenses) {
     const key = String(e.expense_date ?? '').slice(0, 10);
     const wd = weekdayIndexFromDateKey(key);
     if (wd == null) continue;
-    const amt = Math.max(0, num(e.amount));
+    const amt = Math.max(0, expenseAmountInBase(e, baseCode));
     if (!byDay[wd]) byDay[wd] = { amount: 0, count: 0 };
     byDay[wd].amount += amt;
     byDay[wd].count += 1;
@@ -235,10 +244,10 @@ export function generateFinancialInsights(input: GenerateInsightsInput): Financi
   const prevMonthStartIso = `${pm.startKey}T00:00:00.000`;
   const prevMonthEndIso = `${pm.endKey}T23:59:59.999`;
 
-  const expensesWeek = sumExpensesByExpenseDate(input.expenses, cw.startKey, cw.endKey);
-  const expensesPrevWeek = sumExpensesByExpenseDate(input.expenses, pw.startKey, pw.endKey);
-  const expensesMonth = sumExpensesByExpenseDate(input.expenses, cm.startKey, cm.endKey);
-  const expensesPrevMonth = sumExpensesByExpenseDate(input.expenses, pm.startKey, pm.endKey);
+  const expensesWeek = sumExpensesByExpenseDate(input.expenses, cw.startKey, cw.endKey, base);
+  const expensesPrevWeek = sumExpensesByExpenseDate(input.expenses, pw.startKey, pw.endKey, base);
+  const expensesMonth = sumExpensesByExpenseDate(input.expenses, cm.startKey, cm.endKey, base);
+  const expensesPrevMonth = sumExpensesByExpenseDate(input.expenses, pm.startKey, pm.endKey, base);
 
   const collWeek = sumCollectionsInRange(input.paymentRows, invoices, weekStartIso, weekEndIso, base);
   const collPrevWeek = sumCollectionsInRange(
@@ -298,7 +307,7 @@ export function generateFinancialInsights(input: GenerateInsightsInput): Financi
     });
   }
 
-  const cats = categoryTotalsMonth(input.expenses, cm.startKey, cm.endKey);
+  const cats = categoryTotalsMonth(input.expenses, cm.startKey, cm.endKey, base);
   const totalCat = Object.values(cats).reduce((s, v) => s + v, 0);
   if (totalCat > 0) {
     const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
@@ -322,7 +331,7 @@ export function generateFinancialInsights(input: GenerateInsightsInput): Financi
     }
   }
 
-  const catPrev = categoryTotalsMonth(input.expenses, pm.startKey, pm.endKey);
+  const catPrev = categoryTotalsMonth(input.expenses, pm.startKey, pm.endKey, base);
   for (const [name, amt] of Object.entries(cats)) {
     const prev = catPrev[name] ?? 0;
     if (prev <= 0 || amt <= 0) continue;
@@ -354,7 +363,7 @@ export function generateFinancialInsights(input: GenerateInsightsInput): Financi
     }
   }
 
-  const wd = highestExpenseWeekday(input.expenses);
+  const wd = highestExpenseWeekday(input.expenses, base);
   if (wd) {
     insights.push({
       id: 'weekday-pattern',

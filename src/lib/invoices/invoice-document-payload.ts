@@ -5,7 +5,8 @@ import { formatDisplayDate } from '@/lib/utils/date';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
 import { getInvoicePreviewCurrency } from '@/lib/invoices/currency-edit';
 import type { SavedBusiness, SavedInvoice, SavedInvoiceItem } from '@/types/invoice-preview';
-import { formatInvoiceUnitLabelForDisplay } from '@/lib/invoices/invoice-line-units';
+import { formatAddressBlockLines } from '@/lib/addresses/address-block-format';
+import { formatQuantityWithUnit, formatRateWithUnit } from '@/lib/invoices/invoice-line-units';
 import {
   buildInvoiceTimeSummaryDoc,
   type InvoiceTimeSummaryDoc,
@@ -45,8 +46,10 @@ export type InvoiceDocumentPayload = {
   lineItems: Array<{
     name: string;
     description: string | null;
+    /** Raw quantity for compatibility; use quantityDisplay in tables. */
     quantity: string;
-    unitLabelDisplay: string;
+    /** Quantity plus billing unit (e.g. "2 hrs", "1 item") for read-only views. */
+    quantityDisplay: string;
     unitPriceDisplay: string;
     taxPercentDisplay: string;
     lineTotalDisplay: string;
@@ -270,12 +273,10 @@ export function buildInvoiceDocumentPayload(input: {
     balance_due: balanceDue,
   });
 
-  const billingCountryName = getCountryNameFromCode(meta?.billing_country);
   const billingStateName =
     meta?.billing_country && meta?.billing_state
       ? getStates(meta.billing_country).find((s) => s.code === meta.billing_state)?.name ?? meta.billing_state
       : meta?.billing_state ?? '';
-  const deliveryCountryName = getCountryNameFromCode(meta?.delivery_country);
   const deliveryStateName =
     meta?.delivery_country && meta?.delivery_state
       ? getStates(meta.delivery_country).find((s) => s.code === meta.delivery_state)?.name ?? meta.delivery_state
@@ -286,24 +287,22 @@ export function buildInvoiceDocumentPayload(input: {
   const deliveryCompanyText = legacyDeliveryContactAsCompany ? meta?.delivery_contact_person ?? '' : meta?.delivery_company ?? '';
   const deliveryContactText = legacyDeliveryContactAsCompany ? '' : meta?.delivery_contact_person ?? '';
 
-  const companyAddressLines: string[] = [];
-  const addr12 = [business.address_line1, business.address_line2].filter(Boolean).join(', ');
-  if (addr12) companyAddressLines.push(addr12);
-  let cityLine = [business.city, business.state].filter(Boolean).join(', ');
-  if ((business.city || business.state) && business.postal_code) cityLine += ` ${business.postal_code}`;
-  if (business.country) {
-    if (business.city || business.state || business.postal_code) {
-      cityLine = cityLine ? `${cityLine}, ${business.country}` : business.country;
-    } else {
-      cityLine = business.country;
-    }
-  }
-  if (cityLine) companyAddressLines.push(cityLine);
+  const companyStateLabel =
+    business.country && business.state
+      ? getStates(business.country).find((s) => s.code === business.state)?.name ?? business.state
+      : business.state ?? '';
+  const companyCountryResolved = getCountryNameFromCode(business.country) || String(business.country ?? '').trim();
+  const companyAddressLines = formatAddressBlockLines({
+    line1: business.address_line1,
+    line2: business.address_line2,
+    city: business.city,
+    state: companyStateLabel,
+    postal_code: business.postal_code,
+    country: companyCountryResolved,
+  });
 
   function buildBillingLines(): InvoiceDocTextLine[] {
     const lines: InvoiceDocTextLine[] = [];
-    const billingLine1 = meta?.billing_address_line1 ?? '';
-    const billingLine2 = meta?.billing_address_line2 ?? '';
     const customerNameNormalized = String(invoice.customer_name ?? '').trim().toLowerCase();
     const companyNormalized = String(meta?.company ?? '').trim().toLowerCase();
     const shouldSkipAddressLine = (value: string) => {
@@ -313,44 +312,44 @@ export function buildInvoiceDocumentPayload(input: {
       if (companyNormalized && normalized === companyNormalized) return true;
       return false;
     };
-    const billingAddressBlock = [billingLine1, billingLine2]
-      .map((part) => String(part ?? '').trim())
-      .filter((part, index, arr) => !shouldSkipAddressLine(part) && arr.indexOf(part) === index)
-      .join('\n');
+    let b1 = String(meta?.billing_address_line1 ?? '').trim();
+    let b2 = String(meta?.billing_address_line2 ?? '').trim();
+    if (shouldSkipAddressLine(b1)) b1 = '';
+    if (shouldSkipAddressLine(b2)) b2 = '';
+    if (!b1 && !b2 && meta?.billing_address) {
+      const legacy = String(meta.billing_address).trim();
+      if (legacy && !shouldSkipAddressLine(legacy)) {
+        const p = legacy.split(/\n/).map((s) => s.trim()).filter(Boolean);
+        b1 = p[0] ?? '';
+        b2 = p.slice(1).join('\n') || '';
+      }
+    }
+    const billingCountryResolved =
+      getCountryNameFromCode(meta?.billing_country) || String(meta?.billing_country ?? '').trim();
+    const hasBillingAddrBlock =
+      b1 ||
+      b2 ||
+      meta?.billing_city ||
+      meta?.billing_state ||
+      meta?.billing_postal_code ||
+      meta?.billing_country;
+    const billingBlockLines = hasBillingAddrBlock
+      ? formatAddressBlockLines({
+          line1: b1 || undefined,
+          line2: b2 || undefined,
+          city: meta?.billing_city,
+          state: (billingStateName || meta?.billing_state) as string,
+          postal_code: meta?.billing_postal_code,
+          country: billingCountryResolved,
+        })
+      : [];
     lines.push({ variant: 'section', text: 'Billing Address' });
     lines.push({ variant: 'strong', text: invoice.customer_name });
     if (meta?.company && String(meta.company).trim().toLowerCase() !== customerNameNormalized) {
       lines.push({ variant: 'normal', text: meta.company });
     }
-    if (
-      billingAddressBlock ||
-      meta?.billing_address ||
-      meta?.billing_city ||
-      meta?.billing_state ||
-      meta?.billing_postal_code ||
-      meta?.billing_country
-    ) {
-      const addrParts: string[] = [];
-      if (billingAddressBlock) {
-        addrParts.push(billingAddressBlock);
-      } else if (meta?.billing_address) {
-        const legacyAddress = String(meta.billing_address).trim();
-        if (!shouldSkipAddressLine(legacyAddress)) {
-          addrParts.push(legacyAddress);
-        }
-      }
-      const inner = [meta?.billing_city, billingStateName || meta?.billing_state, meta?.billing_postal_code]
-        .filter(Boolean)
-        .join(', ');
-      if (inner) addrParts.push(inner);
-      if (billingCountryName) {
-        if (meta?.billing_city || meta?.billing_state || meta?.billing_postal_code) {
-          addrParts.push(billingCountryName);
-        } else {
-          addrParts.push(billingCountryName);
-        }
-      }
-      lines.push({ variant: 'normal', text: addrParts.join('\n'), preWrap: true });
+    if (billingBlockLines.length) {
+      lines.push({ variant: 'normal', text: billingBlockLines.join('\n'), preWrap: true });
     }
     if (invoice.customer_email) lines.push({ variant: 'muted', text: invoice.customer_email });
     if (meta?.billing_phone) lines.push({ variant: 'muted', text: `Phone: ${meta.billing_phone}` });
@@ -363,18 +362,26 @@ export function buildInvoiceDocumentPayload(input: {
     lines.push({ variant: 'section', text: 'Delivery Address' });
     if (deliveryCompanyText) lines.push({ variant: 'strong', text: deliveryCompanyText });
     if (meta?.delivery_address || meta?.delivery_city || meta?.delivery_state || meta?.delivery_postal_code || meta?.delivery_country) {
-      const addrParts: string[] = [];
-      if (meta.delivery_address) addrParts.push(meta.delivery_address);
-      const inner = [meta.delivery_city, deliveryStateName || meta.delivery_state, meta.delivery_postal_code].filter(Boolean).join(', ');
-      if (inner) addrParts.push(inner);
-      if (deliveryCountryName) {
-        if (meta.delivery_city || meta.delivery_state || meta.delivery_postal_code) {
-          addrParts.push(deliveryCountryName);
-        } else {
-          addrParts.push(deliveryCountryName);
-        }
-      }
-      lines.push({ variant: 'normal', text: addrParts.join('\n'), preWrap: true });
+      const rawDel = String(meta?.delivery_address ?? '').trim();
+      const delParts = rawDel
+        ? rawDel
+            .split(/\n/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const d1 = delParts[0];
+      const d2 = delParts.length > 1 ? delParts.slice(1).join('\n') : undefined;
+      const delCountry =
+        getCountryNameFromCode(meta?.delivery_country) || String(meta?.delivery_country ?? '').trim();
+      const dLines = formatAddressBlockLines({
+        line1: d1,
+        line2: d2,
+        city: meta?.delivery_city,
+        state: (deliveryStateName || meta?.delivery_state) as string,
+        postal_code: meta?.delivery_postal_code,
+        country: delCountry,
+      });
+      lines.push({ variant: 'normal', text: dLines.join('\n'), preWrap: true });
     }
     if (meta?.delivery_email) lines.push({ variant: 'muted', text: meta.delivery_email });
     if (meta?.delivery_phone) lines.push({ variant: 'muted', text: `Phone: ${meta.delivery_phone}` });
@@ -405,8 +412,8 @@ export function buildInvoiceDocumentPayload(input: {
       name: item.name || '—',
       description: item.description && String(item.description).trim() ? item.description : null,
       quantity: String(item.quantity),
-      unitLabelDisplay: formatInvoiceUnitLabelForDisplay(unitRaw ?? 'item'),
-      unitPriceDisplay: `${previewCurrency} ${Number(item.unit_price).toFixed(2)}`,
+      quantityDisplay: formatQuantityWithUnit(Number(item.quantity), unitRaw),
+      unitPriceDisplay: formatRateWithUnit(Number(item.unit_price), previewCurrency, unitRaw),
       taxPercentDisplay: taxPct ? `${taxPct}%` : '—',
       lineTotalDisplay: `${previewCurrency} ${lineTotalWithTax.toFixed(2)}`,
     };

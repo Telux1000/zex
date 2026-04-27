@@ -59,7 +59,7 @@ export async function POST(
 
   const { error: uploadError } = await supabase.storage
     .from('business-logos')
-    .upload(objectKey, Buffer.from(arrayBuffer), { contentType: type, upsert: true });
+    .upload(objectKey, Buffer.from(arrayBuffer), { contentType: type, upsert: false });
   if (uploadError) {
     return NextResponse.json({ error: 'Failed to store logo.' }, { status: 500 });
   }

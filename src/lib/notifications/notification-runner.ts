@@ -11,6 +11,9 @@ type ExpenseRowDb = {
   expense_date: string;
   category: string | null;
   amount: number | null;
+  currency?: string | null;
+  base_amount?: number | null;
+  exchange_rate?: number | null;
 };
 
 type PaymentRowDb = {
@@ -51,7 +54,7 @@ export async function runNotificationIntelligenceForBusiness({
       .limit(500),
     supabase
       .from('expenses')
-      .select('id, expense_date, category, amount')
+      .select('id, expense_date, category, amount, currency, base_amount, exchange_rate')
       .eq('business_id', businessId)
       .gte('expense_date', sinceExpensesIso.slice(0, 10)),
     supabase
@@ -99,6 +102,9 @@ export async function runNotificationIntelligenceForBusiness({
       expense_date: e.expense_date,
       category: e.category,
       amount: e.amount,
+      currency: e.currency ?? null,
+      base_amount: e.base_amount ?? null,
+      exchange_rate: e.exchange_rate ?? null,
     })),
     payments: (paymentRows ?? []).map((p) => ({
       id: p.id,

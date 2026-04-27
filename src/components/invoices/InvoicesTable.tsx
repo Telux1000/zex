@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils/cn';
 import { canEdit, canDelete, canVoid, statusLabel } from '@/lib/invoices/edit-rules';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
 import type { InvoiceRecurringSummary } from '@/lib/recurring-invoice/display';
-import { CalendarClock, Clock, RefreshCw } from 'lucide-react';
+import { CalendarClock, Clock, MoreVertical, RefreshCw } from 'lucide-react';
 import { invoiceShowsAutoReminderIndicator } from '@/lib/invoices/auto-reminders-display';
 import { computeInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
 import { RefundPaymentModal } from '@/components/invoices/RefundPaymentModal';
@@ -282,6 +282,24 @@ function invoiceRowShowsRefundMenu(inv: InvoiceRow | null | undefined): boolean 
     grossPaidSucceeded: Number(inv.gross_paid_amount ?? 0),
     refundedSucceededAndPending: Number(inv.refunded_amount ?? 0),
   });
+}
+
+/** Shared 3-dot row trigger: quiet contrast, clear hover/active/focus. */
+function invoiceRowActionsButtonClass(isOpen: boolean) {
+  return cn(
+    'inline-flex shrink-0 items-center justify-center touch-manipulation rounded-lg',
+    'border border-transparent bg-transparent',
+    'text-slate-600 dark:text-slate-300',
+    'transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out',
+    'hover:border-slate-200/90 hover:bg-slate-100/90 hover:text-slate-800',
+    'dark:hover:border-slate-600/60 dark:hover:bg-slate-800/80 dark:hover:text-slate-100',
+    'active:scale-[0.98] active:border-slate-200/80 active:bg-slate-200/70 active:text-slate-900',
+    'dark:active:border-slate-600/50 dark:active:bg-slate-700/90',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45',
+    'focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
+    isOpen &&
+      'border-slate-300/80 bg-slate-100/95 text-slate-900 shadow-sm ring-1 ring-slate-200/50 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:ring-slate-600/50'
+  );
 }
 
 export function InvoicesTable({ invoices, businessId, currency, currentStatus, statusColors, displayStatusForInv, onMutationSuccess }: Props) {
@@ -563,7 +581,10 @@ export function InvoicesTable({ invoices, businessId, currency, currentStatus, s
                   </span>
                 </div>
               </Link>
-              <div className="relative z-30 shrink-0 -mr-1" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="relative z-30 -mr-1 shrink-0 self-center"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button
                   type="button"
                   ref={(el) => {
@@ -579,20 +600,13 @@ export function InvoicesTable({ invoices, businessId, currency, currentStatus, s
                     setTimeout(() => updateMenuPosition(inv.id), 0);
                   }}
                   className={cn(
-                    'flex min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full',
-                    'text-sm font-normal leading-none text-slate-600 transition-[color,background-color,box-shadow] duration-200 ease-out',
-                    'dark:text-slate-300',
-                    'hover:bg-slate-200/80 hover:text-slate-900 active:bg-slate-300/70 dark:hover:bg-slate-700/80 dark:hover:text-slate-50 dark:active:bg-slate-600/70',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
-                    openMenuId === inv.id &&
-                      'bg-slate-200/90 text-slate-900 shadow-sm ring-1 ring-slate-300/60 dark:bg-slate-700 dark:text-white dark:ring-slate-600/80'
+                    invoiceRowActionsButtonClass(openMenuId === inv.id),
+                    'h-11 w-11 min-h-[44px] min-w-[44px] p-0'
                   )}
-                  aria-label="Invoice actions"
+                  aria-label="Open invoice actions"
                   aria-expanded={openMenuId === inv.id}
                 >
-                  <span aria-hidden className="block translate-y-px">
-                    ⋮
-                  </span>
+                  <MoreVertical className="h-5 w-5 text-current" strokeWidth={2.25} aria-hidden />
                 </button>
               </div>
             </div>
@@ -640,7 +654,10 @@ export function InvoicesTable({ invoices, businessId, currency, currentStatus, s
               <th className="app-th-num">
                 Balance
               </th>
-              <th className="w-10 px-2 py-3 md:w-12" aria-label="Actions" />
+              <th
+                className="app-th-actions w-12 min-w-12 max-w-14 !px-1.5 py-3"
+                aria-label="Actions"
+              />
             </tr>
           </thead>
           <tbody className="app-tbody">
@@ -733,7 +750,7 @@ export function InvoicesTable({ invoices, businessId, currency, currentStatus, s
                   {formatMoneyCodeFirst(balance, invCur)}
                 </td>
                 <td
-                  className="relative w-10 px-2 py-3 md:w-12"
+                  className="app-td-actions relative w-12 min-w-12 max-w-14 !px-1.5 py-2.5"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex justify-end">
@@ -752,20 +769,13 @@ export function InvoicesTable({ invoices, businessId, currency, currentStatus, s
                         setTimeout(() => updateMenuPosition(inv.id), 0);
                       }}
                       className={cn(
-                        'flex h-8 w-8 items-center justify-center rounded-full',
-                        'text-sm font-normal leading-none text-slate-500 transition-[color,background-color,box-shadow] duration-200 ease-out',
-                        'dark:text-slate-400',
-                        'hover:bg-slate-200/75 hover:text-slate-800 dark:hover:bg-slate-700/55 dark:hover:text-slate-100',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
-                        openMenuId === inv.id &&
-                          'bg-slate-200/85 text-slate-900 ring-1 ring-slate-300/55 dark:bg-slate-700 dark:text-white dark:ring-slate-600/70'
+                        invoiceRowActionsButtonClass(openMenuId === inv.id),
+                        'h-9 w-9 min-h-9 min-w-9 p-0'
                       )}
-                      aria-label="Row actions"
+                      aria-label="Open invoice actions"
                       aria-expanded={openMenuId === inv.id}
                     >
-                      <span aria-hidden className="block translate-y-px">
-                        ⋮
-                      </span>
+                      <MoreVertical className="h-4 w-4 text-current" strokeWidth={2.25} aria-hidden />
                     </button>
                   </div>
                 </td>

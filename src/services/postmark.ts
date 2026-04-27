@@ -68,6 +68,40 @@ function asRecord(input?: Record<string, string>): Record<string, string> {
   return input ? { ...input } : {};
 }
 
+const SIMPLE_EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+function hasHeaderInjection(value: string): boolean {
+  return /[\r\n]/.test(value);
+}
+
+function normalizeEmailAddress(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed || hasHeaderInjection(trimmed)) return null;
+  const match = trimmed.match(/<([^>]+)>/);
+  const email = (match?.[1] ?? trimmed).trim();
+  if (!email || hasHeaderInjection(email)) return null;
+  return SIMPLE_EMAIL_RE.test(email) ? email : null;
+}
+
+function sanitizeDisplayName(raw: string): string {
+  return raw.replace(/[\r\n"]/g, ' ').trim().slice(0, 200);
+}
+
+function normalizeReplyTo(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || hasHeaderInjection(trimmed)) return undefined;
+  const match = trimmed.match(/^(.*)<([^>]+)>$/);
+  if (!match) {
+    const emailOnly = normalizeEmailAddress(trimmed);
+    return emailOnly ?? undefined;
+  }
+  const name = sanitizeDisplayName(match[1] ?? '');
+  const email = normalizeEmailAddress(match[2] ?? '');
+  if (!email) return undefined;
+  return name ? `"${name}" <${email}>` : email;
+}
+
 async function callPostmark(path: string, payload: Record<string, unknown>) {
   const { token } = getPostmarkConfig();
   if (!token) {
@@ -137,7 +171,7 @@ export async function sendEmail(options: SendEmailOptions) {
     To: options.to,
     Cc: options.cc,
     Bcc: options.bcc,
-    ReplyTo: options.replyTo ?? cfg.replyTo,
+    ReplyTo: normalizeReplyTo(options.replyTo ?? cfg.replyTo),
     Subject: options.subject,
     HtmlBody: options.htmlBody ?? undefined,
     TextBody: options.textBody ?? undefined,
@@ -183,7 +217,7 @@ export async function sendTemplatedEmail(options: SendTemplatedEmailOptions) {
     To: options.to,
     Cc: options.cc,
     Bcc: options.bcc,
-    ReplyTo: options.replyTo ?? cfg.replyTo,
+    ReplyTo: normalizeReplyTo(options.replyTo ?? cfg.replyTo),
     TemplateId: options.templateId,
     TemplateAlias: options.templateAlias,
     TemplateModel: options.templateModel,
