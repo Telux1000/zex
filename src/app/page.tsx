@@ -50,7 +50,7 @@ const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: 'Can clients pay directly from the invoice?',
     answer:
-      'Yes — invoices include a payment link. Clients can pay by card without needing an account.',
+      'Yes, invoices include a payment link. Clients can pay by card without needing an account.',
   },
   {
     question: 'What integrations do you support?',
@@ -60,11 +60,11 @@ const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: 'What happens when my free trial ends?',
     answer:
-      "You'll be prompted to choose a plan. If you don't upgrade, you move to the Starter free plan automatically — no charge, no data lost.",
+      "You'll be prompted to choose a plan. If you don't upgrade, you move to the Starter free plan automatically, with no charge and no data lost.",
   },
   {
     question: 'What currencies are supported?',
-    answer: 'USD, EUR, GBP, and ZAR are supported. More currencies are being added.',
+    answer: 'Invoice clients worldwide, supporting USD, EUR, GBP, NGN, ZAR, and more.',
   },
   {
     question: 'Can I cancel anytime?',
@@ -205,7 +205,7 @@ export default function LandingPage() {
             No credit card required &bull; Setup in minutes
           </p>
 
-          {/* Social proof — TODO(placeholder): Replace counts, rating source, and quotes with real data / testimonials. */}
+          {/* Social proof: TODO(placeholder): Replace counts, rating source, and quotes with real data / testimonials. */}
           <div className="mx-auto mt-10 max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-12 sm:pt-10">
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:gap-10">
               {/* TODO(placeholder): Replace 400+ with live business count. */}
@@ -225,34 +225,75 @@ export default function LandingPage() {
                 </span>
               </div>
             </div>
-            <div className="mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mt-10 sm:justify-center sm:overflow-visible sm:pb-0 sm:pl-0 [&::-webkit-scrollbar]:hidden">
-              <blockquote className="w-[calc((100%-0.75rem)/2)] shrink-0 snap-center rounded-lg border border-[var(--sidebar-border)] bg-[var(--card)] p-3 text-left sm:min-w-0 sm:w-auto sm:max-w-[260px] sm:p-4">
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400 sm:text-sm">
-                  &ldquo;I dictate invoices between client calls — Zenzex is the first tool that actually keeps up.&rdquo;
-                  {/* TODO(placeholder): testimonial copy */}
-                </p>
-                <footer className="mt-3 text-xs font-semibold text-slate-900 dark:text-white">
-                  Maya Chen{/* TODO(placeholder): name */} · Freelance designer
-                </footer>
-              </blockquote>
-              <blockquote className="w-[calc((100%-0.75rem)/2)] shrink-0 snap-center rounded-lg border border-[var(--sidebar-border)] bg-[var(--card)] p-3 text-left sm:min-w-0 sm:w-auto sm:max-w-[260px] sm:p-4">
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400 sm:text-sm">
-                  &ldquo;Our three-person studio finally stopped chasing payments — reminders just happen.&rdquo;
-                  {/* TODO(placeholder): testimonial copy */}
-                </p>
-                <footer className="mt-3 text-xs font-semibold text-slate-900 dark:text-white">
-                  Jordan Okonkwo{/* TODO(placeholder): name */} · Creative studio lead
-                </footer>
-              </blockquote>
-              <blockquote className="w-[calc((100%-0.75rem)/2)] shrink-0 snap-center rounded-lg border border-[var(--sidebar-border)] bg-[var(--card)] p-3 text-left sm:min-w-0 sm:w-auto sm:max-w-[260px] sm:p-4">
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400 sm:text-sm">
-                  &ldquo;Screenshot a scope email, get an invoice — it&apos;s stupidly fast for IT contracts.&rdquo;
-                  {/* TODO(placeholder): testimonial copy */}
-                </p>
-                <footer className="mt-3 text-xs font-semibold text-slate-900 dark:text-white">
-                  Sam Rivera{/* TODO(placeholder): name */} · Independent consultant
-                </footer>
-              </blockquote>
+            <div className="mt-8 sm:mt-10">
+              <h3 className="text-center text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
+                Loved by freelancers and businesses
+              </h3>
+              <div className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-3">
+                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="https://ui-avatars.com/api/?name=Maya+Chen&background=e2e8f0&color=334155"
+                      alt="Avatar of Maya Chen"
+                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
+                      loading="lazy"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Maya Chen</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Freelance designer</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    &ldquo;I dictate invoices between client calls, Zenzex is the first tool that actually keeps up.&rdquo;
+                    {/* TODO(placeholder): testimonial copy */}
+                  </p>
+                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
+                    ★★★★★
+                  </p>
+                </blockquote>
+                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="https://ui-avatars.com/api/?name=Jordan+Okonkwo&background=e2e8f0&color=334155"
+                      alt="Avatar of Jordan Okonkwo"
+                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
+                      loading="lazy"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Jordan Okonkwo</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Creative studio lead</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    &ldquo;Our three-person studio finally stopped chasing payments, reminders just happen.&rdquo;
+                    {/* TODO(placeholder): testimonial copy */}
+                  </p>
+                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
+                    ★★★★★
+                  </p>
+                </blockquote>
+                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="https://ui-avatars.com/api/?name=Sam+Rivera&background=e2e8f0&color=334155"
+                      alt="Avatar of Sam Rivera"
+                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
+                      loading="lazy"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Sam Rivera</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Independent consultant</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    &ldquo;Screenshot a scope email, get an invoice, it&apos;s stupidly fast for IT contracts.&rdquo;
+                    {/* TODO(placeholder): testimonial copy */}
+                  </p>
+                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
+                    ★★★★★
+                  </p>
+                </blockquote>
+              </div>
             </div>
           </div>
         </section>
@@ -280,7 +321,7 @@ export default function LandingPage() {
                 </span>
                 <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Smart invoice creation</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Create invoices your way &mdash; from text, voice, manual entry, or screenshots &mdash; in seconds.
+                  Create invoices your way from text, voice, manual entry, or screenshots in seconds.
                 </p>
               </li>
               <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
