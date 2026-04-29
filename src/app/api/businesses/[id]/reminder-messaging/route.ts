@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { assertBusinessPermission } from '@/lib/rbac/server';
 import type { Json } from '@/lib/database.types';
 import {
+  coerceLooseBoolean,
   createDefaultReminderMessagingSettings,
   parseReminderMessaging,
   REMINDER_MESSAGE_PRESETS,
@@ -13,10 +14,14 @@ import {
 function validateCustomizeRowsOnSave(raw: ReminderMessagingSettingsV1): { ok: true } | { ok: false; error: string } {
   for (const preset of REMINDER_MESSAGE_PRESETS) {
     const row = (raw.presets as Record<string, unknown>)[preset] as Record<string, unknown> | undefined;
+    if (row == null) continue;
+    const e = coerceLooseBoolean(row.enabled);
+    const u = coerceLooseBoolean(row.use_custom_copy);
     const customizeSelected =
-      row != null &&
-      ((typeof row.enabled === 'boolean' && row.enabled) ||
-        (typeof row.use_custom_copy === 'boolean' && row.use_custom_copy));
+      e === true ||
+      u === true ||
+      (typeof row.enabled === 'boolean' && row.enabled) ||
+      (typeof row.use_custom_copy === 'boolean' && row.use_custom_copy);
     if (!customizeSelected) continue;
     const subject = String(row?.subject_template ?? '').trim();
     const message = String(row?.message_template ?? '').trim();

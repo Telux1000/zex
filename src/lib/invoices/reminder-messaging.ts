@@ -36,6 +36,14 @@ export const REMINDER_MESSAGE_PRESETS = [
 
 export type ReminderMessagePreset = (typeof REMINDER_MESSAGE_PRESETS)[number];
 
+/** Human label for each copy bucket (matches Settings → Reminder emails). */
+export const REMINDER_PRESET_DISPLAY_LABEL: Record<ReminderMessagePreset, string> = {
+  before_due: 'Before due date',
+  due_today: 'Due today',
+  overdue: 'Overdue',
+  final_reminder: 'Final reminder',
+};
+
 export const REMINDER_TONES = ['professional', 'friendly', 'firm'] as const;
 export type ReminderTone = (typeof REMINDER_TONES)[number];
 
@@ -58,6 +66,58 @@ export type ReminderMessagingSettingsV1 = {
 };
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+/** C0 / delete control chars that can break JSON or email providers. Newlines allowed. */
+const STRIP_CTRL_EXCEPT_NL = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
+function isReminderSettingsVersion1(v: unknown): boolean {
+  if (v === 1) return true;
+  if (v === '1') return true;
+  if (typeof v === 'string' && String(v).trim() === '1') return true;
+  if (typeof v === 'number' && Number.isFinite(v) && Math.trunc(v) === 1) return true;
+  return false;
+}
+
+/**
+ * Coerce various JSON/Form values to boolean. Used for `enabled` / `use_custom_copy`
+ * so Customize mode survives string booleans (e.g. "true") and doesn't fall through
+ * to the legacy "text differs from default" path with enabled accidentally false.
+ */
+export function coerceLooseBoolean(v: unknown): boolean | undefined {
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    if (t === 'true' || t === '1' || t === 'yes' || t === 'on') return true;
+    if (t === 'false' || t === '0' || t === 'no' || t === 'off' || t === '') return false;
+  }
+  return undefined;
+}
+
+function stripMergeControlChars(s: string): string {
+  return s.replace(STRIP_CTRL_EXCEPT_NL, '');
+}
+
+/**
+ * Postmark templates use Mustache; if merge field values still contain `{{`/`}}` after
+ * our placeholder pass (user literals or unclosed `{{`), the send can error. Neutralize
+ * in HTML and plain text merge values.
+ */
+function neutralizeStrayMustacheInHtml(s: string): string {
+  return s.replace(/\{\{/g, '&#123;&#123;').replace(/\}\}/g, '&#125;&#125;');
+}
+
+function neutralizeStrayMustacheInPlainText(s: string): string {
+  return s.replace(/\{\{/g, '\uFF5B\uFF5B').replace(/\}\}/g, '\uFF5D\uFF5D');
+}
+
+/**
+ * HTML fragment for the payment reminder body (and Postmark `reminder_message` merge field).
+ * Strips C0 control chars, escapes, line breaks, then neutralizes stray `{{` for Postmark/Mustache.
+ */
+export function toPostmarkPaymentReminderMessageHtml(plain: string): string {
+  return neutralizeStrayMustacheInHtml(reminderMessageToHtmlFragment(stripMergeControlChars(plain)));
+}
 
 function defaultPresetRow(tone: ReminderTone, preset: ReminderMessagePreset): ReminderPresetRow {
   const d = DEFAULT_COPY[tone][preset];
@@ -198,9 +258,17 @@ function parsePresetRow(
   const messageTemplate =
     typeof o.message_template === 'string' ? o.message_template : base.message_template;
   const defaultForTone = DEFAULT_COPY[tone][preset];
+  const uc = coerceLooseBoolean(o.use_custom_copy);
+  const eb = coerceLooseBoolean(o.enabled);
   let enabled: boolean;
-  if (typeof o.use_custom_copy === 'boolean' && typeof o.enabled === 'boolean') {
+  if (uc !== undefined && eb !== undefined) {
     // Be permissive with legacy mixed payloads: any explicit "true" keeps customize mode on.
+    enabled = uc || eb;
+  } else if (uc !== undefined) {
+    enabled = uc;
+  } else if (eb !== undefined) {
+    enabled = eb;
+  } else if (typeof o.use_custom_copy === 'boolean' && typeof o.enabled === 'boolean') {
     enabled = o.use_custom_copy || o.enabled;
   } else if (typeof o.use_custom_copy === 'boolean') {
     enabled = o.use_custom_copy;
@@ -226,11 +294,25 @@ function parsePresetRow(
 export function parseReminderMessaging(
   raw: unknown
 ): ReminderMessagingSettingsV1 {
-  if (!raw || typeof raw !== 'object') {
+  if (raw == null) {
+    return createDefaultReminderMessagingSettings();
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) {
+      return createDefaultReminderMessagingSettings();
+    }
+    try {
+      return parseReminderMessaging(JSON.parse(t) as unknown);
+    } catch {
+      return createDefaultReminderMessagingSettings();
+    }
+  }
+  if (typeof raw !== 'object') {
     return createDefaultReminderMessagingSettings();
   }
   const o = raw as Record<string, unknown>;
-  if (o.version !== 1) {
+  if (!isReminderSettingsVersion1(o.version)) {
     return createDefaultReminderMessagingSettings();
   }
   const p = o.presets;
@@ -391,6 +473,7 @@ export function interpolateReminderTemplate(
   template: string,
   vars: ReminderRenderVariables
 ): string {
+  PLACEHOLDER_RE.lastIndex = 0;
   return template.replace(PLACEHOLDER_RE, (_m, g1) => {
     const key = String(g1) as keyof ReminderRenderVariables;
     const v = vars[key as keyof ReminderRenderVariables];
@@ -536,10 +619,13 @@ export function buildPostmarkPaymentReminderTemplateModel(input: {
     input.vars
   );
   const safe = assertNonEmptyReminderOutput(input.preset, input.vars, subject, messagePlain);
-  const reminderHtml = reminderMessageToHtmlFragment(safe.message);
+  const sSubj = stripMergeControlChars(safe.subject);
+  const sMsg = stripMergeControlChars(safe.message);
+  const reminderHtml = toPostmarkPaymentReminderMessageHtml(sMsg);
+  const subjectForApi = neutralizeStrayMustacheInPlainText(sSubj);
   const code = (input.currencyCode || 'USD').trim().toUpperCase() || 'USD';
   const model: Record<string, unknown> = {
-    subject: safe.subject,
+    subject: subjectForApi,
     reminder_message: reminderHtml,
     customer_name: input.vars.customer_name,
     business_name: input.vars.business_name,
@@ -560,7 +646,7 @@ export function buildPostmarkPaymentReminderTemplateModel(input: {
     currency: code,
     tone,
   };
-  return { subject: safe.subject, messagePlain: safe.message, templateModel: model };
+  return { subject: subjectForApi, messagePlain: sMsg, templateModel: model };
 }
 
 /**

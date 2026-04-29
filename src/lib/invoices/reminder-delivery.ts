@@ -19,10 +19,11 @@ import {
   buildReminderRenderVariables,
   type ReminderMessagePreset,
   type ReminderMessagingSettingsV1,
+  REMINDER_PRESET_DISPLAY_LABEL,
   classifyPresetFromDateOffset,
   classifyPresetFromOffsetMatch,
   normalizePostmarkPaymentReminderModel,
-  reminderMessageToHtmlFragment,
+  toPostmarkPaymentReminderMessageHtml,
   resolveOutboundSupportEmail,
 } from '@/lib/invoices/reminder-messaging';
 
@@ -70,6 +71,15 @@ function isPostgresUniqueViolation(err: { code?: string; message?: string } | nu
   return err?.code === '23505' || /duplicate key|unique constraint/i.test(String(err?.message ?? ''));
 }
 
+export type DeliverInvoicePaymentReminderResult = {
+  ok: boolean;
+  error?: string;
+  skipped?: boolean;
+  /** Which reminder copy bucket was used (set when resolved, including duplicate-skip). */
+  reminder_type?: ReminderMessagePreset;
+  reminder_type_label?: string;
+};
+
 export async function deliverInvoicePaymentReminder(
   supabase: SupabaseClient,
   opts: {
@@ -80,7 +90,7 @@ export async function deliverInvoicePaymentReminder(
     /** Set by invoice reminder cron for offset-based automatic sends. */
     offsetContext?: DeliverReminderOffsetContext | null;
   }
-): Promise<{ ok: boolean; error?: string; skipped?: boolean }> {
+): Promise<DeliverInvoicePaymentReminderResult> {
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
@@ -162,6 +172,8 @@ export async function deliverInvoicePaymentReminder(
     eff,
     opts.offsetContext
   );
+  const reminder_type = preset;
+  const reminder_type_label = REMINDER_PRESET_DISPLAY_LABEL[preset];
 
   if (opts.kind !== 'manual' && !opts.dedupeKey) {
     console.error('[reminder] offset/scheduled send missing dedupeKey', { invoiceId: opts.invoiceId, kind: opts.kind });
@@ -195,10 +207,19 @@ export async function deliverInvoicePaymentReminder(
           decision: 'skip',
           reason: 'already_sent',
         });
-        return { ok: true, skipped: true };
+        return { ok: true, skipped: true, reminder_type, reminder_type_label };
       }
       console.error('[reminder] claim insert failed', insErr);
-      return { ok: false, error: insErr.message };
+      const msg = String(insErr.message ?? '');
+      const rlsBlocked =
+        insErr.code === '42501' ||
+        /row-level security|permission denied for table|new row violates row-level security/i.test(msg);
+      return {
+        ok: false,
+        error: rlsBlocked
+          ? 'Could not send reminder: database permissions for the reminder log are missing. Apply the latest Supabase migration, then try again.'
+          : msg,
+      };
     }
   }
 
@@ -255,7 +276,7 @@ export async function deliverInvoicePaymentReminder(
       baseModel as Record<string, unknown>
     );
 
-    const bodyHtml = reminderMessageToHtmlFragment(messagePlain);
+    const bodyHtml = toPostmarkPaymentReminderMessageHtml(messagePlain);
     const urlEsc = (paymentUrl ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     const fallbackHtml = paymentUrl
       ? `${bodyHtml}<p><a href="${urlEsc}">Pay now</a></p>`
@@ -366,7 +387,7 @@ export async function deliverInvoicePaymentReminder(
       },
     });
 
-    return { ok: true };
+    return { ok: true, reminder_type, reminder_type_label };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to send reminder';
     reminderDebugLog({

@@ -1,28 +1,50 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { BarChart3, Bell, ChevronDown, CreditCard, FileText } from 'lucide-react';
+import {
+  BarChart3,
+  Bell,
+  ChevronDown,
+  CreditCard,
+  Facebook,
+  FileText,
+  Instagram,
+  Linkedin,
+  X as XIcon,
+  Youtube,
+} from 'lucide-react';
 import { LandingPricingSection } from '@/components/pricing/LandingPricingSection';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
+import { TikTokIcon } from '@/components/branding/TikTokIcon';
+import { LandingOutstandingShowcase } from '@/components/landing/LandingOutstandingShowcase';
 
 export const metadata: Metadata = {
-  title: 'Simple Automated Invoicing',
+  title: 'Zenzex | Simple Invoicing Software for Faster Payments',
   description:
-    'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+    'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Zenzex | Simple Automated Invoicing',
+    title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+      'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
     url: 'https://zenzex.com',
   },
   twitter: {
-    title: 'Zenzex | Simple Automated Invoicing',
+    title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+      'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
   },
 };
+
+const LANDING_SOCIAL_LINKS = [
+  { href: 'https://x.com/zenzexai', label: 'Zenzex on X', Icon: XIcon },
+  { href: 'https://linkedin.com/company/zenzexai', label: 'Zenzex on LinkedIn', Icon: Linkedin },
+  { href: 'https://instagram.com/zenzexai', label: 'Zenzex on Instagram', Icon: Instagram },
+  { href: 'https://tiktok.com/@zenzexai', label: 'Zenzex on TikTok', Icon: TikTokIcon },
+  { href: 'https://www.youtube.com/@zenzexai', label: 'Zenzex on YouTube', Icon: Youtube },
+  { href: 'https://www.facebook.com/zenzexai', label: 'Zenzex on Facebook', Icon: Facebook },
+];
 
 const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
@@ -68,7 +90,7 @@ export default function LandingPage() {
     operatingSystem: 'Web',
     url: appUrl,
     description:
-      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+      'Simple invoicing for freelancers and businesses: create invoices from text, voice, or screenshots, track payments, send reminders, and get paid faster.',
   };
   const websiteSchema = {
     '@context': 'https://schema.org',
@@ -76,7 +98,7 @@ export default function LandingPage() {
     name: 'Zenzex',
     url: appUrl,
     description:
-      'Create invoices faster, track payments clearly, and stay on top of revenue with simple automated invoicing.',
+      'Zenzex helps freelancers and businesses invoice clients, follow up on overdue balances, and collect payment without spreadsheets.',
   };
   const faqSchema = {
     '@context': 'https://schema.org',
@@ -150,23 +172,38 @@ export default function LandingPage() {
         {/* Hero */}
         <section className="mx-auto max-w-6xl px-3 pb-12 pt-12 text-center sm:px-4 sm:pb-20 sm:pt-20 md:pt-24">
           <p className="text-balance text-xs font-semibold uppercase leading-snug tracking-wide text-indigo-600 dark:text-indigo-400 sm:text-sm">
-            New · Voice-to-invoice now live
+            Simple invoicing software
           </p>
-          <h1 className="mt-3 text-balance text-3xl font-bold leading-[1.12] tracking-tight text-slate-900 dark:text-white sm:mt-4 sm:text-5xl sm:leading-tight md:text-6xl">
-            Invoice from a voice note. Send it in seconds.
+          <h1 className="mt-4 text-balance text-3xl font-bold leading-[1.1] tracking-tight text-slate-900 dark:text-white sm:mt-5 sm:text-5xl sm:leading-tight md:text-6xl">
+            Stop chasing clients for money.
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-relaxed text-slate-600 dark:text-slate-400 sm:mt-6 sm:text-lg">
-            Zenzex turns text, voice, or uploaded screenshots into professional invoices — with automated reminders
-            and real-time payment tracking built in.
+          <p className="mx-auto mt-5 max-w-2xl text-pretty text-base font-medium leading-relaxed text-slate-700 dark:text-slate-300 sm:mt-6 sm:text-lg sm:leading-relaxed">
+            Get paid faster with simple, automated invoicing for freelancers and businesses.
           </p>
-          <div className="mx-auto mt-8 flex w-full max-w-sm justify-center px-1 sm:mt-10 sm:max-w-none sm:px-0">
+          <p className="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400 sm:mt-5 sm:text-base">
+            Create invoices your way from text, voice, manual entry, or screenshots in seconds. Track
+            what&rsquo;s paid or overdue, and send reminders automatically.
+          </p>
+          <p className="mt-4 text-balance text-sm font-medium text-slate-800 dark:text-slate-200 sm:mt-5 sm:text-base">
+            No spreadsheets. No stress.
+          </p>
+          <div className="mx-auto mt-8 flex w-full max-w-lg flex-col items-stretch justify-center gap-3 px-1 sm:mt-10 sm:max-w-none sm:flex-row sm:items-center sm:justify-center sm:gap-4 sm:px-0">
             <Link
               href="/signup"
-              className="app-btn-primary-lg inline-flex w-full min-h-[48px] items-center justify-center sm:w-auto sm:min-h-0"
+              className="app-btn-primary-lg inline-flex w-full min-h-[48px] shrink-0 items-center justify-center sm:w-auto sm:min-w-[10.5rem] sm:min-h-0"
             >
               Start free
             </Link>
+            <a
+              href="#how-it-works"
+              className="inline-flex min-h-[48px] w-full shrink-0 items-center justify-center rounded-lg text-sm font-medium text-slate-600 underline-offset-4 transition-colors hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-white sm:w-auto sm:px-2"
+            >
+              See how it works
+            </a>
           </div>
+          <p className="mt-4 text-balance text-xs font-semibold text-indigo-600 dark:text-indigo-400 sm:mt-5 sm:text-sm">
+            No credit card required &bull; Setup in minutes
+          </p>
 
           {/* Social proof — TODO(placeholder): Replace counts, rating source, and quotes with real data / testimonials. */}
           <div className="mx-auto mt-10 max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-12 sm:pt-10">
@@ -232,144 +269,8 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* TODO(placeholder): Swap for real product screenshot when ready. */}
-            <div className="mx-auto mt-8 max-w-4xl overflow-hidden rounded-lg border border-[var(--sidebar-border)] bg-[var(--card)] shadow-lg shadow-slate-900/[0.06] dark:shadow-black/40 sm:mt-12 sm:rounded-xl">
-              <div
-                className="flex h-10 items-center gap-2 border-b border-slate-300/80 bg-slate-200 px-3.5 dark:border-slate-600 dark:bg-slate-700"
-                aria-hidden
-              >
-                <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-                <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-                <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-              </div>
-              <div className="border-t border-slate-200/50 bg-gradient-to-b from-slate-50 to-white p-3 sm:p-6 dark:border-slate-600/50 dark:from-slate-900/80 dark:to-[var(--card)]">
-                <div className="mb-4 flex flex-col gap-2 sm:mb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-1">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 sm:text-xs">
-                      Total outstanding
-                    </p>
-                    <p className="text-xl font-bold tabular-nums text-slate-900 dark:text-white sm:text-2xl">$4,280.00</p>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">Dashboard preview (sample data)</p>
-                </div>
-
-                {/* Mobile: stacked rows (no horizontal table scroll) */}
-                <div className="space-y-3 sm:hidden">
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-950/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400">INV-1042</p>
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Northwind Studio</p>
-                        <p className="text-xs text-slate-500">Due Apr 12</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">$1,200.00</p>
-                        <span className="mt-1 inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:text-emerald-400">
-                          Paid
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-amber-200/80 bg-amber-50/90 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400">INV-1045</p>
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Harbor & Co.</p>
-                        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Due Apr 2</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">$2,450.00</p>
-                        <span className="mt-1 inline-flex rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:text-amber-300">
-                          Overdue
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className="mt-3 flex w-full min-h-[44px] cursor-default items-center justify-center rounded-md bg-indigo-600 text-sm font-semibold text-white dark:bg-indigo-500"
-                    >
-                      Send Reminder
-                    </button>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-950/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400">INV-1048</p>
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Brightline Labs</p>
-                        <p className="text-xs text-slate-500">Due Apr 28</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">$630.00</p>
-                        <span className="mt-1 inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
-                          Pending
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white sm:block dark:border-slate-600 dark:bg-slate-950/40">
-                  <table className="w-full min-w-[520px] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-400">
-                        <th className="px-4 py-2.5">Invoice</th>
-                        <th className="px-4 py-2.5">Client</th>
-                        <th className="px-4 py-2.5">Due</th>
-                        <th className="px-4 py-2.5 text-right">Amount</th>
-                        <th className="px-4 py-2.5 text-right">Status</th>
-                        <th className="px-4 py-2.5 text-right"> </th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-slate-700 dark:text-slate-300">
-                      <tr className="border-b border-slate-100 dark:border-slate-700/80">
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">INV-1042</td>
-                        <td className="px-4 py-3">Northwind Studio</td>
-                        <td className="px-4 py-3 text-slate-500">Apr 12</td>
-                        <td className="px-4 py-3 text-right tabular-nums font-medium">$1,200.00</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="inline-flex rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-400">
-                            Paid
-                          </span>
-                        </td>
-                        <td className="px-4 py-3" />
-                      </tr>
-                      <tr className="border-b border-slate-100 bg-amber-50/80 dark:border-slate-700/80 dark:bg-amber-500/10">
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">INV-1045</td>
-                        <td className="px-4 py-3">Harbor & Co.</td>
-                        <td className="px-4 py-3 font-medium text-amber-800 dark:text-amber-200">Apr 2</td>
-                        <td className="px-4 py-3 text-right tabular-nums font-medium">$2,450.00</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="inline-flex rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-300">
-                            Overdue
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            className="inline-flex cursor-default rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm dark:bg-indigo-500"
-                          >
-                            Send Reminder
-                          </button>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">INV-1048</td>
-                        <td className="px-4 py-3">Brightline Labs</td>
-                        <td className="px-4 py-3 text-slate-500">Apr 28</td>
-                        <td className="px-4 py-3 text-right tabular-nums font-medium">$630.00</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="inline-flex rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
-                            Pending
-                          </span>
-                        </td>
-                        <td className="px-4 py-3" />
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div className="mx-auto mt-8 max-w-4xl sm:mt-12">
+              <LandingOutstandingShowcase />
             </div>
 
             <ul className="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
@@ -379,7 +280,7 @@ export default function LandingPage() {
                 </span>
                 <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Smart invoice creation</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Turn text, voice, or uploaded screenshots into professional invoices, ready to send in seconds.
+                  Create invoices your way &mdash; from text, voice, manual entry, or screenshots &mdash; in seconds.
                 </p>
               </li>
               <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
@@ -422,7 +323,7 @@ export default function LandingPage() {
                 How it works
               </h2>
               <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
-                Set up in minutes, send your first invoice, then let automation handle the rest.
+                Set up in minutes. Send your first invoice. Get paid without the follow-up.
               </p>
             </div>
             <ol className="mx-auto mt-8 grid max-w-4xl gap-6 sm:mt-12 sm:gap-8 md:grid-cols-3 md:gap-10">
@@ -433,9 +334,9 @@ export default function LandingPage() {
                 >
                   1
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Create your workspace</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Set up your workspace</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Sign up, add your business profile, and connect how you bill, without an implementation project.
+                  Sign up, add your business details, and you&rsquo;re ready to invoice, no setup headaches.
                 </p>
               </li>
               <li className="relative text-center md:text-left">
@@ -445,10 +346,9 @@ export default function LandingPage() {
                 >
                   2
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Issue invoices quickly</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Create invoices in seconds</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Build line items from text, voice, or uploads, and intelligent formatting keeps every invoice
-                  consistent.
+                  Create invoices your way from text, voice, manual entry, or screenshots in seconds.
                 </p>
               </li>
               <li className="relative text-center md:text-left">
@@ -457,9 +357,9 @@ export default function LandingPage() {
                 >
                   3
                 </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Collect and stay current</h3>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Get paid and stay in control</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Monitor status in real time, run automated reminder workflows, and review summaries when you reconcile.
+                  Track what&rsquo;s paid or overdue in real time, and let automatic reminders handle the follow-up.
                 </p>
               </li>
             </ol>
@@ -529,6 +429,23 @@ export default function LandingPage() {
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-3 sm:flex-row sm:px-4">
             <AppLogoInline href="/" size="sm" />
             <div className="flex flex-col items-center gap-3 sm:items-end">
+              <nav aria-label="Zenzex on social media" className="w-full sm:w-auto">
+                <ul className="m-0 flex list-none flex-wrap items-center justify-center gap-5 p-0 sm:justify-end">
+                  {LANDING_SOCIAL_LINKS.map(({ href, label, Icon }) => (
+                    <li key={href}>
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={label}
+                        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-slate-500 transition-[color,transform] hover:scale-105 hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 dark:text-slate-500 dark:hover:text-slate-200 dark:focus-visible:outline-slate-400"
+                      >
+                        <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
               <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500 dark:text-slate-500">
                 <Link
                   href="/terms"

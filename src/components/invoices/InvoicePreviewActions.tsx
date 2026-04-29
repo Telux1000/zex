@@ -379,9 +379,21 @@ export function InvoicePreviewActions({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed');
       if ((data as { skipped?: boolean }).skipped) {
-        showSuccessToast('Nothing to send (already paid).');
+        const label = (data as { reminder_type_label?: string | null }).reminder_type_label;
+        if (label) {
+          showSuccessToast(
+            `A “${label}” reminder was just sent. Try again in a minute if you need to resend.`
+          );
+        } else {
+          showSuccessToast('Nothing to send (already paid or payment reminders are off in settings).');
+        }
       } else {
-        showSuccessToast('Reminder sent');
+        const label = (data as { reminder_type_label?: string | null }).reminder_type_label;
+        showSuccessToast(
+          label
+            ? `Reminder sent — “${label}” copy (set each under Settings → Reminder emails).`
+            : 'Reminder sent'
+        );
       }
       router.refresh();
     } catch (e) {

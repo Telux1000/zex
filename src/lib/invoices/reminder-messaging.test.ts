@@ -83,6 +83,42 @@ describe('reminder-messaging', () => {
     expect(out).toBe('Hi Sam ');
   });
 
+  it('parse accepts version as string "1"', () => {
+    const raw = {
+      version: '1',
+      presets: createDefaultReminderMessagingSettings().presets,
+    };
+    const s = parseReminderMessaging(raw);
+    expect(s.version).toBe(1);
+  });
+
+  it('parse accepts reminder_messaging stored as JSON string', () => {
+    const inner = createDefaultReminderMessagingSettings();
+    inner.presets.overdue.enabled = true;
+    inner.presets.overdue.subject_template = 'S {{invoice_number}}';
+    inner.presets.overdue.message_template = 'M {{customer_name}}';
+    const s = parseReminderMessaging(JSON.stringify(inner));
+    expect(s.presets.overdue.enabled).toBe(true);
+  });
+
+  it('parse treats enabled "true" string as customize on', () => {
+    const s = parseReminderMessaging({
+      version: 1,
+      presets: {
+        before_due: {
+          enabled: 'true',
+          subject_template: 'Custom subj {{invoice_number}}',
+          message_template: 'Hello {{customer_name}}',
+          tone: 'professional',
+        },
+        due_today: createDefaultReminderMessagingSettings().presets.due_today,
+        overdue: createDefaultReminderMessagingSettings().presets.overdue,
+        final_reminder: createDefaultReminderMessagingSettings().presets.final_reminder,
+      },
+    } as unknown as Parameters<typeof parseReminderMessaging>[0]);
+    expect(s.presets.before_due.enabled).toBe(true);
+  });
+
   it('parse accepts use_custom_copy as alias for enabled', () => {
     const raw = {
       version: 1,
@@ -229,5 +265,33 @@ describe('reminder-messaging', () => {
     expect(typeof model.due_date).toBe('string');
     expect(typeof model.payment_link).toBe('string');
     expect(typeof model.business_name).toBe('string');
+  });
+
+  it('escapes stray {{ in merge HTML so Postmark nested templates do not break', () => {
+    const vars = buildReminderRenderVariables({
+      customerName: 'A',
+      businessName: 'B',
+      invoiceNumber: '1',
+      amount: 10,
+      currency: 'USD',
+      dueDateIso: '2026-05-20',
+      paymentUrl: 'https://pay.example.com/x',
+      supportEmail: 'help@acme.com',
+    });
+    const s = createDefaultReminderMessagingSettings();
+    s.presets.before_due.enabled = true;
+    s.presets.before_due.subject_template = 'Hi {{invoice_number}}';
+    s.presets.before_due.message_template = 'Literal {{ double brace';
+    const { templateModel } = buildPostmarkPaymentReminderTemplateModel({
+      st: s,
+      preset: 'before_due',
+      vars,
+      hasPaymentUrl: true,
+      rawAmount: 10,
+      currencyCode: 'USD',
+    });
+    const html = String((templateModel as { reminder_message?: string }).reminder_message ?? '');
+    expect(html).toContain('&#123;&#123;');
+    expect(html).not.toMatch(/\{\{\s*$/);
   });
 });

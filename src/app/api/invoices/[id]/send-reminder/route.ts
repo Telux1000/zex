@@ -54,7 +54,17 @@ export async function POST(
     return NextResponse.json({ error: result.error ?? 'Failed' }, { status: result.error === 'Forbidden' ? 403 : 400 });
   }
   if (result.skipped) {
-    return NextResponse.json({ ok: true, skipped: true });
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reminder_type: result.reminder_type ?? null,
+      reminder_type_label: result.reminder_type_label ?? null,
+    });
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    skipped: false,
+    reminder_type: result.reminder_type,
+    reminder_type_label: result.reminder_type_label,
+  });
 }

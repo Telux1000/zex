@@ -463,7 +463,16 @@ export async function assistantResendInvoiceReminder(
     };
   }
   if (result.skipped) {
-    return { ok: true, message: 'Nothing to send — the balance may already be cleared.' };
+    if (result.reminder_type_label) {
+      return {
+        ok: true,
+        message: `A “${result.reminder_type_label}” reminder was just sent. Try again in a moment if you need to resend.`,
+      };
+    }
+    return { ok: true, message: 'Nothing to send — the balance may already be cleared, or payment reminders are off in settings.' };
   }
-  return { ok: true, message: 'Payment reminder sent to the customer.' };
+  const copyHint = result.reminder_type_label
+    ? ` (using the “${result.reminder_type_label}” copy from Reminder emails settings).`
+    : '.';
+  return { ok: true, message: `Payment reminder sent to the customer${copyHint}` };
 }

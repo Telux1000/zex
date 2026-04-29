@@ -6,6 +6,7 @@ import {
   createDefaultReminderMessagingSettings,
   DEFAULT_COPY,
   parseReminderMessaging,
+  REMINDER_PRESET_DISPLAY_LABEL,
   type ReminderMessagePreset,
   type ReminderMessagingSettingsV1,
   type ReminderPresetRow,
@@ -18,13 +19,6 @@ const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300
 const inputClass =
   'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 const monoClass = `${inputClass} font-mono text-sm disabled:opacity-60`;
-
-const PRESET_LABEL: Record<ReminderMessagePreset, string> = {
-  before_due: 'Before due date',
-  due_today: 'Due today',
-  overdue: 'Overdue',
-  final_reminder: 'Final reminder',
-};
 
 const PLACEHOLDERS_LIST =
   '{{customer_name}} · {{business_name}} · {{invoice_number}} · {{amount_due}} · {{due_date}} · {{payment_link}} · {{support_email}}';
@@ -51,10 +45,10 @@ function clientValidate(m: ReminderMessagingSettingsV1): string | null {
     const row = m.presets[key];
     if (!row.enabled) continue;
     if (!String(row.subject_template ?? '').trim()) {
-      return `Add a subject for “${PRESET_LABEL[key]}” or select “Use default message”.`;
+      return `Add a subject for “${REMINDER_PRESET_DISPLAY_LABEL[key]}” or select “Use default message”.`;
     }
     if (!String(row.message_template ?? '').trim()) {
-      return `Add a message for “${PRESET_LABEL[key]}” or select “Use default message”.`;
+      return `Add a message for “${REMINDER_PRESET_DISPLAY_LABEL[key]}” or select “Use default message”.`;
     }
   }
   return null;
@@ -160,7 +154,7 @@ export function ReminderMessagingForm({ business, onSuccess, onClearSuccess }: P
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
               <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">
-                {PRESET_LABEL[key]}
+                {REMINDER_PRESET_DISPLAY_LABEL[key]}
               </h3>
               <div className="flex flex-shrink-0 flex-wrap gap-2">
                 <button
@@ -195,7 +189,7 @@ export function ReminderMessagingForm({ business, onSuccess, onClearSuccess }: P
               <div
                 className="relative flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 p-1 dark:border-slate-600"
                 role="radiogroup"
-                aria-label={`Message copy for ${PRESET_LABEL[key]}`}
+                aria-label={`Message copy for ${REMINDER_PRESET_DISPLAY_LABEL[key]}`}
               >
                 <span id={`reminder-copy-help-${key}`} className="sr-only">
                   Default: Zenzex sends a professional message automatically. Customize: You can edit the
@@ -407,7 +401,7 @@ export function ReminderMessagingForm({ business, onSuccess, onClearSuccess }: P
           >
             <div className="flex items-start justify-between gap-2">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Preview email{previewPreset ? ` — ${PRESET_LABEL[previewPreset]}` : ''}
+                Preview email{previewPreset ? ` — ${REMINDER_PRESET_DISPLAY_LABEL[previewPreset]}` : ''}
               </h3>
               <button
                 type="button"
