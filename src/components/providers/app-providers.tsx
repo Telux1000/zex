@@ -3,7 +3,7 @@
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { ToastProvider } from '@/components/feedback/toast/ToastProvider';
 import { ClientStorageMigration } from '@/components/providers/ClientStorageMigration';
-import { PaddleProvider } from '@/components/paddle/PaddleProvider';
+import { WaitlistUiProvider } from '@/components/waitlist/waitlist-context';
 import type { ThemeMode } from '@/lib/theme/constants';
 
 export function AppProviders({
@@ -15,10 +15,10 @@ export function AppProviders({
 }) {
   return (
     <ThemeProvider initialTheme={initialTheme}>
-      <PaddleProvider>
-        <ClientStorageMigration />
-        <ToastProvider>{children}</ToastProvider>
-      </PaddleProvider>
+      <ClientStorageMigration />
+      <ToastProvider>
+        <WaitlistUiProvider>{children}</WaitlistUiProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

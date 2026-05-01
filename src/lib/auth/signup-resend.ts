@@ -76,6 +76,48 @@ export function resolveAppBaseUrl(preferredOrigin?: string): string | undefined 
   return undefined;
 }
 
+function isLocalhostSignupRedirect(raw: string | null): boolean {
+  const value = String(raw ?? '').toLowerCase();
+  return value.includes('localhost') || value.includes('127.0.0.1') || value.includes('0.0.0.0');
+}
+
+function redirectToUsesAuthCallbackPath(raw: string | null): boolean {
+  if (!raw) return false;
+  try {
+    const pathname = new URL(raw).pathname.replace(/\/$/, '') || '/';
+    return pathname === '/auth/callback';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Supabase's `action_link` often carries `redirect_to` as the project Site URL (homepage).
+ * The marketing home page does not exchange the PKCE code or read hash tokens — users must
+ * land on `/auth/callback` first, then we send them to `/login?verified=success` when appropriate.
+ */
+export function enforceSignupConfirmationRedirectOnActionLink(
+  actionLink: string,
+  redirectTo?: string
+): string {
+  const safeRedirect = String(redirectTo ?? '').trim();
+  if (!safeRedirect) return actionLink;
+  try {
+    const u = new URL(actionLink);
+    const existing = u.searchParams.get('redirect_to');
+    const shouldReplace =
+      !existing ||
+      isLocalhostSignupRedirect(existing) ||
+      !redirectToUsesAuthCallbackPath(existing);
+    if (shouldReplace) {
+      u.searchParams.set('redirect_to', safeRedirect);
+    }
+    return u.toString();
+  } catch {
+    return actionLink;
+  }
+}
+
 export async function logSignupResendAttempt(
   admin: SupabaseClient,
   input: {

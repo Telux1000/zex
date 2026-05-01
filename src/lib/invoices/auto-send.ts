@@ -7,6 +7,12 @@ import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-da
 import { notifyBusinessEvent } from '@/services/notifications';
 import { createActivity } from '@/lib/activity';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
+import type { InvoiceSettings } from '@/lib/database.types';
+import {
+  appendZenzexEmailBrandingHtml,
+  appendZenzexEmailBrandingText,
+  zenzexEmailBrandingTemplateModel,
+} from '@/lib/invoices/zenzex-invoice-branding';
 
 const APP_URL = resolveAppBaseUrl() ?? 'http://localhost:3000';
 
@@ -51,7 +57,7 @@ export async function autoSendInvoiceIfEligible(
 
   const { data: business } = await supabase
     .from('businesses')
-    .select('id, name, payment_settings, owner_id')
+    .select('id, name, payment_settings, invoice_settings, owner_id')
     .eq('id', String(invoice.business_id))
     .single();
   if (!business) return { ok: false as const, skipped: true as const, reason: 'business_not_found' };
@@ -118,9 +124,11 @@ export async function autoSendInvoiceIfEligible(
 
   const invoiceNumberText = String(invoice.invoice_number);
   const customerNameText = String(invoice.customer_name ?? 'customer');
-  const fallbackHtml = paymentUrl
+  const invSettings = (business as { invoice_settings?: InvoiceSettings | null }).invoice_settings;
+  const rawFallbackHtml = paymentUrl
     ? `<p>Invoice ${invoiceNumberText} is ready.</p><p><a href="${paymentUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#3b5cd1;color:#ffffff;text-decoration:none;font-weight:600;">Pay with card</a></p><p style="margin-top:8px;font-size:12px;color:#64748b;">Or <a href="${paymentUrl}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">view payment link</a></p>`
     : `<p>Invoice ${invoiceNumberText} is ready.</p>`;
+  const fallbackHtml = appendZenzexEmailBrandingHtml(rawFallbackHtml, invSettings);
 
   await notifyBusinessEvent(supabase as any, {
     businessId: String(invoice.business_id),
@@ -140,9 +148,12 @@ export async function autoSendInvoiceIfEligible(
         dueDate: String(invoice.due_date ?? ''),
       }),
       htmlBody: fallbackHtml,
-      textBody: paymentUrl
-        ? `Invoice ${invoiceNumberText} is ready. Pay here: ${paymentUrl}`
-        : `Invoice ${invoiceNumberText} is ready. Please review and complete payment.`,
+      textBody: appendZenzexEmailBrandingText(
+        paymentUrl
+          ? `Invoice ${invoiceNumberText} is ready. Pay here: ${paymentUrl}`
+          : `Invoice ${invoiceNumberText} is ready. Please review and complete payment.`,
+        invSettings
+      ),
       templateEnvKey: 'POSTMARK_TEMPLATE_INVOICE_SENT',
       templateModel: {
         invoiceNumber: invoiceNumberText,
@@ -154,6 +165,7 @@ export async function autoSendInvoiceIfEligible(
         paymentUrl,
         paymentLinkText: 'View payment link',
         hasPaymentUrl: Boolean(paymentUrl),
+        ...zenzexEmailBrandingTemplateModel(invSettings),
       },
       tag: 'invoice_sent',
       attachments: invoicePdfAttachment,

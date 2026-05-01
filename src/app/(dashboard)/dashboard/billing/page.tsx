@@ -27,6 +27,7 @@ import {
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { BillingCheckoutButton } from '@/components/billing/BillingCheckoutButton';
 import { BillingPlansUpgradeSection } from '@/components/billing/BillingPlansUpgradeSection';
+import { RegionWaitlistBanner } from '@/components/waitlist/RegionWaitlistBanner';
 import { cn } from '@/lib/utils/cn';
 
 type BillingBadgeStatus = 'active' | 'trialing' | 'past_due' | 'cancelled' | 'trial_expired';
@@ -150,6 +151,7 @@ export default async function BillingPaymentsPage({
   const checkoutNotice = searchParams?.checkout;
 
   const planCard = pricingPlansEffective.find((p) => p.id === plan) ?? pricingPlansEffective[0];
+  const geoWaitlistActive = canSwitchPlan && (requiresPayment || effective === 'trialing');
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -159,6 +161,8 @@ export default async function BillingPaymentsPage({
           Manage subscription, payment methods, and billing history in one place.
         </p>
       </div>
+
+      {geoWaitlistActive ? <RegionWaitlistBanner active /> : null}
 
       {showPastDueAlert && (
         <div
@@ -262,17 +266,22 @@ export default async function BillingPaymentsPage({
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
             {canSwitchPlan
               ? requiresPayment
-                ? 'Pay securely with Paddle to restore access. Subscription renewals are handled in your Paddle customer billing.'
+                ? 'Pay securely to restore access. Renewals follow the payment method you use at checkout.'
                 : planCard.isFree
                   ? 'Add a payment method when you move to a paid plan.'
-                  : 'Your saved payment methods are managed in Paddle customer billing.'
+                  : 'Manage your card or bank details in the email receipts from your last successful payment, or use Pay securely below if you need to pay again.'
               : 'The workspace owner manages subscription billing.'}
           </p>
           {canSwitchPlan ? (
             <div className="mt-4">
               {requiresPayment ? (
-                <BillingCheckoutButton plan={plan} billingInterval={profileBillingInterval} customerEmail={user.email}>
-                  Pay & restore access
+                <BillingCheckoutButton
+                  plan={plan}
+                  billingInterval={profileBillingInterval}
+                  customerEmail={user.email}
+                  billingProviderMode={platformBilling?.billing_provider_mode}
+                >
+                  Pay securely
                 </BillingCheckoutButton>
               ) : planCard.isFree ? (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -280,7 +289,7 @@ export default async function BillingPaymentsPage({
                 </p>
               ) : (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  For active subscriptions, open your latest Paddle receipt or billing email to manage card details.
+                  For active subscriptions, use your payment provider’s emails or customer portal to update your payment method.
                 </p>
               )}
             </div>
@@ -296,6 +305,9 @@ export default async function BillingPaymentsPage({
         trialMessagingHeadline={trialMessagingHeadline}
         trialDays={trialDaysConfigured}
         customerEmail={user.email}
+        billingProviderMode={
+          platformBilling?.billing_provider_mode ?? 'flutterwave_primary_paystack_fallback'
+        }
       />
 
       <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5">

@@ -1,4 +1,4 @@
-import type { PaymentSettings } from '@/lib/database.types';
+import type { InvoiceSettings, PaymentSettings } from '@/lib/database.types';
 
 export type SavedBusiness = {
   name: string;
@@ -11,6 +11,7 @@ export type SavedBusiness = {
   postal_code?: string | null;
   country?: string | null;
   tax_id?: string | null;
+  invoice_settings?: InvoiceSettings | null;
   payment_settings?: PaymentSettings | null;
   stripe_charges_enabled?: boolean;
 };

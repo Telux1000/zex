@@ -44,7 +44,7 @@ export default async function PublicInvoicePage({
     supabase
       .from('businesses')
       .select(
-        'id, name, logo_url, currency, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled'
+        'id, name, logo_url, currency, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, invoice_settings, stripe_charges_enabled'
       )
       .eq('id', invoice.business_id)
       .single(),

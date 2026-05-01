@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
 import { BillingPlanActionButton } from '@/components/billing/BillingPlanActionButton';
 import type { BillingPlan, PlanBillingInterval, PricingPlan } from '@/lib/billing/plans';
 import { pricingCardPrimaryCtaLabel, pricingCardSecondaryTrialCtaLabel, pricingTrialMessaging } from '@/lib/billing/plans';
+import type { PlanPricingCtaAction } from '@/lib/billing/pricing-cta-action';
+import { planPricingCtaTrialAction, planPricingCtaUpgradeAction } from '@/lib/billing/pricing-cta-action';
+import type { BillingProviderMode } from '@/lib/billing/saas-billing-config';
 
 export function BillingPlansUpgradeSection({
   plans,
@@ -15,6 +18,7 @@ export function BillingPlansUpgradeSection({
   trialMessagingHeadline,
   trialDays,
   customerEmail,
+  billingProviderMode,
 }: {
   plans: PricingPlan[];
   currentPlan: BillingPlan;
@@ -23,9 +27,28 @@ export function BillingPlansUpgradeSection({
   trialMessagingHeadline: string;
   trialDays: number;
   customerEmail?: string | null;
+  billingProviderMode: BillingProviderMode;
 }) {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
-  const [busyRowPlan, setBusyRowPlan] = useState<BillingPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<BillingPlan>(currentPlan);
+  const loadingActionRef = useRef<PlanPricingCtaAction | null>(null);
+  const [loadingAction, setLoadingAction] = useState<PlanPricingCtaAction | null>(null);
+
+  useEffect(() => {
+    setSelectedPlan(currentPlan);
+  }, [currentPlan]);
+
+  const beginAction = useCallback((id: PlanPricingCtaAction) => {
+    if (loadingActionRef.current != null) return false;
+    loadingActionRef.current = id;
+    setLoadingAction(id);
+    return true;
+  }, []);
+
+  const clearAction = useCallback(() => {
+    loadingActionRef.current = null;
+    setLoadingAction(null);
+  }, []);
 
   const secondaryLabel = pricingCardSecondaryTrialCtaLabel(trialDays);
 
@@ -54,12 +77,20 @@ export function BillingPlansUpgradeSection({
           plans={plans}
           billingInterval={billingInterval}
           currentPlanId={currentPlan}
+          selectedPlanId={selectedPlan}
+          onPlanClick={(plan) => {
+            setSelectedPlan(plan);
+            if (process.env.NODE_ENV !== 'production') {
+              console.info(`[pricing] card_selected=${plan}`);
+              console.info(`[pricing] selected_plan=${plan}`);
+            }
+          }}
           renderDualCta={(option) => {
             const current = option.id === currentPlan;
             const isPaidPlan = option.id !== 'starter';
             const primaryCta = requiresPayment
               ? current
-                ? 'Pay & activate'
+                ? 'Pay securely'
                 : pricingCardPrimaryCtaLabel(option.id)
               : current
                 ? isPaidPlan
@@ -91,8 +122,11 @@ export function BillingPlansUpgradeSection({
                   billingInterval={billingInterval}
                   customerEmail={customerEmail}
                   embeddedInPricingCard
-                  busyRowPlan={busyRowPlan}
-                  onBusyPlanChange={setBusyRowPlan}
+                  ctaActionId={planPricingCtaUpgradeAction(option.id)}
+                  loadingAction={loadingAction}
+                  beginAction={beginAction}
+                  clearAction={clearAction}
+                  billingProviderMode={billingProviderMode}
                 />
               ),
               secondary:
@@ -108,8 +142,11 @@ export function BillingPlansUpgradeSection({
                     customerEmail={customerEmail}
                     embeddedInPricingCard
                     trialSecondaryStyle
-                    busyRowPlan={busyRowPlan}
-                    onBusyPlanChange={setBusyRowPlan}
+                    ctaActionId={planPricingCtaTrialAction(option.id)!}
+                    loadingAction={loadingAction}
+                    beginAction={beginAction}
+                    clearAction={clearAction}
+                    billingProviderMode={billingProviderMode}
                   />
                 ) : null,
             };

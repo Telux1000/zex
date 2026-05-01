@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    // Platform SaaS subscriptions use Paddle (`/api/webhooks/paddle`).
+    // Platform SaaS subscription webhooks: `/api/webhooks/flutterwave`, `/api/webhooks/paystack`.
     if (session.mode === 'subscription') {
       return NextResponse.json({ received: true, ignored: 'platform_subscription_checkout' });
     }

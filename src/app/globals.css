@@ -87,6 +87,24 @@ body {
     @apply mt-1 block w-full rounded-lg border border-[var(--card-border)] bg-[var(--card)] px-3 py-2 text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] dark:text-white dark:placeholder:text-slate-500;
   }
 
+  /* Native checkbox: theme tokens + per-element color-scheme so light/dark matches Settings surfaces */
+  .app-checkbox {
+    @apply h-4 w-4 shrink-0 cursor-pointer rounded
+      border border-[var(--card-border)] bg-[var(--card)]
+      accent-zenzex-600 shadow-sm
+      [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]
+      dark:[color-scheme:dark] dark:accent-zenzex-500;
+  }
+
+  /* Radio: same accent + surfaces as .app-checkbox (theme-aware indigo) */
+  .app-radio {
+    @apply h-4 w-4 shrink-0 cursor-pointer
+      border border-[var(--card-border)] bg-[var(--card)]
+      accent-zenzex-600 shadow-sm
+      [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]
+      dark:[color-scheme:dark] dark:accent-zenzex-500;
+  }
+
   .app-link-accent {
     @apply font-medium text-indigo-600 transition-colors hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300;
   }

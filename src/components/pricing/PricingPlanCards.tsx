@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import {
-  formatPricingCardMainPrice,
+  formatPricingCardMainPriceParts,
+  formatUsdFromCents,
+  formatYearlySavingsComparedToMonthlyBilling,
   PLAN_PRICE_YEARLY_DISCOUNT_PERCENT,
   pricingCardShowsYearlySavingsLine,
   type BillingPlan,
@@ -18,25 +20,52 @@ export function PricingPlanCards({
   renderDualCta,
   /** When set (e.g. Billing & Payment), highlights the active plan like the dashboard billing page. */
   currentPlanId,
+  /** Optional local selection (e.g. onboarding/upgrade chooser prior to checkout). */
+  selectedPlanId,
+  /** Optional card click handler for local plan selection. */
+  onPlanClick,
 }: {
   plans: PricingPlan[];
   billingInterval: PlanBillingInterval;
   renderDualCta: (plan: PricingPlan) => { primary: ReactNode; secondary?: ReactNode | null };
   currentPlanId?: BillingPlan | null;
+  selectedPlanId?: BillingPlan | null;
+  onPlanClick?: (plan: BillingPlan) => void;
 }) {
   return (
-    <div className="mx-auto grid max-w-7xl grid-cols-1 items-stretch gap-4 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 items-stretch gap-4 [overflow:visible] sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
       {plans.map((plan) => {
-        const mainPrice = formatPricingCardMainPrice(plan, billingInterval);
+        const { amount: mainPrice, suffix: priceSuffix } = formatPricingCardMainPriceParts(plan, billingInterval);
+        const yearlySavings = formatYearlySavingsComparedToMonthlyBilling(plan);
         const current = currentPlanId != null && plan.id === currentPlanId;
+        const selected = selectedPlanId != null && plan.id === selectedPlanId;
         return (
           <div
             key={plan.id}
+            role={onPlanClick ? 'button' : undefined}
+            tabIndex={onPlanClick ? 0 : undefined}
+            aria-pressed={onPlanClick ? selected : undefined}
+            onClick={onPlanClick ? () => onPlanClick(plan.id) : undefined}
+            onKeyDown={
+              onPlanClick
+                ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onPlanClick(plan.id);
+                    }
+                  }
+                : undefined
+            }
             className={cn(
               'relative flex h-full flex-col overflow-visible',
+              onPlanClick && 'cursor-pointer',
               plan.popular
-                ? 'rounded-xl border-2 border-indigo-500/45 bg-[var(--card)] p-5 shadow-xl shadow-indigo-950/[0.09] ring-1 ring-indigo-500/15 sm:p-8 dark:border-indigo-400/35 dark:bg-[var(--card)] dark:shadow-black/50 dark:ring-indigo-400/10'
+                ? 'z-20 rounded-xl border-2 border-indigo-500/50 bg-[var(--card)] p-5 shadow-2xl shadow-indigo-950/15 ring-1 ring-indigo-500/20 [transform:translateZ(0)] sm:scale-[1.02] sm:p-8 dark:border-indigo-400/40 dark:shadow-indigo-950/30 dark:ring-indigo-400/15'
                 : 'app-card-surface p-5 sm:p-8',
+              selected &&
+                'border-indigo-300/90 bg-indigo-50/30 dark:border-indigo-400/60 dark:bg-indigo-900/10',
+              selected &&
+                'ring-2 ring-indigo-500/80 ring-offset-2 ring-offset-[var(--card)] dark:ring-indigo-400/70 dark:ring-offset-slate-900',
               current &&
                 'ring-2 ring-indigo-500/60 ring-offset-2 ring-offset-[var(--card)] dark:ring-indigo-400/50 dark:ring-offset-slate-900'
             )}
@@ -45,7 +74,7 @@ export function PricingPlanCards({
               <div className="absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2">
                 {plan.popular ? (
                   <span className="whitespace-nowrap rounded-full bg-indigo-600 px-3.5 py-1 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-indigo-500">
-                    Recommended
+                    Most popular
                   </span>
                 ) : null}
                 {current ? (
@@ -55,6 +84,12 @@ export function PricingPlanCards({
                 ) : null}
               </div>
             )}
+            {selected && !current ? (
+              <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:border-indigo-400/40 dark:bg-slate-900/80 dark:text-indigo-300">
+                <Check className="h-3 w-3" aria-hidden />
+                Selected
+              </div>
+            ) : null}
             <h3
               className={
                 plan.popular || current
@@ -72,12 +107,24 @@ export function PricingPlanCards({
                 <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
                   {mainPrice}
                 </span>
+                {priceSuffix ? (
+                  <span className="text-2xl font-bold text-slate-800 dark:text-slate-200 sm:text-3xl">
+                    {priceSuffix}
+                  </span>
+                ) : null}
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">/mo</span>
               </p>
+              {billingInterval === 'yearly' && !plan.isFree && plan.billedAnnuallyTotalCents != null && (
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-500">
+                  {formatUsdFromCents(plan.billedAnnuallyTotalCents)}
+                  {priceSuffix}/year total
+                </p>
+              )}
               {pricingCardShowsYearlySavingsLine(plan, billingInterval) ? (
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Billed annually · save {PLAN_PRICE_YEARLY_DISCOUNT_PERCENT}%
-                </span>
+                <div className="space-y-0.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  {yearlySavings ? <p>{yearlySavings}</p> : null}
+                  <p>Billed annually · save {PLAN_PRICE_YEARLY_DISCOUNT_PERCENT}%</p>
+                </div>
               ) : null}
             </div>
             <ul className="mt-8 flex flex-1 flex-col gap-3 text-sm leading-snug text-slate-600 dark:text-slate-400">

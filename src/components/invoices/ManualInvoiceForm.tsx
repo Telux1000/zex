@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { createClient } from '@/lib/supabase/client';
-import type { Customer, PaymentSettings } from '@/lib/database.types';
+import type { Customer, InvoiceSettings, PaymentSettings } from '@/lib/database.types';
 import { countries as locationCountries, getStates, normalizeCountryCode as normalizeCountryCodeLocation } from '@/lib/location';
 import { formatDisplayDate } from '@/lib/utils/date';
 import { resolveDiscountAmount } from '@/lib/validations/invoice';
@@ -254,6 +254,7 @@ export type EditModeInitialData = {
     postal_code?: string | null;
     country?: string | null;
     tax_id?: string | null;
+    invoice_settings?: InvoiceSettings | null;
     payment_settings?: PaymentSettings | null;
     stripe_charges_enabled?: boolean;
   };
@@ -678,6 +679,7 @@ export default function ManualInvoiceForm({
     postal_code: string | null;
     country: string | null;
     tax_id: string | null;
+    invoice_settings: InvoiceSettings | null;
     payment_settings: PaymentSettings | null;
     stripe_charges_enabled: boolean;
   } | null>(null);
@@ -923,6 +925,7 @@ export default function ManualInvoiceForm({
           postal_code: biz.postal_code ?? null,
           country: biz.country ?? null,
           tax_id: biz.tax_id ?? null,
+          invoice_settings: (biz as { invoice_settings?: InvoiceSettings | null }).invoice_settings ?? null,
           payment_settings: (biz.payment_settings as PaymentSettings | null) ?? null,
           stripe_charges_enabled: biz.stripe_charges_enabled ?? false,
         });
@@ -1158,6 +1161,7 @@ export default function ManualInvoiceForm({
         postal_code: biz.postal_code ?? null,
         country: biz.country ?? null,
         tax_id: biz.tax_id ?? null,
+        invoice_settings: (biz as { invoice_settings?: InvoiceSettings | null }).invoice_settings ?? null,
         payment_settings: (biz.payment_settings as PaymentSettings | null) ?? null,
         stripe_charges_enabled: biz.stripe_charges_enabled ?? false,
       });
@@ -2892,6 +2896,7 @@ export default function ManualInvoiceForm({
       postal_code: business.postal_code,
       country: business.country,
       tax_id: business.tax_id,
+      invoice_settings: business.invoice_settings,
       payment_settings: business.payment_settings,
       stripe_charges_enabled: business.stripe_charges_enabled,
     };

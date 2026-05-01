@@ -8,6 +8,12 @@ import { logAuditEvent } from '@/lib/audit-log';
 import { notifyBusinessEvent } from '@/services/notifications';
 import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-data';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
+import type { InvoiceSettings } from '@/lib/database.types';
+import {
+  appendZenzexEmailBrandingHtml,
+  appendZenzexEmailBrandingText,
+  zenzexEmailBrandingTemplateModel,
+} from '@/lib/invoices/zenzex-invoice-branding';
 
 const APP_URL = resolveAppBaseUrl() ?? 'http://localhost:3000';
 
@@ -36,6 +42,7 @@ type BusinessRow = {
   id: string;
   name?: string | null;
   payment_settings?: unknown;
+  invoice_settings?: InvoiceSettings | null;
 };
 
 /**
@@ -130,9 +137,11 @@ export async function deliverInvoiceSendEmail(
 
   const invoiceNumberText = String(invoice.invoice_number);
   const customerNameText = String(invoice.customer_name ?? 'customer');
-  const fallbackHtml = paymentUrl
+  const invSettings = (business as BusinessRow).invoice_settings;
+  const rawFallbackHtml = paymentUrl
     ? `<p>Invoice ${invoiceNumberText} is ready.</p><p><a href="${paymentUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#3b5cd1;color:#ffffff;text-decoration:none;font-weight:600;">Pay with card</a></p><p style="margin-top:8px;font-size:12px;color:#64748b;">Or <a href="${paymentUrl}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">view payment link</a></p>`
     : `<p>Invoice ${invoiceNumberText} is ready.</p>`;
+  const fallbackHtml = appendZenzexEmailBrandingHtml(rawFallbackHtml, invSettings);
 
   const notifyResult = await notifyBusinessEvent(supabase, {
     businessId: String(invoice.business_id),
@@ -153,9 +162,12 @@ export async function deliverInvoiceSendEmail(
         dueDate: String(invoice.due_date ?? ''),
       }),
       htmlBody: fallbackHtml,
-      textBody: paymentUrl
-        ? `Invoice ${invoiceNumberText} is ready. Pay here: ${paymentUrl}`
-        : `Invoice ${invoiceNumberText} is ready. Please review and complete payment.`,
+      textBody: appendZenzexEmailBrandingText(
+        paymentUrl
+          ? `Invoice ${invoiceNumberText} is ready. Pay here: ${paymentUrl}`
+          : `Invoice ${invoiceNumberText} is ready. Please review and complete payment.`,
+        invSettings
+      ),
       templateEnvKey: 'POSTMARK_TEMPLATE_INVOICE_SENT',
       templateModel: {
         invoiceNumber: invoiceNumberText,
@@ -167,6 +179,7 @@ export async function deliverInvoiceSendEmail(
         paymentUrl,
         paymentLinkText: 'View payment link',
         hasPaymentUrl: Boolean(paymentUrl),
+        ...zenzexEmailBrandingTemplateModel(invSettings),
       },
       tag: 'invoice_sent',
       attachments: invoicePdfAttachment,

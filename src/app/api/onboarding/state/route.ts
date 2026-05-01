@@ -77,6 +77,7 @@ export async function GET() {
       onboardingEntry,
       planCatalog,
       trialDaysConfigured,
+      billingProviderMode: platform?.billing_provider_mode ?? 'flutterwave_primary_paystack_fallback',
     });
   }
 
@@ -112,5 +113,6 @@ export async function GET() {
     onboardingEntry,
     planCatalog,
     trialDaysConfigured,
+    billingProviderMode: platform?.billing_provider_mode ?? 'flutterwave_primary_paystack_fallback',
   });
 }

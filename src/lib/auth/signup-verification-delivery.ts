@@ -1,26 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { deliverSignupConfirmationPostmark } from '@/lib/auth/deliver-signup-confirmation-postmark';
-import { getEmailRedirectToForSignupResend } from '@/lib/auth/signup-resend';
-
-function isLocalhostRedirect(raw: string | null): boolean {
-  const value = String(raw ?? '').toLowerCase();
-  return value.includes('localhost') || value.includes('127.0.0.1') || value.includes('0.0.0.0');
-}
-
-function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string): string {
-  const safeRedirect = String(redirectTo ?? '').trim();
-  if (!safeRedirect) return actionLink;
-  try {
-    const u = new URL(actionLink);
-    const existing = u.searchParams.get('redirect_to');
-    if (!existing || isLocalhostRedirect(existing)) {
-      u.searchParams.set('redirect_to', safeRedirect);
-    }
-    return u.toString();
-  } catch {
-    return actionLink;
-  }
-}
+import {
+  enforceSignupConfirmationRedirectOnActionLink,
+  getEmailRedirectToForSignupResend,
+} from '@/lib/auth/signup-resend';
 
 /**
  * Builds a verification link via Admin API (does not trigger Supabase's built-in mailer),
@@ -58,7 +41,7 @@ export async function sendSignupVerificationViaGenerateLink(
   if (!linkRaw) {
     return { error: new Error('No confirmation link generated') };
   }
-  const link = enforceSafeRedirectOnActionLink(linkRaw, redirect);
+  const link = enforceSignupConfirmationRedirectOnActionLink(linkRaw, redirect);
 
   try {
     await deliverSignupConfirmationPostmark({

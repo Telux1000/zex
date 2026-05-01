@@ -40,6 +40,7 @@ export async function getInvoiceRendererDataForOwnerPdf(
         country,
         tax_id,
         payment_settings,
+        invoice_settings,
         stripe_charges_enabled
       )
     `
@@ -62,6 +63,7 @@ export async function getInvoiceRendererDataForOwnerPdf(
     country?: string | null;
     tax_id?: string | null;
     payment_settings: Record<string, unknown> | null;
+    invoice_settings: unknown;
     stripe_charges_enabled: boolean;
   } | null;
   if (!business) throw new Error('Business not found');
@@ -92,6 +94,7 @@ export async function getInvoiceRendererDataForOwnerPdf(
     country: business.country ?? null,
     tax_id: business.tax_id ?? null,
     payment_settings: (business.payment_settings as unknown) ?? null,
+    invoice_settings: (business.invoice_settings as SavedBusiness['invoice_settings']) ?? null,
     stripe_charges_enabled: business.stripe_charges_enabled ?? false,
   };
 

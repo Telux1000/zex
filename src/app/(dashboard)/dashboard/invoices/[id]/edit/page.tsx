@@ -24,7 +24,7 @@ export default async function InvoiceEditPage({
     .select(`
       *,
       invoice_items(*),
-      businesses(id, name, currency, logo_url, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, stripe_charges_enabled)
+      businesses(id, name, currency, logo_url, address_line1, address_line2, city, state, postal_code, country, tax_id, payment_settings, invoice_settings, stripe_charges_enabled)
     `)
     .eq('id', id)
     .single();

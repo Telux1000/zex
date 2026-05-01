@@ -7,6 +7,7 @@ import { buildInviteAcceptUrl, generateInvitePlainToken, hashInviteToken } from 
 import { deliverTeamInviteEmail } from '@/lib/team-invite-postmark';
 import { canInviteRole } from '@/lib/team/rules';
 import { insertTeamAuditLog } from '@/lib/team/audit';
+import { requireTeamInvitesForBusiness } from '@/lib/billing/team-plan-gate.server';
 
 const INVITE_TTL_MS = 15 * 60 * 1000;
 
@@ -34,6 +35,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id: businessId } = await params;
   const gate = await assertBusinessPermission(supabase, businessId, user.id, 'manage_users');
   if (!gate.ok) return gate.response;
+
+  const teamGate = await requireTeamInvitesForBusiness(businessId);
+  if (teamGate) return teamGate;
 
   const body = await req.json();
   const email = body.email != null ? String(body.email).trim().toLowerCase() : '';

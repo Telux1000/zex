@@ -69,7 +69,7 @@ function titleAndDescription(row: {
     case 'admin_billing_synced':
       return {
         title: 'Billing sync completed',
-        description: 'Subscription or billing data was refreshed (Paddle / admin).',
+        description: 'Subscription or billing data was refreshed (billing provider / admin).',
       };
     case 'internal_staff_invite_created':
       return {

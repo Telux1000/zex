@@ -195,7 +195,7 @@ export function InvoiceDocumentView({ doc, invoice, templateId, showSourceQuoteL
         {amountMobile}
         {billToBlock}
         {metaBlock}
-        <LineItemsAndRest doc={doc} skin={skin} />
+        <LineItemsAndRest doc={doc} skin={skin} templateId={templateId} />
       </div>
     );
   }
@@ -210,7 +210,7 @@ export function InvoiceDocumentView({ doc, invoice, templateId, showSourceQuoteL
         {amountMobile}
         {billToBlock}
         {metaBlock}
-        <LineItemsAndRest doc={doc} skin={skin} />
+        <LineItemsAndRest doc={doc} skin={skin} templateId={templateId} />
       </div>
     );
   }
@@ -227,7 +227,7 @@ export function InvoiceDocumentView({ doc, invoice, templateId, showSourceQuoteL
         {amountMobile}
         {billToBlock}
         {metaBlock}
-        <LineItemsAndRest doc={doc} skin={skin} />
+        <LineItemsAndRest doc={doc} skin={skin} templateId={templateId} />
       </div>
     );
   }
@@ -242,7 +242,7 @@ export function InvoiceDocumentView({ doc, invoice, templateId, showSourceQuoteL
         {amountMobile}
         {billToBlock}
         {metaBlock}
-        <LineItemsAndRest doc={doc} skin={skin} />
+        <LineItemsAndRest doc={doc} skin={skin} templateId={templateId} />
       </div>
     );
   }
@@ -257,7 +257,7 @@ export function InvoiceDocumentView({ doc, invoice, templateId, showSourceQuoteL
       {amountMobile}
       {billToBlock}
       {metaBlock}
-      <LineItemsAndRest doc={doc} skin={skin} />
+      <LineItemsAndRest doc={doc} skin={skin} templateId={templateId} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { deliverTeamInviteEmail } from '@/lib/team-invite-postmark';
 import { canInviteRole } from '@/lib/team/rules';
 import type { BusinessMemberRole } from '@/lib/rbac/types';
 import { insertTeamAuditLog } from '@/lib/team/audit';
+import { requireTeamInvitesForBusiness } from '@/lib/billing/team-plan-gate.server';
 
 const INVITE_TTL_MS = 15 * 60 * 1000;
 
@@ -39,6 +40,9 @@ export async function POST(
   const { id: businessId, inviteId } = await params;
   const gate = await assertBusinessPermission(supabase, businessId, user.id, 'manage_users');
   if (!gate.ok) return gate.response;
+
+  const teamGate = await requireTeamInvitesForBusiness(businessId);
+  if (teamGate) return teamGate;
 
   const admin = getSupabaseServiceAdmin();
   if (!admin) return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
@@ -116,6 +120,9 @@ export async function DELETE(
   const { id: businessId, inviteId } = await params;
   const gate = await assertBusinessPermission(supabase, businessId, user.id, 'manage_users');
   if (!gate.ok) return gate.response;
+
+  const teamGate = await requireTeamInvitesForBusiness(businessId);
+  if (teamGate) return teamGate;
 
   const admin = getSupabaseServiceAdmin();
   if (!admin) return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });

@@ -91,7 +91,7 @@ export type OnboardingEntryState = {
   onboarding_status: OnboardingStatus;
   onboarding_ready: boolean;
   should_show_plan_selection: boolean;
-  pending_checkout_provider: 'paddle' | null;
+  pending_checkout_provider: 'paddle' | 'flutterwave' | 'paystack' | 'stripe' | null;
   pending_checkout_plan: BillingPlan | null;
   billing_interval: 'monthly' | 'yearly';
   next_action: OnboardingEntryNextAction;
@@ -118,8 +118,13 @@ function normalizeBillingInterval(raw: unknown): 'monthly' | 'yearly' {
   return raw === 'monthly' ? 'monthly' : 'yearly';
 }
 
-function normalizePendingProvider(raw: unknown): 'paddle' | null {
-  return raw === 'paddle' ? 'paddle' : null;
+function normalizePendingProvider(
+  raw: unknown
+): 'paddle' | 'flutterwave' | 'paystack' | 'stripe' | null {
+  if (raw === 'paddle' || raw === 'flutterwave' || raw === 'paystack' || raw === 'stripe') {
+    return raw;
+  }
+  return null;
 }
 
 function computeTrialStatus(subscriptionStatus: string | null, trialEndsAt: string | null): 'active' | 'expired' | 'none' {

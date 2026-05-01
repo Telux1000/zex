@@ -4,20 +4,20 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description:
-    'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+    'Terms of Service for Zenzex, invoicing, payment tracking, and automation operated by Telux Limited.',
   alternates: {
     canonical: '/terms',
   },
   openGraph: {
     title: 'Terms of Service | Zenzex',
     description:
-      'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+      'Terms of Service for Zenzex, invoicing, payment tracking, and automation operated by Telux Limited.',
     url: '/terms',
   },
   twitter: {
     title: 'Terms of Service | Zenzex',
     description:
-      'Terms of Service for Zenzex—invoicing, payment tracking, and automation operated by Telux Pty Ltd.',
+      'Terms of Service for Zenzex, invoicing, payment tracking, and automation operated by Telux Limited.',
   },
 };
 
@@ -40,7 +40,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">1. Introduction</h2>
             <p className="mt-2 leading-relaxed">
-              By creating an account, visiting, or using Zenzex—including any website or application offered
+              By creating an account, visiting, or using Zenzex, including any website or application offered
               at{' '}
               <a
                 href="https://zenzex.com"
@@ -48,7 +48,7 @@ export default function TermsPage() {
               >
                 zenzex.com
               </a>
-              —you agree to these Terms. If you use Zenzex on behalf of an organization, you represent that
+              you agree to these Terms. If you use Zenzex on behalf of an organization, you represent that
               you have authority to bind it, and &quot;you&quot; includes that organization. If you do not agree, do
               not use the service.
             </p>
@@ -57,7 +57,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">2. About us</h2>
             <p className="mt-2 leading-relaxed">
-              Zenzex is provided by <strong className="font-semibold text-slate-900 dark:text-white">Telux Pty Ltd</strong> (&quot;Telux&quot;, &quot;we&quot;, &quot;us&quot;, &quot;our&quot;). Our public website is{' '}
+              Zenzex is provided by <strong className="font-semibold text-slate-900 dark:text-white">Telux Limited</strong> (&quot;Telux&quot;, &quot;we&quot;, &quot;us&quot;, &quot;our&quot;). Our public website is{' '}
               <a
                 href="https://zenzex.com"
                 className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -199,7 +199,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">11. Intellectual property</h2>
             <p className="mt-2 leading-relaxed">
-              Zenzex—including its software, visual design, documentation, and branding—is owned by Telux or
+              Zenzex, including its software, visual design, documentation, and branding, is owned by Telux or
               its licensors and is protected worldwide by intellectual property laws. Except for the limited
               license in Section 5, these Terms grant you no rights in Telux&apos;s intellectual property.
             </p>
@@ -315,8 +315,8 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">19. Governing law and disputes</h2>
             <p className="mt-2 leading-relaxed">
-              These Terms are governed by the laws of the jurisdiction where Telux Pty Ltd is established,
-              without regard to conflict-of-law rules that would apply another jurisdiction&apos;s laws—subject to
+              These Terms are governed by the laws of the jurisdiction where Telux Limited is established,
+              without regard to conflict-of-law rules that would apply another jurisdiction&apos;s laws, subject to
               the following paragraph.
             </p>
             <p className="mt-2 leading-relaxed">

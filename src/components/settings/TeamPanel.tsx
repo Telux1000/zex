@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Business } from '@/lib/database.types';
 import { BUSINESS_MEMBER_ROLES, type BusinessMemberRole } from '@/lib/rbac/types';
 import { workspaceRoleLabelFromUnknown } from '@/lib/roles/workspace-roles';
@@ -37,6 +38,7 @@ type TeamPayload = {
   owner: TeamMember;
   members: TeamMember[];
   pending_invites: PendingInvite[];
+  entitlements?: { team_invites?: boolean };
 };
 
 type Props = {
@@ -288,6 +290,9 @@ export function TeamPanel({ business }: Props) {
 
   const teamRows: TeamMember[] = payload ? [payload.owner, ...payload.members] : [];
 
+  const teamInviteEntitlement = payload?.entitlements?.team_invites;
+  const canInviteToTeam = teamInviteEntitlement === false ? false : true;
+
   return (
     <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
       <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Team</h2>
@@ -295,7 +300,7 @@ export function TeamPanel({ business }: Props) {
         Manage users, roles, invite status, and account access.
       </p>
 
-      {canManageUsers && (
+      {canManageUsers && canInviteToTeam && (
         <form onSubmit={submitInvite} className="mt-6 space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Invite user</p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -334,6 +339,18 @@ export function TeamPanel({ business }: Props) {
           </div>
           {inviteMsg && <p className="text-xs text-slate-600 dark:text-slate-400">{inviteMsg}</p>}
         </form>
+      )}
+      {canManageUsers && payload && !loading && !canInviteToTeam && (
+        <div className="mt-6 space-y-2 rounded-lg border border-amber-200/90 bg-amber-50/90 p-4 dark:border-amber-500/30 dark:bg-amber-950/30">
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Invites on Enterprise</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Inviting team members, roles, and access controls are included on the Enterprise plan. Upgrade to invite
+            colleagues to this workspace.
+          </p>
+          <Link href="/dashboard/billing" className="app-btn-primary inline-flex">
+            View plans
+          </Link>
+        </div>
       )}
       {actionMsg && (
         <div

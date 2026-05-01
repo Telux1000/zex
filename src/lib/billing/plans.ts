@@ -8,13 +8,19 @@ export type PricingPlan = {
   /** List price per month before interval discount; 0 for free Starter. */
   priceMonthlyCents: number;
   /**
-   * Default Paddle catalog price ID (`pri_*`) for this plan (monthly display).
-   * Null for free Starter. Overridden per env via `catalog-price-map` / NEXT_PUBLIC_PADDLE_PRICE_*.
+   * When set, yearly display uses this all-in total (cents) instead of deriving from the % discount.
+   */
+  billedAnnuallyTotalCents?: number;
+  /** Appended to the main price in cards (e.g. "+" for "$79+"). */
+  listPriceSuffix?: string;
+  /**
+   * Public catalog price ID for this plan (e.g. monthly). Null for free Starter.
+   * Overridden per env: `catalog-price-map` / NEXT_PUBLIC_CATALOG_PRICE_*.
    */
   catalogPriceId: string | null;
   catalogPriceIdMonthly?: string | null;
   catalogPriceIdYearly?: string | null;
-  /** True = no paid subscription / no trial checkout for this tier (e.g. Starter). Paddle handles paid tiers. */
+  /** True = no paid subscription / no trial checkout for this tier (e.g. Starter). */
   isFree: boolean;
   /** Whether to show the secondary “Start N-day trial” action on pricing cards. */
   showTrialCTA: boolean;
@@ -30,7 +36,9 @@ export type PlanFeature =
   | 'ai_assistant'
   | 'voice_screenshot_invoice'
   | 'advanced_insights'
-  | 'multi_currency';
+  | 'multi_currency'
+  | 'teams'
+  | 'api_access';
 
 const PLAN_RANK: Record<BillingPlan, number> = {
   starter: 0,
@@ -39,7 +47,7 @@ const PLAN_RANK: Record<BillingPlan, number> = {
   enterprise: 3,
 };
 
-/** Shared trial policy for marketing and billing copy (keep in sync with checkout / Paddle trial if used). */
+/** Shared trial policy for marketing and billing copy. */
 export const PRICING_TRIAL_DAYS = 14;
 
 export const pricingTrialMessaging = {
@@ -94,74 +102,94 @@ export const pricingPlans: PricingPlan[] = [
     isFree: true,
     showTrialCTA: false,
     priceDisplay: '$0',
-    features: ['Free forever', 'Core invoicing', 'Up to 5 invoices/month'],
+    features: ['Core invoicing', 'Up to 5 invoices/month', 'Basic payment tracking'],
     popular: false,
-    marketingDescription: 'Solid foundation for occasional billing.',
+    marketingDescription: 'For getting started',
   },
   {
     id: 'growth',
     name: 'Growth',
-    priceMonthlyCents: 5900,
+    priceMonthlyCents: 1900,
+    billedAnnuallyTotalCents: 18_000,
     catalogPriceId:
-      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_GROWTH_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ??
+      null,
     catalogPriceIdMonthly:
-      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ?? null,
-    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_YEARLY ?? null,
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_GROWTH_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH ??
+      null,
+    catalogPriceIdYearly:
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_GROWTH_YEARLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
-      'Up to 50 invoices/month',
-      'Automated reminders (email + SMS)',
-      'Scheduled invoice delivery',
+      'Automated payment & invoice reminders',
+      'AI invoice creation (text, voice, or upload)',
+      'Real-time payment tracking',
+      'Unlimited invoices',
     ],
-    popular: false,
-    marketingDescription: 'For teams that invoice on a steady cadence.',
+    popular: true,
+    marketingDescription: 'For freelancers getting paid regularly',
   },
   {
     id: 'professional',
     name: 'Professional',
-    priceMonthlyCents: 7900,
+    priceMonthlyCents: 3900,
+    billedAnnuallyTotalCents: 36_000,
     catalogPriceId:
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_PROFESSIONAL_MONTHLY ??
       process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_MONTHLY ??
       process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ??
       null,
     catalogPriceIdMonthly:
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_PROFESSIONAL_MONTHLY ??
       process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_MONTHLY ??
       process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL ??
       null,
-    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_YEARLY ?? null,
+    catalogPriceIdYearly:
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_PROFESSIONAL_YEARLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_PROFESSIONAL_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
-      'Intelligent invoice creation (text, voice, uploads)',
-      'Advanced reporting and built-in insights',
-      'Full automation across reminders and delivery',
+      'Everything in Growth',
+      'Multi-currency (FX) invoicing & reporting',
+      'Advanced revenue insights & forecasting',
       'Priority support',
     ],
-    popular: true,
-    marketingDescription: 'Complete visibility and automation for growing revenue.',
+    popular: false,
+    marketingDescription: 'For serious businesses scaling revenue',
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    priceMonthlyCents: 9900,
+    priceMonthlyCents: 7900,
+    billedAnnuallyTotalCents: 72_000,
+    listPriceSuffix: '+',
     catalogPriceId:
-      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_ENTERPRISE_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ??
+      null,
     catalogPriceIdMonthly:
-      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ?? null,
-    catalogPriceIdYearly: process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_YEARLY ?? null,
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_ENTERPRISE_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_MONTHLY ??
+      process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE ??
+      null,
+    catalogPriceIdYearly:
+      process.env.NEXT_PUBLIC_CATALOG_PRICE_ENTERPRISE_YEARLY ?? process.env.NEXT_PUBLIC_PADDLE_PRICE_ENTERPRISE_YEARLY ?? null,
     isFree: false,
     showTrialCTA: true,
     features: [
       'Everything in Professional',
-      'Higher usage limits',
-      'Expanded reporting',
-      'Priority support',
-      'Dedicated onboarding',
-      'Custom usage limits',
+      'Team roles, seats, and access controls',
+      'API access for custom integrations & workflows',
+      'Dedicated onboarding & custom limits',
     ],
     popular: false,
-    marketingDescription: 'Extra capacity and support for larger volumes.',
+    marketingDescription: 'For teams and advanced workflows',
   },
 ];
 
@@ -178,11 +206,11 @@ export function formatPlanMonthlyPrice(plan: BillingPlan): string {
   const row = pricingPlans.find((p) => p.id === plan);
   if (row?.isFree) return row.priceDisplay?.trim() || '$0';
   const cents = row?.priceMonthlyCents ?? pricingPlans[0].priceMonthlyCents;
-  return `$${Math.round(cents / 100)}`;
+  return `${formatUsdFromCents(cents)}${row?.listPriceSuffix ?? ''}`;
 }
 
 /** Shown when "Yearly" billing is selected in marketing / onboarding pricing UIs. */
-export const PLAN_PRICE_YEARLY_DISCOUNT_PERCENT = 15;
+export const PLAN_PRICE_YEARLY_DISCOUNT_PERCENT = 20;
 
 export type PlanBillingInterval = 'monthly' | 'yearly';
 
@@ -211,11 +239,59 @@ export function planIsFree(plan: BillingPlan): boolean {
   return getPricingPlan(plan).isFree;
 }
 
-/** Main price amount shown on pricing cards (large bold line before “/mo”). */
+/**
+ * Main price amount shown on pricing cards (large bold line before “/mo”),
+ * without an optional list suffix (see `formatPricingCardMainPriceParts`).
+ */
 export function formatPricingCardMainPrice(plan: PricingPlan, billingInterval: PlanBillingInterval): string {
-  if (plan.isFree) return plan.priceDisplay?.trim() || '$0';
-  const displayCents = effectiveMonthlyCentsFromBaseMonthly(plan.priceMonthlyCents, billingInterval);
-  return formatUsdFromCents(displayCents);
+  return formatPricingCardMainPriceParts(plan, billingInterval).amount;
+}
+
+export function formatPricingCardMainPriceParts(
+  plan: PricingPlan,
+  billingInterval: PlanBillingInterval
+): { amount: string; suffix: string } {
+  const suffix = plan.listPriceSuffix ?? '';
+  if (plan.isFree) {
+    return { amount: plan.priceDisplay?.trim() || '$0', suffix: '' };
+  }
+  if (billingInterval === 'yearly' && plan.billedAnnuallyTotalCents != null) {
+    return {
+      amount: formatUsdFromCents(Math.round(plan.billedAnnuallyTotalCents / 12)),
+      suffix,
+    };
+  }
+  if (billingInterval === 'yearly') {
+    const displayCents = effectiveMonthlyCentsFromBaseMonthly(plan.priceMonthlyCents, 'yearly');
+    return { amount: formatUsdFromCents(displayCents), suffix };
+  }
+  return { amount: formatUsdFromCents(plan.priceMonthlyCents), suffix };
+}
+
+/**
+ * Yearly plan savings vs paying monthly for 12 months (for marketing display).
+ * When `billedAnnuallyTotalCents` is set, uses that; otherwise the yearly discount %.
+ */
+export function formatYearlySavingsComparedToMonthlyBilling(plan: PricingPlan): string | null {
+  if (plan.isFree) return null;
+  if (plan.billedAnnuallyTotalCents != null) {
+    const savingsCents = plan.priceMonthlyCents * 12 - plan.billedAnnuallyTotalCents;
+    if (savingsCents <= 0) return null;
+    return `Save ${formatUsdFromCents(savingsCents)}/year`;
+  }
+  const perMonthCents = plan.priceMonthlyCents;
+  const yearlyPerMonthCents = effectiveMonthlyCentsFromBaseMonthly(perMonthCents, 'yearly');
+  const savingsCents = perMonthCents * 12 - yearlyPerMonthCents * 12;
+  if (savingsCents <= 0) return null;
+  return `Save ${formatUsdFromCents(savingsCents)}/year`;
+}
+
+/** Secondary CTA subtext for the marketing / landing pricing section (per plan, same href as primary for paid plans). */
+export function landingPriceSecondaryCtaText(plan: BillingPlan, trialDays: number = PRICING_TRIAL_DAYS): string {
+  if (plan === 'growth') {
+    return `${trialDays}-day free trial · No card required`;
+  }
+  return `${trialDays}-day free trial`;
 }
 
 export function pricingCardShowsYearlySavingsLine(plan: PricingPlan, billingInterval: PlanBillingInterval): boolean {
@@ -240,14 +316,18 @@ export function hasPlanFeature(planRaw: unknown, feature: PlanFeature): boolean 
   switch (feature) {
     case 'automation':
       return PLAN_RANK[plan] >= PLAN_RANK.growth;
-    case 'multi_currency':
-      return PLAN_RANK[plan] >= PLAN_RANK.growth;
     case 'ai_assistant':
-      return PLAN_RANK[plan] >= PLAN_RANK.professional;
+      return PLAN_RANK[plan] >= PLAN_RANK.growth;
     case 'voice_screenshot_invoice':
+      return PLAN_RANK[plan] >= PLAN_RANK.growth;
+    case 'multi_currency':
       return PLAN_RANK[plan] >= PLAN_RANK.professional;
     case 'advanced_insights':
       return PLAN_RANK[plan] >= PLAN_RANK.professional;
+    case 'teams':
+      return PLAN_RANK[plan] >= PLAN_RANK.enterprise;
+    case 'api_access':
+      return PLAN_RANK[plan] >= PLAN_RANK.enterprise;
     default:
       return false;
   }
@@ -294,13 +374,17 @@ export function featureUpgradeMessage(feature: PlanFeature): string {
     case 'automation':
       return 'Upgrade to Growth to unlock automation.';
     case 'ai_assistant':
-      return 'AI Assistant is available on Professional plan.';
+      return 'Upgrade to Growth to unlock the AI assistant and intelligent invoicing.';
     case 'voice_screenshot_invoice':
-      return 'Voice and screenshot invoicing are available on Professional plan.';
+      return 'Upgrade to Growth to unlock voice and image invoice creation.';
     case 'advanced_insights':
-      return 'Advanced insights are available on Professional plan.';
+      return 'Advanced insights are available on Professional and above.';
     case 'multi_currency':
-      return 'Upgrade to Growth to unlock multi-currency invoices.';
+      return 'Multi-currency invoicing is available on Professional and above.';
+    case 'teams':
+      return 'Team management and invited seats are available on Enterprise.';
+    case 'api_access':
+      return 'API access is available on Enterprise.';
     default:
       return 'Upgrade to continue.';
   }

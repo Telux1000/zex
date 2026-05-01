@@ -64,8 +64,8 @@ export interface Profile {
   billing_plan?: 'starter' | 'growth' | 'professional' | 'enterprise' | null;
   /** monthly | yearly — set at signup pricing step with locked catalog price. */
   billing_interval?: 'monthly' | 'yearly' | null;
-  /** Locked Paddle catalog price ID (`pri_*`) at plan selection; column name is legacy. */
-  selected_stripe_price_id?: string | null;
+  /** Opaque catalog / internal billing key for selected plan and interval. */
+  selected_catalog_price_id?: string | null;
   /** Set when guided onboarding is finished; unlocks full Settings. */
   onboarding_completed_at?: string | null;
   /** Set when the owner completes the signup pricing step (before workspace setup). */
@@ -80,8 +80,8 @@ export interface Profile {
     | null;
   /** Latest plan selection timestamp for onboarding. */
   selected_plan_at?: string | null;
-  /** Incomplete paid checkout provider, if any. */
-  pending_checkout_provider?: 'paddle' | null;
+  /** Incomplete paid checkout processor (legacy `paddle` may exist in DB; internal billing: flutterwave/paystack/stripe). */
+  pending_checkout_provider?: 'paddle' | 'flutterwave' | 'paystack' | 'stripe' | null;
   /** Paid plan selected but checkout not yet completed. */
   pending_checkout_plan?: 'starter' | 'growth' | 'professional' | 'enterprise' | null;
   /** Internal admin control: when set, automated onboarding follow-ups are paused. */
@@ -108,6 +108,11 @@ export interface InvoiceSettings {
   show_customer_address?: boolean;
   show_tax_breakdown?: boolean;
   show_discount_line?: boolean;
+  /**
+   * When false, omit subtle “Powered by Zenzex” on invoice documents (future higher-tier / white-label).
+   * Default: true (branding on).
+   */
+  show_zenzex_branding?: boolean;
 }
 
 export interface PaymentSettings {
@@ -150,6 +155,16 @@ export interface PaymentSettings {
   payment_instructions?: string;
   // Quote acceptance automation
   auto_send_invoice_on_quote_accept?: boolean;
+
+  /**
+   * Default online/card processor for customer invoice pay links.
+   * Defaults to flutterwave in the app when unset; user may switch to paystack or stripe.
+   */
+  default_online_payment_provider?: 'flutterwave' | 'paystack' | 'stripe';
+  /** Opt in to online payments via Flutterwave (merchant integration when available). */
+  enable_flutterwave?: boolean;
+  /** Opt in to online payments via Paystack (merchant integration when available). */
+  enable_paystack?: boolean;
 
   // Early payment discount (prompt pay)
   /** Percentage discount (e.g. 2 for 2%) applied when paid within the window. */
@@ -495,4 +510,74 @@ export interface InvoiceWithRelations extends Invoice {
   items: InvoiceItem[];
   customer: Customer | null;
   theme: InvoiceTheme | null;
+}
+
+/** SaaS subscription ledger (see migration 110). */
+export interface Subscription {
+  id: string;
+  user_id: string;
+  business_id: string | null;
+  plan_id: 'starter' | 'growth' | 'professional' | 'enterprise';
+  status:
+    | 'pending_checkout'
+    | 'trialing'
+    | 'active'
+    | 'past_due'
+    | 'canceled'
+    | 'expired';
+  provider: 'flutterwave' | 'paystack' | 'stripe' | 'paddle';
+  provider_customer_id: string | null;
+  provider_subscription_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingEvent {
+  id: string;
+  provider: 'flutterwave' | 'paystack' | 'stripe' | 'paddle';
+  provider_event_id: string;
+  event_type: string;
+  normalized_event_type: string | null;
+  business_id: string | null;
+  user_id: string | null;
+  raw_payload: Json;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export interface BillingPayment {
+  id: string;
+  provider: 'flutterwave' | 'paystack' | 'stripe' | 'paddle';
+  provider_payment_id: string;
+  subscription_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
+}
+
+/** Marketing waitlist (see migration 115). */
+export interface Waitlist {
+  id: string;
+  email: string;
+  created_at: string;
+  source: string;
+  /** Why the user joined (migration 116). */
+  trigger_reason: string | null;
+  country: string | null;
+  business_type: string | null;
+  referral_code: string;
+  referred_by: string | null;
+  referral_count: number;
+  status: 'pending' | 'invited' | 'activated' | 'converted';
+  invite_token_hash: string | null;
+  invite_token_expires_at: string | null;
+  invited_at: string | null;
+  activated_at: string | null;
+  converted_at: string | null;
+  linked_user_id: string | null;
 }

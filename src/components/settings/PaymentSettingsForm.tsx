@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Business, PaymentSettings } from '@/lib/database.types';
+import { resolveOnlineInvoiceProvider, type OnlineInvoiceProviderId } from '@/lib/invoices/online-invoice-provider';
 
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -51,6 +52,12 @@ function defaultPaymentSettings(business: Business): PaymentSettings {
     enable_paypal: s.enable_paypal ?? Boolean(s.paypal_email),
     paypal_email: s.paypal_email ?? '',
 
+    // Default online / card (invoice links try this provider first when available)
+    default_online_payment_provider:
+      (s.default_online_payment_provider as OnlineInvoiceProviderId | undefined) ?? 'flutterwave',
+    enable_flutterwave: s.enable_flutterwave ?? false,
+    enable_paystack: s.enable_paystack ?? false,
+
     // Stripe (prefer business table columns when present)
     enable_stripe_card:
       s.enable_stripe_card ?? Boolean(business.stripe_account_id ?? s.stripe_connected),
@@ -76,6 +83,9 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
     business.stripe_onboarding_status ?? settings.stripe_connect_status ?? 'not_connected';
   const stripeChargesEnabled = business.stripe_charges_enabled ?? false;
   const stripeAccountId = business.stripe_account_id ?? settings.stripe_account_id ?? '';
+
+  const onlineInvoiceProvider = resolveOnlineInvoiceProvider(settings, business);
+  const showOnlineSetupPrompt = onlineInvoiceProvider == null;
 
   const stripeStatusLabel = (() => {
     switch (stripeOnboardingStatus) {
@@ -197,7 +207,98 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
           {stripeStatusNotice}
         </div>
       )}
+      {showOnlineSetupPrompt && (
+        <div
+          role="status"
+          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100/95"
+        >
+          No online card option is available yet. Connect Stripe below to accept card payments on invoices, or
+          use bank transfer / PayPal. Flutterwave and Paystack invoice links are coming soon; you can still set
+          your preferred default.
+        </div>
+      )}
       <div className="mt-6 space-y-6">
+        {/* Default online payment provider (invoice pay links) */}
+        <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Online card payments (default)</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            We try your selection first for hosted &quot;Pay now&quot; links. Stripe Connect is available for eligible
+            businesses; additional providers roll out over time.
+          </p>
+          <fieldset className="mt-4 space-y-3">
+            <legend className="sr-only">Default online payment provider</legend>
+            <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800/60">
+              <input
+                type="radio"
+                className="app-radio mt-0.5"
+                name="default_online"
+                checked={settings.default_online_payment_provider === 'flutterwave'}
+                onChange={() => setSettings((s) => ({ ...s, default_online_payment_provider: 'flutterwave' }))}
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Flutterwave — Recommended
+                </span>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Accept global card payments and multiple currencies.
+                </p>
+                <div className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    className="app-checkbox"
+                    id="enable_flutterwave"
+                    checked={Boolean(settings.enable_flutterwave)}
+                    onChange={(e) => setSettings((s) => ({ ...s, enable_flutterwave: e.target.checked }))}
+                  />
+                  <label htmlFor="enable_flutterwave">Enable Flutterwave when connected (invoice links)</label>
+                </div>
+              </span>
+            </label>
+            <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800/60">
+              <input
+                type="radio"
+                className="app-radio mt-0.5"
+                name="default_online"
+                checked={settings.default_online_payment_provider === 'paystack'}
+                onChange={() => setSettings((s) => ({ ...s, default_online_payment_provider: 'paystack' }))}
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">Paystack</span>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Accept card and local payments in supported regions.
+                </p>
+                <div className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    className="app-checkbox"
+                    id="enable_paystack"
+                    checked={Boolean(settings.enable_paystack)}
+                    onChange={(e) => setSettings((s) => ({ ...s, enable_paystack: e.target.checked }))}
+                  />
+                  <label htmlFor="enable_paystack">Enable Paystack when connected (invoice links)</label>
+                </div>
+              </span>
+            </label>
+            <label className="flex cursor-pointer gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800/60">
+              <input
+                type="radio"
+                className="app-radio mt-0.5"
+                name="default_online"
+                checked={settings.default_online_payment_provider === 'stripe'}
+                onChange={() => setSettings((s) => ({ ...s, default_online_payment_provider: 'stripe' }))}
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Stripe — for supported countries
+                </span>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Connect Stripe if your business is registered in a Stripe-supported country.
+                </p>
+              </span>
+            </label>
+          </fieldset>
+        </section>
+
         {/* Bank transfer (domestic) */}
         <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-900/40">
           <div className="flex items-center justify-between gap-4">
@@ -205,7 +306,7 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
               <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-zenzex-600 focus:ring-zenzex-500 dark:border-slate-600"
+                  className="app-checkbox"
                   checked={Boolean(settings.enable_bank_transfer)}
                   onChange={(e) =>
                     setSettings((s) => ({
@@ -287,7 +388,7 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
             <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-zenzex-600 focus:ring-zenzex-500 dark:border-slate-600"
+                className="app-checkbox"
                 checked={Boolean(settings.enable_international_bank_transfer)}
                 onChange={(e) =>
                   setSettings((s) => ({
@@ -359,7 +460,7 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
             <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-zenzex-600 focus:ring-zenzex-500 dark:border-slate-600"
+                className="app-checkbox"
                 checked={Boolean(settings.enable_paypal)}
                 onChange={(e) =>
                   setSettings((s) => ({
@@ -387,14 +488,14 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
           )}
         </section>
 
-        {/* Stripe card payments */}
+        {/* Stripe Connect (card payments) */}
         <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-900/40">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-zenzex-600 focus:ring-zenzex-500 dark:border-slate-600"
+                  className="app-checkbox"
                   checked={Boolean(settings.enable_stripe_card)}
                   onChange={(e) =>
                     setSettings((s) => ({
@@ -403,10 +504,11 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
                     }))
                   }
                 />
-                Stripe (card payments)
+                Stripe (card payments via Connect)
               </label>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Allow customers to pay invoices online with cards via Stripe.
+                Optional: allow customers to pay invoices online with cards when your business is in a
+                supported region. Set Stripe as the default above if you rely on it for pay links.
               </p>
             </div>
             <div className="flex flex-col items-start gap-1 sm:items-end">
@@ -467,7 +569,7 @@ export function PaymentSettingsForm({ business, onSuccess, onClearSuccess }: Pro
           <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-zenzex-600 focus:ring-zenzex-500 dark:border-slate-600"
+              className="app-checkbox"
               checked={Boolean(settings.auto_send_invoice_on_quote_accept)}
               onChange={(e) =>
                 setSettings((s) => ({

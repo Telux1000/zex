@@ -3,6 +3,7 @@ import type { BillingPlan } from '@/lib/billing/plans';
 import { normalizeBillingPlan, pricingPlans, type PricingPlan } from '@/lib/billing/plans';
 import type { ReminderTimingEntry } from '@/lib/invoices/reminder-settings';
 import { defaultCustomerReminderSettings } from '@/lib/invoices/reminder-settings';
+import { normalizeBillingProviderMode, type BillingProviderMode } from '@/lib/billing/saas-billing-config';
 
 export type AdminPlatformSettingsDTO = {
   feature_ai_assistant_enabled: boolean;
@@ -20,6 +21,7 @@ export type AdminPlatformSettingsDTO = {
   plan_price_growth_cents: number | null;
   plan_price_professional_cents: number | null;
   plan_price_enterprise_cents: number | null;
+  billing_provider_mode: BillingProviderMode;
   ai_assistant_daily_requests_per_user: number;
   reminder_default_first_before_due_days: number | null;
   scheduling_min_lead_minutes: number;
@@ -43,6 +45,7 @@ const DEFAULT_ROW: AdminPlatformSettingsDTO = {
   plan_price_growth_cents: null,
   plan_price_professional_cents: null,
   plan_price_enterprise_cents: null,
+  billing_provider_mode: 'flutterwave_primary_paystack_fallback',
   ai_assistant_daily_requests_per_user: 50,
   reminder_default_first_before_due_days: null,
   scheduling_min_lead_minutes: 60,
@@ -81,6 +84,7 @@ export function mergeAdminPlatformSettingsRow(row: Record<string, unknown> | nul
     plan_price_growth_cents: n('plan_price_growth_cents'),
     plan_price_professional_cents: n('plan_price_professional_cents'),
     plan_price_enterprise_cents: n('plan_price_enterprise_cents'),
+    billing_provider_mode: normalizeBillingProviderMode(row.billing_provider_mode),
     ai_assistant_daily_requests_per_user: Math.max(
       1,
       Math.floor(n('ai_assistant_daily_requests_per_user') ?? DEFAULT_ROW.ai_assistant_daily_requests_per_user)

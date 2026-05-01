@@ -10,6 +10,13 @@ import { notifyBusinessEvent } from '@/services/notifications';
 import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-data';
 import { deliverInvoiceSendEmail } from '@/lib/invoices/send-invoice-delivery';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
+import type { Business, InvoiceSettings, PaymentSettings } from '@/lib/database.types';
+import { resolveOnlineInvoiceProvider } from '@/lib/invoices/online-invoice-provider';
+import {
+  appendZenzexEmailBrandingHtml,
+  appendZenzexEmailBrandingText,
+  zenzexEmailBrandingTemplateModel,
+} from '@/lib/invoices/zenzex-invoice-branding';
 
 export async function POST(req: Request) {
   try {
@@ -49,7 +56,7 @@ export async function POST(req: Request) {
     const { data: business } = await supabase
       .from('businesses')
       .select(
-        'id, owner_id, name, email, phone, logo_url, address_line1, address_line2, city, state, postal_code, country, payment_settings'
+        'id, owner_id, name, email, phone, logo_url, address_line1, address_line2, city, state, postal_code, country, payment_settings, invoice_settings'
       )
       .eq('id', invoice.business_id)
       .eq('owner_id', user.id)
@@ -104,6 +111,31 @@ export async function POST(req: Request) {
     const payable = epd.enabled && epd.eligible ? epd.payable_now : balanceDue;
     const appUrl = resolveAppBaseUrl(new URL(req.url).origin) ?? 'http://localhost:3000';
 
+    if (mode === 'create_only' || mode === 'email_payment_link') {
+      if (payable > 0) {
+        const paySettings = (business.payment_settings as PaymentSettings | null) ?? null;
+        const online = resolveOnlineInvoiceProvider(paySettings, business as Business);
+        if (online == null) {
+          return NextResponse.json(
+            {
+              error:
+                'No online card payment is set up. Add your default payment provider in Settings → Payment (or use bank transfer / PayPal on the invoice).',
+            },
+            { status: 400 }
+          );
+        }
+        if (online !== 'stripe') {
+          return NextResponse.json(
+            {
+              error:
+                'Invoice card links use Stripe Connect today. Connect Stripe in Settings → Payment, or set your default online provider to Stripe until other providers are available.',
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const { url, sessionId } = await createPaymentLink({
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
@@ -148,9 +180,11 @@ export async function POST(req: Request) {
     if (mode === 'email_payment_link') {
       const invoiceNumberText = String(invoice.invoice_number);
       const customerNameText = String(invoice.customer_name ?? 'customer');
-      const fallbackHtml = paymentUrl
+      const invSet = (business as { invoice_settings?: InvoiceSettings | null }).invoice_settings;
+      const rawPaymentLinkHtml = paymentUrl
         ? `<p>Payment link for Invoice ${invoiceNumberText}</p><p><a href="${paymentUrl}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#3b5cd1;color:#ffffff;text-decoration:none;font-weight:600;">Pay with card</a></p><p style="margin-top:8px;font-size:12px;color:#64748b;">Or <a href="${paymentUrl}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">view payment link</a></p>`
         : `<p>Payment link for Invoice ${invoiceNumberText}</p>`;
+      const fallbackHtml = appendZenzexEmailBrandingHtml(rawPaymentLinkHtml, invSet);
       await supabase
         .from('invoices')
         .update({
@@ -206,9 +240,12 @@ export async function POST(req: Request) {
             dueDate: String(invoice.due_date ?? ''),
           }),
           htmlBody: fallbackHtml,
-          textBody: paymentUrl
-            ? `Payment link for Invoice ${invoiceNumberText}: ${paymentUrl}`
-            : `Payment link for Invoice ${invoiceNumberText} is currently unavailable.`,
+          textBody: appendZenzexEmailBrandingText(
+            paymentUrl
+              ? `Payment link for Invoice ${invoiceNumberText}: ${paymentUrl}`
+              : `Payment link for Invoice ${invoiceNumberText} is currently unavailable.`,
+            invSet
+          ),
           templateEnvKey: 'POSTMARK_TEMPLATE_PAYMENT_LINK',
           templateModel: {
             invoiceNumber: invoiceNumberText,
@@ -220,6 +257,7 @@ export async function POST(req: Request) {
             paymentUrl,
             paymentLinkText: 'View payment link',
             hasPaymentUrl: Boolean(paymentUrl),
+            ...zenzexEmailBrandingTemplateModel(invSet),
           },
           tag: 'payment_link_emailed',
         },

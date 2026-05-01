@@ -1,4 +1,5 @@
 import type { EditModeInitialData } from '@/components/invoices/ManualInvoiceForm';
+import type { InvoiceSettings } from '@/lib/database.types';
 import { normalizeInvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import { deriveInvoiceStatus } from '@/lib/invoices/status';
 
@@ -46,6 +47,7 @@ export function mapApiInvoiceJsonToEditModeInitialData(raw: Record<string, unkno
     postal_code?: string | null;
     country?: string | null;
     tax_id?: string | null;
+    invoice_settings?: InvoiceSettings | null;
     payment_settings?: Record<string, unknown> | null;
     stripe_charges_enabled?: boolean;
   };
@@ -190,6 +192,7 @@ export function mapApiInvoiceJsonToEditModeInitialData(raw: Record<string, unkno
       postal_code: business.postal_code ?? null,
       country: business.country ?? null,
       tax_id: business.tax_id ?? null,
+      invoice_settings: (business as { invoice_settings?: InvoiceSettings | null }).invoice_settings ?? null,
       payment_settings: (business.payment_settings as EditModeInitialData['business']['payment_settings']) ?? null,
       stripe_charges_enabled: business.stripe_charges_enabled ?? false,
     },

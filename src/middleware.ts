@@ -17,6 +17,7 @@ const READ_ONLY_WRITE_EXEMPT_PREFIXES = [
   '/api/cron/',
   '/api/notifications/postmark/webhook',
   '/api/billing/webhook-activate',
+  '/api/waitlist',
 ];
 const SYSTEM_ACCESS_EXEMPT_PREFIXES = [
   '/api/public/',

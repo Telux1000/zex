@@ -17,6 +17,11 @@ import {
   type AdminPlatformSettingsDTO,
 } from '@/lib/admin/admin-platform-settings';
 import {
+  BILLING_PROVIDER_MODES,
+  isStripeConfigured,
+  modeIncludesStripe,
+} from '@/lib/billing/saas-billing-config';
+import {
   internalSecurityPolicyPatchSchema,
   persistInternalSecurityPolicyPatch,
 } from '@/lib/admin/internal-security-policy-persist';
@@ -57,6 +62,7 @@ const billingSectionSchema = z
     plan_price_growth_cents: z.number().int().min(0).nullable().optional(),
     plan_price_professional_cents: z.number().int().min(0).nullable().optional(),
     plan_price_enterprise_cents: z.number().int().min(0).nullable().optional(),
+    billing_provider_mode: z.enum(BILLING_PROVIDER_MODES).optional(),
   })
   .strict();
 
@@ -129,8 +135,9 @@ export async function GET() {
     node_env: process.env.NODE_ENV ?? 'development',
     supabase_host: parseSupabaseHost(),
     postmark_configured: Boolean(process.env.POSTMARK_SERVER_TOKEN?.trim()),
-    paddle_billing_api_configured: Boolean(process.env.PADDLE_BILLING_API_KEY?.trim()),
-    paddle_billing_webhook_configured: Boolean(process.env.PADDLE_BILLING_WEBHOOK_SECRET?.trim()),
+    flutterwave_configured: Boolean(process.env.FLUTTERWAVE_SECRET_KEY?.trim()),
+    paystack_configured: Boolean(process.env.PAYSTACK_SECRET_KEY?.trim()),
+    stripe_saas_configured: isStripeConfigured(),
     app_url_configured: Boolean(process.env.NEXT_PUBLIC_APP_URL?.trim()),
   };
 
@@ -351,6 +358,12 @@ export async function PATCH(req: Request) {
       break;
     }
     case 'billing': {
+      if (patch.billing_provider_mode !== undefined) {
+        if (modeIncludesStripe(patch.billing_provider_mode) && !isStripeConfigured()) {
+          return NextResponse.json({ error: 'Stripe is not configured for SaaS billing.' }, { status: 400 });
+        }
+        next.billing_provider_mode = patch.billing_provider_mode;
+      }
       if (patch.trial_days !== undefined) next.trial_days = patch.trial_days;
       if (patch.plan_price_starter_cents !== undefined) {
         next.plan_price_starter_cents = patch.plan_price_starter_cents;
@@ -400,6 +413,7 @@ export async function PATCH(req: Request) {
       plan_price_growth_cents: next.plan_price_growth_cents,
       plan_price_professional_cents: next.plan_price_professional_cents,
       plan_price_enterprise_cents: next.plan_price_enterprise_cents,
+      billing_provider_mode: next.billing_provider_mode,
       ai_assistant_daily_requests_per_user: next.ai_assistant_daily_requests_per_user,
       reminder_default_first_before_due_days: next.reminder_default_first_before_due_days,
       scheduling_min_lead_minutes: next.scheduling_min_lead_minutes,

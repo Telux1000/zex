@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import type { InvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import type { InvoiceDocumentPayload, InvoiceDocTextLine } from '@/lib/invoices/invoice-document-payload';
 import type { SavedInvoice } from '@/types/invoice-preview';
+import { ZenzexInvoiceBrandingStrip } from '@/components/invoices/ZenzexInvoiceBrandingStrip';
 
 export function renderInvoiceBillBlock(lines: InvoiceDocTextLine[]) {
   return (
@@ -97,6 +99,7 @@ export function LineItemsAndRest({
   doc,
   skin,
   childrenAfterMeta,
+  templateId,
 }: {
   doc: InvoiceDocumentPayload;
   skin: {
@@ -105,6 +108,8 @@ export function LineItemsAndRest({
     cardBorder: string;
   };
   childrenAfterMeta?: ReactNode;
+  /** Required when `doc.showZenzexBranding` is true for template-specific footer styling. */
+  templateId: InvoiceTemplateId;
 }) {
   return (
     <div className="w-full min-w-0 max-w-full [overflow-wrap:anywhere]">
@@ -405,6 +410,8 @@ export function LineItemsAndRest({
           ) : null}
         </div>
       )}
+
+      {doc.showZenzexBranding ? <ZenzexInvoiceBrandingStrip templateId={templateId} /> : null}
     </div>
   );
 }

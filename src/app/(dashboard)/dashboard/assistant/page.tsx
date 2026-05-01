@@ -221,13 +221,13 @@ function AssistantPageContent() {
             <Lock className="h-5 w-5" aria-hidden />
           </div>
           <h2 className="mt-4 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            AI Assistant is available on Professional plan
+            AI Assistant is on Growth
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            Upgrade to unlock chat-to-invoice, faster drafting, and AI-guided workflows.
+            Upgrade to unlock chat-to-invoice, voice and file creation, and AI-guided workflows.
           </p>
           <div className="mt-5">
-            <Link href="/settings" className="app-btn-primary inline-flex items-center justify-center">
+            <Link href="/dashboard/billing" className="app-btn-primary inline-flex items-center justify-center">
               Upgrade
             </Link>
           </div>

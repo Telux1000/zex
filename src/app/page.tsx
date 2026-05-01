@@ -16,6 +16,7 @@ import { LandingPricingSection } from '@/components/pricing/LandingPricingSectio
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
 import { TikTokIcon } from '@/components/branding/TikTokIcon';
 import { LandingOutstandingShowcase } from '@/components/landing/LandingOutstandingShowcase';
+import { WaitlistForm } from '@/components/waitlist/WaitlistForm';
 
 export const metadata: Metadata = {
   title: 'Zenzex | Simple Invoicing Software for Faster Payments',
@@ -78,7 +79,7 @@ export default function LandingPage() {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Zenzex',
-    legalName: 'Telux Pty Ltd',
+    legalName: 'Telux Limited',
     url: appUrl,
     logo: `${appUrl}/zenzex-mark.png`,
   };
@@ -204,6 +205,10 @@ export default function LandingPage() {
           <p className="mt-4 text-balance text-xs font-semibold text-indigo-600 dark:text-indigo-400 sm:mt-5 sm:text-sm">
             No credit card required &bull; Setup in minutes
           </p>
+
+          <div className="mx-auto mt-10 w-full max-w-lg px-0 sm:mt-12">
+            <WaitlistForm source="landing" />
+          </div>
 
           {/* Social proof: TODO(placeholder): Replace counts, rating source, and quotes with real data / testimonials. */}
           <div className="mx-auto mt-10 max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-12 sm:pt-10">

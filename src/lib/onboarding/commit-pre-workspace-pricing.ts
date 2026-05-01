@@ -46,7 +46,7 @@ export async function commitPreWorkspacePricingSelection(
       ok: false,
       status: 400,
       error:
-        'Catalog price is not configured for this plan and billing cycle. Set NEXT_PUBLIC_PADDLE_PRICE_* (and optional NEXT_PUBLIC_PADDLE_PRICE_*_YEARLY for yearly).',
+        'Catalog price is not configured for this plan and billing cycle. Set NEXT_PUBLIC_CATALOG_PRICE_* (legacy NEXT_PUBLIC_PADDLE_PRICE_* still supported).',
     };
   }
 
@@ -61,7 +61,7 @@ export async function commitPreWorkspacePricingSelection(
     .update({
       billing_plan: plan,
       billing_interval,
-      selected_stripe_price_id: pricing.isFree ? null : catalogPriceId,
+      selected_catalog_price_id: pricing.isFree ? null : catalogPriceId,
       onboarding_pricing_completed_at: new Date().toISOString(),
       selected_plan_at: selectedAt,
       plan_selection_status: pricing.isFree ? 'FREE_SELECTED' : 'TRIAL_SELECTED',

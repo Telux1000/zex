@@ -1,5 +1,6 @@
 import { countries as locationCountries, getStates } from '@/lib/location';
 import type { PaymentSettings } from '@/lib/database.types';
+import { resolveShowZenzexBrandingOnInvoice } from '@/lib/invoices/zenzex-invoice-branding';
 import { isValid, parseISO } from 'date-fns';
 import { formatDisplayDate } from '@/lib/utils/date';
 import { computeEarlyPaymentDiscount } from '@/lib/invoices/early-payment-discount';
@@ -91,6 +92,8 @@ export type InvoiceDocumentPayload = {
     } | null;
     additionalBlocks: Array<{ title: string; lines: string[] }>;
   } | null;
+  /** When true, render subtle “Powered by Zenzex” at document footer (HTML/PDF). */
+  showZenzexBranding: boolean;
 };
 
 function getCountryNameFromCode(code: string | null | undefined) {
@@ -528,5 +531,6 @@ export function buildInvoiceDocumentPayload(input: {
       invoice.invoice_number,
       business.stripe_charges_enabled
     ),
+    showZenzexBranding: resolveShowZenzexBrandingOnInvoice(business.invoice_settings),
   };
 }

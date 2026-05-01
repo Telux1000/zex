@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
-    "@paddle/paddle-node-sdk": "^3.7.0",
     "@sparticuz/chromium": "^147.0.2",
     "@stripe/stripe-js": "^4.8.0",
     "@supabase/ssr": "^0.5.2",

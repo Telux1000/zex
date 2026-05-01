@@ -9,6 +9,7 @@ import {
   UserCircle,
   UsersRound,
   Settings,
+  ClipboardList,
 } from 'lucide-react';
 
 export type AdminNavItem = {
@@ -23,9 +24,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: '/admin', label: 'Overview', description: 'Console home and shortcuts.', icon: LayoutDashboard },
   { href: '/admin/accounts', label: 'Accounts', description: 'Subscriber businesses and usage.', icon: Building2 },
   { href: '/admin/users', label: 'Users', description: 'Subscriber logins, roles, and access.', icon: UserCircle },
-  { href: '/admin/billing', label: 'Billing', description: 'Plans, payments, Paddle subscriptions.', icon: CreditCard },
+  { href: '/admin/billing', label: 'Billing', description: 'Plans, payments, and subscription state.', icon: CreditCard },
   { href: '/admin/support', label: 'Support', description: 'Support tickets and triage.', icon: LifeBuoy },
   { href: '/admin/analytics', label: 'Analytics', description: 'Adoption and platform metrics.', icon: BarChart3 },
+  {
+    href: '/admin/waitlist',
+    label: 'Waitlist',
+    description: 'Early access invites and conversion.',
+    icon: ClipboardList,
+  },
   {
     href: '/admin/security',
     label: 'Security',
@@ -67,6 +74,14 @@ export function getAdminNavMeta(pathname: string): {
         { label: 'Accounts', href: '/admin/accounts' },
         { label: 'Account' },
       ],
+    };
+  }
+
+  if (normalized === '/admin/waitlist') {
+    return {
+      title: 'Waitlist',
+      description: 'Early access pipeline and conversions.',
+      breadcrumb: [{ label: 'Admin', href: '/admin' }, { label: 'Waitlist' }],
     };
   }
 

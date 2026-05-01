@@ -59,7 +59,7 @@ export async function processScheduledInvoiceSends(
 
       const { data: business } = await supabase
         .from('businesses')
-        .select('id, name, owner_id, payment_settings')
+        .select('id, name, owner_id, payment_settings, invoice_settings')
         .eq('id', businessId)
         .maybeSingle();
       if (!business) {

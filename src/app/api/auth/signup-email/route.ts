@@ -1,30 +1,15 @@
 import { NextResponse } from 'next/server';
 import { deliverSignupConfirmationPostmark } from '@/lib/auth/deliver-signup-confirmation-postmark';
-import { getEmailRedirectToForSignupResend, normalizeSignupEmail } from '@/lib/auth/signup-resend';
+import {
+  enforceSignupConfirmationRedirectOnActionLink,
+  getEmailRedirectToForSignupResend,
+  normalizeSignupEmail,
+} from '@/lib/auth/signup-resend';
+import { markWaitlistActivatedOnSignup } from '@/lib/waitlist/mark-waitlist-activated';
 import { consumeSignupInvite, fetchSignupSettings, validateSignupAccess } from '@/lib/auth/signup-control';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 export const dynamic = 'force-dynamic';
-
-function isLocalhostRedirect(raw: string | null): boolean {
-  const value = String(raw ?? '').toLowerCase();
-  return value.includes('localhost') || value.includes('127.0.0.1') || value.includes('0.0.0.0');
-}
-
-function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string): string {
-  const safeRedirect = String(redirectTo ?? '').trim();
-  if (!safeRedirect) return actionLink;
-  try {
-    const u = new URL(actionLink);
-    const existing = u.searchParams.get('redirect_to');
-    if (!existing || isLocalhostRedirect(existing)) {
-      u.searchParams.set('redirect_to', safeRedirect);
-    }
-    return u.toString();
-  } catch {
-    return actionLink;
-  }
-}
 
 /**
  * Email/password signup without calling client signUp(), so Supabase never sends its default
@@ -32,9 +17,14 @@ function enforceSafeRedirectOnActionLink(actionLink: string, redirectTo?: string
  * "custom email provider" flow.
  */
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string; invite_token?: string };
+  let body: { email?: string; password?: string; invite_token?: string; waitlist_invite_token?: string };
   try {
-    body = (await req.json()) as { email?: string; password?: string };
+    body = (await req.json()) as {
+      email?: string;
+      password?: string;
+      invite_token?: string;
+      waitlist_invite_token?: string;
+    };
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
   }
@@ -76,6 +66,7 @@ export async function POST(req: Request) {
     mode: signupSettings.signup_mode,
     email: normalized,
     inviteToken: body.invite_token,
+    waitlistInviteToken: body.waitlist_invite_token,
   });
   if (!access.ok) {
     return NextResponse.json(
@@ -132,13 +123,17 @@ export async function POST(req: Request) {
     }
   }
 
+  if (data?.user?.id) {
+    await markWaitlistActivatedOnSignup(admin, { userId: data.user.id, email: normalized });
+  }
+
   const actionLinkRaw = data?.properties?.action_link;
   const otp = data?.properties?.email_otp ?? '';
   if (!actionLinkRaw) {
     console.error('[signup-email] missing action_link');
     return NextResponse.json({ ok: false, error: 'Could not complete signup.' }, { status: 500 });
   }
-  const actionLink = enforceSafeRedirectOnActionLink(actionLinkRaw, redirectTo);
+  const actionLink = enforceSignupConfirmationRedirectOnActionLink(actionLinkRaw, redirectTo);
 
   try {
     await deliverSignupConfirmationPostmark({

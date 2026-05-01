@@ -47,6 +47,7 @@ function fallbackBusinessFromInvoiceRaw(raw: Record<string, unknown>): SavedBusi
     postal_code: null,
     country: null,
     tax_id: null,
+    invoice_settings: null,
     payment_settings: null,
     stripe_charges_enabled: false,
   };
@@ -70,6 +71,7 @@ export function mapApiInvoiceJsonToPreviewSaved(raw: Record<string, unknown>): I
         postal_code: (embedded.postal_code as string | null) ?? null,
         country: (embedded.country as string | null) ?? null,
         tax_id: (embedded.tax_id as string | null) ?? null,
+        invoice_settings: (embedded.invoice_settings as SavedBusiness['invoice_settings']) ?? null,
         payment_settings: (embedded.payment_settings as SavedBusiness['payment_settings']) ?? null,
         stripe_charges_enabled: Boolean(embedded.stripe_charges_enabled),
       }

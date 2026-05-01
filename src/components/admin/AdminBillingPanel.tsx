@@ -9,7 +9,7 @@ import { AdminRowActions } from '@/components/admin/AdminRowActions';
 import { AdminTable, AdminTableHead, AdminTd, AdminTh, AdminTr } from '@/components/admin/AdminTable';
 
 type BillingData = {
-  platform_billing?: 'paddle';
+  platform_billing?: 'zenzex';
   source_of_truth?: string;
   accounts: Array<{
     account_id: string;
@@ -371,7 +371,9 @@ export function AdminBillingPanel() {
                         {
                           label: 'Change plan',
                           onClick: () =>
-                            setActionMsg(`Plan changes for ${a.account_name} are managed via Paddle (customer billing portal or support).`),
+                            setActionMsg(
+                              `Plan changes for ${a.account_name} are managed via your billing provider (customer portal or support).`
+                            ),
                         },
                         {
                           label: a.subscription_status === 'suspended' ? 'Resume subscription' : 'Pause subscription',
@@ -386,7 +388,9 @@ export function AdminBillingPanel() {
                           label: 'Cancel subscription',
                           danger: true,
                           onClick: () =>
-                            setActionMsg(`Cancellation is restricted here; complete cancellation in Paddle or via support for ${a.account_name}.`),
+                            setActionMsg(
+                              `Cancellation is restricted here; complete cancellation in your billing provider or via support for ${a.account_name}.`
+                            ),
                         },
                         {
                           label: 'Refresh billing list',
@@ -448,7 +452,7 @@ export function AdminBillingPanel() {
               <AdminBadge tone={paymentTone(selected.payment_status, selected.failed_payments)}>
                 Payment: {toTitle(selected.payment_status)}
               </AdminBadge>
-              <AdminBadge tone="neutral">Platform SaaS: Paddle</AdminBadge>
+              <AdminBadge tone="neutral">Platform SaaS: Zenzex billing</AdminBadge>
             </div>
 
             <section className="mt-6">
@@ -459,7 +463,7 @@ export function AdminBillingPanel() {
                   {selected.payment_status === 'paid'
                     ? `Latest charge succeeded (${formatCurrency(selected.amount_cents)}).`
                     : selected.payment_status === 'failed'
-                      ? 'Latest charge failed. Follow up in Paddle or your payment provider for details.'
+                      ? 'Latest charge failed. Follow up with your payment provider for details.'
                       : 'No settled charge captured yet.'}
                 </div>
               </div>
@@ -477,9 +481,9 @@ export function AdminBillingPanel() {
             </section>
 
             <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
-              Workspace plans and renewals follow Paddle (webhooks + subscription table:{' '}
-              {data?.source_of_truth ?? '—'}). Merchant card payouts use Stripe Connect in the product app, not
-              here.
+              Workspace plans and renewals use Flutterwave / Paystack (webhooks + subscription table:{' '}
+              {data?.source_of_truth ?? '—'}). Customer invoice card payouts use Stripe Connect in the product
+              app, not here.
             </p>
           </aside>
         </div>

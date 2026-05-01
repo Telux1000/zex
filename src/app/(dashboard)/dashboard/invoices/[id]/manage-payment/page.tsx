@@ -4,6 +4,7 @@ import { hasPermission } from '@/lib/rbac/permissions';
 import { getEffectiveBusinessRole } from '@/lib/rbac/server';
 import { getServerSupabaseUser } from '@/lib/supabase/server-auth';
 import { ManagePaymentWorkspace } from '@/components/invoices/ManagePaymentWorkspace';
+import type { InvoiceSettings } from '@/lib/database.types';
 
 export default async function ManagePaymentPage({
   params,
@@ -33,6 +34,7 @@ export default async function ManagePaymentPage({
         country,
         tax_id,
         payment_settings,
+        invoice_settings,
         stripe_charges_enabled
       )
     `
@@ -54,6 +56,7 @@ export default async function ManagePaymentPage({
     postal_code?: string | null;
     country?: string | null;
     tax_id?: string | null;
+    invoice_settings?: unknown;
     payment_settings?: Record<string, unknown> | null;
     stripe_charges_enabled?: boolean;
   } | null;
@@ -83,6 +86,7 @@ export default async function ManagePaymentPage({
     postal_code: business.postal_code ?? null,
     country: business.country ?? null,
     tax_id: business.tax_id ?? null,
+    invoice_settings: (business.invoice_settings as InvoiceSettings | null) ?? null,
     payment_settings: (business.payment_settings as unknown) ?? null,
     stripe_charges_enabled: business.stripe_charges_enabled ?? false,
   };
@@ -222,6 +226,7 @@ export default async function ManagePaymentPage({
       postal_code: business.postal_code ?? null,
       country: business.country ?? null,
       tax_id: business.tax_id ?? null,
+      invoice_settings: (business.invoice_settings as InvoiceSettings | null) ?? null,
       payment_settings: business.payment_settings ?? null,
       stripe_charges_enabled: business.stripe_charges_enabled ?? false,
     },

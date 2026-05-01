@@ -8,6 +8,12 @@ import { getNotificationPreferences } from '@/services/notificationPreferences';
 import { canManageAutoReminders } from '@/lib/invoices/auto-reminders-eligibility';
 import { buildInvoicePdfBase64ForInvoiceId } from '@/lib/invoices/invoice-pdf-data';
 import { resolveInvoiceBalanceDue } from '@/lib/invoices/compute-invoice-balance-due';
+import type { InvoiceSettings } from '@/lib/database.types';
+import {
+  appendZenzexEmailBrandingHtml,
+  appendZenzexEmailBrandingText,
+  zenzexEmailBrandingTemplateModel,
+} from '@/lib/invoices/zenzex-invoice-branding';
 import { fetchAdminPlatformSettings, platformFallbackReminderTiming } from '@/lib/admin/admin-platform-settings';
 import {
   type ReminderTimingEntry,
@@ -128,7 +134,7 @@ export async function deliverInvoicePaymentReminder(
 
   const { data: business } = await supabase
     .from('businesses')
-    .select('id, name, email, owner_id, payment_settings, reminder_messaging')
+    .select('id, name, email, owner_id, payment_settings, invoice_settings, reminder_messaging')
     .eq('id', (invoice as { business_id: string }).business_id)
     .single();
 
@@ -272,15 +278,18 @@ export async function deliverInvoicePaymentReminder(
         rawAmount: Number(payable) || 0,
         currencyCode: currency,
       });
-    const paymentReminderTemplateModel = normalizePostmarkPaymentReminderModel(
-      baseModel as Record<string, unknown>
-    );
+    const invRemSettings = (business as { invoice_settings?: InvoiceSettings | null }).invoice_settings;
+    const paymentReminderTemplateModel = {
+      ...normalizePostmarkPaymentReminderModel(baseModel as Record<string, unknown>),
+      ...zenzexEmailBrandingTemplateModel(invRemSettings),
+    };
 
     const bodyHtml = toPostmarkPaymentReminderMessageHtml(messagePlain);
     const urlEsc = (paymentUrl ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    const fallbackHtml = paymentUrl
+    const rawFallbackHtml = paymentUrl
       ? `${bodyHtml}<p><a href="${urlEsc}">Pay now</a></p>`
       : bodyHtml;
+    const fallbackHtml = appendZenzexEmailBrandingHtml(rawFallbackHtml, invRemSettings);
 
     const pdfOwnerUserId = String((business as { owner_id?: string }).owner_id ?? '').trim();
     let invoicePdfAttachment:
@@ -336,9 +345,10 @@ export async function deliverInvoicePaymentReminder(
         to: email,
         subject: subj,
         htmlBody: fallbackHtml,
-        textBody: paymentUrl
-          ? `${messagePlain}\n\nPay here: ${paymentUrl}`
-          : messagePlain,
+        textBody: appendZenzexEmailBrandingText(
+          paymentUrl ? `${messagePlain}\n\nPay here: ${paymentUrl}` : messagePlain,
+          invRemSettings
+        ),
         templateEnvKey: 'POSTMARK_TEMPLATE_PAYMENT_REMINDER',
         templateModel: paymentReminderTemplateModel,
         tag: 'invoice_payment_reminder',

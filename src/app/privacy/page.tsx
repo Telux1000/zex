@@ -4,20 +4,20 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description:
-    'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+    'How Telux Limited collects, uses, and protects personal information when you use Zenzex.',
   alternates: {
     canonical: '/privacy',
   },
   openGraph: {
     title: 'Privacy Policy | Zenzex',
     description:
-      'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+      'How Telux Limited collects, uses, and protects personal information when you use Zenzex.',
     url: '/privacy',
   },
   twitter: {
     title: 'Privacy Policy | Zenzex',
     description:
-      'How Telux Pty Ltd collects, uses, and protects personal information when you use Zenzex.',
+      'How Telux Limited collects, uses, and protects personal information when you use Zenzex.',
   },
 };
 
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-4 text-slate-600 dark:text-slate-400">
-            This Privacy Policy describes how Telux Pty Ltd (&quot;Telux&quot;, &quot;we&quot;, &quot;us&quot;) handles personal
+            This Privacy Policy describes how Telux Limited (&quot;Telux&quot;, &quot;we&quot;, &quot;us&quot;) handles personal
             information when you use Zenzex, including our website and applications at{' '}
             <a
               href="https://zenzex.com"
@@ -48,7 +48,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">1. Introduction</h2>
             <p className="mt-2 leading-relaxed">
-              Telux Pty Ltd is the operator of Zenzex and, for the purposes described here, acts as the
+              Telux Limited is the operator of Zenzex and, for the purposes described here, acts as the
               controller of personal information we collect about visitors, account holders, and authorized
               users of a workspace. This policy should be read together with our{' '}
               <Link

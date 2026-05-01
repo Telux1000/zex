@@ -2,43 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
 import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
-import { getPaddleBillingClient } from '@/lib/billing/paddle-client';
+import { verifyAndApplyFlutterwave, verifyAndApplyPaystack } from '@/lib/billing/billing-service';
+import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
-async function verifyPaddleSuccess(input: {
-  transactionId: string | null;
-  subscriptionId: string | null;
-  checkoutReference: string | null;
-}): Promise<{ ok: boolean; subscriptionStatus: 'active' | 'trialing' }> {
-  const paddle = getPaddleBillingClient();
-  if (!paddle) return { ok: false, subscriptionStatus: 'active' };
-
-  const possibleSubscriptionIds = [input.subscriptionId, input.checkoutReference]
-    .map((v) => (v ? v.trim() : ''))
-    .filter(Boolean);
-
-  try {
-    if (input.transactionId) {
-      const tx = await (paddle as any).transactions?.get?.(input.transactionId);
-      const txStatus = String(tx?.status ?? '').toLowerCase();
-      if (txStatus === 'completed' || txStatus === 'paid' || txStatus === 'billed') {
-        const subFromTx = String(tx?.subscriptionId ?? tx?.subscription_id ?? '').trim();
-        if (subFromTx) possibleSubscriptionIds.unshift(subFromTx);
-      }
-    }
-
-    for (const id of possibleSubscriptionIds) {
-      const sub = await (paddle as any).subscriptions?.get?.(id);
-      const status = String(sub?.status ?? '').toLowerCase();
-      if (status === 'active') return { ok: true, subscriptionStatus: 'active' };
-      if (status === 'trialing') return { ok: true, subscriptionStatus: 'trialing' };
-    }
-  } catch {
-    return { ok: false, subscriptionStatus: 'active' };
-  }
-
-  return { ok: false, subscriptionStatus: 'active' };
-}
-
+/**
+ * Onboarding: confirm paid checkout after return from Flutterwave or Paystack (or client retry).
+ * Prefer GET `/api/billing/verify` on redirect; this POST exists for explicit client confirmation.
+ */
 export async function POST(req: Request) {
   const supabase = await createClient();
   const {
@@ -53,50 +23,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const provider = String(body.provider ?? '').trim().toLowerCase();
-  if (provider !== 'paddle') {
-    return NextResponse.json({ error: 'Unsupported checkout provider.' }, { status: 400 });
-  }
-
   const primaryBusiness = await getPrimaryBusinessForUser(user.id);
   const beforeState = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
   if (beforeState.selection_status !== 'PAID_PENDING_CHECKOUT') {
     return NextResponse.json(beforeState);
   }
 
-  const checkoutReference = String(body.checkout_reference ?? '').trim() || null;
-  const transactionId = String(body.transaction_id ?? '').trim() || null;
-  const subscriptionId = String(body.subscription_id ?? '').trim() || null;
-
-  const verified = await verifyPaddleSuccess({
-    transactionId,
-    subscriptionId,
-    checkoutReference,
-  });
-
-  if (!verified.ok) {
-    const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
-    return NextResponse.json(
-      {
-        ...state,
-        error: 'Payment is not confirmed yet. Your plan is selected. Finish checkout to continue.',
-      },
-      { status: 409 }
-    );
+  const admin = getSupabaseServiceAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 503 });
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      plan_selection_status: 'PAID_ACTIVE',
-      pending_checkout_provider: null,
-      pending_checkout_plan: null,
-      onboarding_pricing_completed_at: new Date().toISOString(),
-      subscription_status: verified.subscriptionStatus,
-    })
-    .eq('id', user.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const provider = String(body.provider ?? '').trim().toLowerCase();
+  if (provider === 'flutterwave') {
+    const id = Number(body.transaction_id ?? body.checkout_reference);
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ error: 'transaction_id required' }, { status: 400 });
+    }
+    const v = await verifyAndApplyFlutterwave(admin, id);
+    if (!v.ok) {
+      const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
+      return NextResponse.json(
+        { ...state, error: 'Payment is not confirmed yet. Finish checkout to continue.' },
+        { status: 409 }
+      );
+    }
+    const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
+    return NextResponse.json(state);
+  }
+  if (provider === 'paystack') {
+    const ref = String(body.reference ?? body.checkout_reference ?? '').trim();
+    if (!ref) {
+      return NextResponse.json({ error: 'reference required' }, { status: 400 });
+    }
+    const v = await verifyAndApplyPaystack(admin, ref);
+    if (!v.ok) {
+      const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
+      return NextResponse.json(
+        { ...state, error: 'Payment is not confirmed yet. Finish checkout to continue.' },
+        { status: 409 }
+      );
+    }
+    const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
+    return NextResponse.json(state);
+  }
 
-  const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
-  return NextResponse.json(state);
+  return NextResponse.json({ error: 'Unsupported checkout provider.' }, { status: 400 });
 }

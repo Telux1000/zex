@@ -12,6 +12,7 @@ import type { PricingPlan } from '@/lib/billing/plans';
 import { pricingPlans as defaultPricingPlans } from '@/lib/billing/plans';
 import { OnboardingPricingStep } from '@/components/onboarding/OnboardingPricingStep';
 import type { OnboardingEntryState } from '@/lib/onboarding/entry-state';
+import type { BillingProviderMode } from '@/lib/billing/saas-billing-config';
 
 const FORM_PROFILE = 'onboarding-step-profile';
 const FORM_BUSINESS = 'onboarding-step-business';
@@ -40,6 +41,8 @@ export function OnboardingWizard() {
   const [planCatalog, setPlanCatalog] = useState<PricingPlan[] | null>(null);
   const [onboardingEntry, setOnboardingEntry] = useState<OnboardingEntryState | null>(null);
   const [trialDaysConfigured, setTrialDaysConfigured] = useState(14);
+  const [billingProviderMode, setBillingProviderMode] =
+    useState<BillingProviderMode>('flutterwave_primary_paystack_fallback');
   const [business, setBusiness] = useState<Business | null>(null);
   const [geoCountryCode, setGeoCountryCode] = useState<string | null>(null);
   const [requestLocaleCountryCode, setRequestLocaleCountryCode] = useState<string | null>(null);
@@ -68,6 +71,7 @@ export function OnboardingWizard() {
           pricingComplete?: boolean;
           planCatalog?: PricingPlan[];
           trialDaysConfigured?: number;
+          billingProviderMode?: BillingProviderMode;
           onboardingEntry?: OnboardingEntryState;
         };
         if (cancelled) return;
@@ -89,6 +93,7 @@ export function OnboardingWizard() {
             ? data.trialDaysConfigured
             : 14
         );
+        if (data.billingProviderMode) setBillingProviderMode(data.billingProviderMode);
         setGeoCountryCode(data.geoCountryCode ?? null);
         setRequestLocaleCountryCode(data.requestLocaleCountryCode ?? null);
         const b = data.business;
@@ -302,6 +307,7 @@ export function OnboardingWizard() {
               plans={effectivePlans}
               trialDays={trialDaysConfigured}
               initialEntryState={onboardingEntry}
+              billingProviderMode={billingProviderMode}
               onCompleted={onPricingCompleted}
             />
           </div>

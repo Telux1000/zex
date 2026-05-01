@@ -3,7 +3,7 @@ import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 /**
  * Optional internal endpoint to force `subscription_status: active` (e.g. manual ops).
- * Primary SaaS entitlements come from Paddle (`/api/webhooks/paddle`).
+ * SaaS entitlements are applied from Flutterwave / Paystack webhooks and `billing-service` (see `applyVerifiedSuccessfulCharge`).
  * Header: x-billing-webhook-secret must match BILLING_WEBHOOK_SECRET.
  * Body: { owner_user_id: string } (auth.users id of the paying workspace owner).
  */

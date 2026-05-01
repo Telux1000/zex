@@ -12,10 +12,10 @@ import {
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 const PLAN_MONTHLY_USD_CENTS: Record<string, number> = {
-  starter: 2900,
-  growth: 5900,
-  professional: 7900,
-  enterprise: 9900,
+  starter: 0,
+  growth: 1900,
+  professional: 3900,
+  enterprise: 7900,
 };
 
 function normalizePlan(value: unknown): keyof typeof PLAN_MONTHLY_USD_CENTS {
@@ -193,7 +193,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    platform_billing: 'paddle',
+    platform_billing: 'zenzex',
     source_of_truth: subscriptionsProbe.table ?? 'no_subscription_table_found',
     accounts,
   });

@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: featureUpgradeMessage('ai_assistant'),
-          assistant_text: 'AI Assistant is available on Professional plan. Upgrade to continue.',
+          assistant_text: 'AI Assistant is available on Growth. Upgrade to continue.',
           code: 'plan_feature_ai_assistant',
           current_plan: billingPlan,
           cta: 'Upgrade',

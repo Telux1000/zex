@@ -2,6 +2,7 @@
 
 import { Lock, X } from 'lucide-react';
 import { getUpgradeModalContent, type UpgradeTrigger } from '@/lib/billing/upgrade-modal';
+import { useWaitlistUi } from '@/components/waitlist/waitlist-context';
 
 type Props = {
   open: boolean;
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function UpgradePlanModal({ open, trigger, onClose, onUpgrade }: Props) {
+  const { openWaitlist } = useWaitlistUi();
   if (!open) return null;
   const content = getUpgradeModalContent(trigger);
   return (
@@ -59,6 +61,22 @@ export function UpgradePlanModal({ open, trigger, onClose, onUpgrade }: Props) {
           Upgrade to {content.planName}
         </button>
         <p className="mt-3 text-center text-xs text-slate-500 dark:text-slate-500">Cancel anytime</p>
+
+        <div className="mt-5 border-t border-[var(--card-border)] pt-4">
+          <p className="text-center text-xs text-slate-600 dark:text-slate-400">
+            Coming soon — join waitlist for early access
+          </p>
+          <button
+            type="button"
+            className="mt-2 w-full rounded-lg border border-[var(--sidebar-border)] py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60"
+            onClick={() => {
+              onClose();
+              openWaitlist({ triggerReason: 'feature_locked', source: 'feature_locked' });
+            }}
+          >
+            Join waitlist
+          </button>
+        </div>
       </div>
     </div>
   );

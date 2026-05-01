@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { assertBusinessPermission } from '@/lib/rbac/server';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import type { BusinessRole } from '@/lib/rbac/types';
+import { ownerHasTeamInvitesEntitlement } from '@/lib/billing/team-plan-gate.server';
 
 type TeamMemberRow = {
   user_id: string;
@@ -148,6 +149,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     owner: ownerRow,
     members: memberRows,
     pending_invites: pendingInvites,
+    entitlements: {
+      team_invites: ownerHasTeamInvitesEntitlement(
+        (ownerProfile as { billing_plan?: unknown } | null | undefined)?.billing_plan
+      ),
+    },
   });
 }
 

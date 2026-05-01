@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hashInviteToken } from '@/lib/invite-token';
+import { validateWaitlistInviteForSignup } from '@/lib/waitlist/waitlist-invite';
 
 export const SIGNUP_MODES = ['OPEN', 'CLOSED', 'INVITE_ONLY'] as const;
 export type SignupMode = (typeof SIGNUP_MODES)[number];
@@ -53,13 +54,14 @@ export async function fetchSignupSettings(admin: SupabaseClient): Promise<Signup
 }
 
 export type SignupPolicyResult =
-  | { ok: true; inviteIdToConsume: string | null }
+  | { ok: true; inviteIdToConsume: string | null; waitlistRowId: string | null }
   | {
       ok: false;
       status: 403;
       error:
         | 'We’re temporarily pausing new signups while we perform updates. Please check back shortly.'
-        | 'Invite required to register';
+        | 'Invite required to register'
+        | 'Invalid or expired invite link.';
     };
 
 export async function validateSignupAccess(params: {
@@ -67,9 +69,20 @@ export async function validateSignupAccess(params: {
   mode: SignupMode;
   email?: string | null;
   inviteToken?: string | null;
+  waitlistInviteToken?: string | null;
 }): Promise<SignupPolicyResult> {
-  const inviteToken = String(params.inviteToken ?? '').trim();
-  if (params.mode === 'OPEN') return { ok: true, inviteIdToConsume: null };
+  const emailNorm = String(params.email ?? '').trim().toLowerCase();
+  const wlRaw = String(params.waitlistInviteToken ?? '').trim();
+
+  if (wlRaw) {
+    const wl = await validateWaitlistInviteForSignup(params.admin, wlRaw, emailNorm);
+    if (!wl.ok) {
+      return { ok: false, status: 403, error: 'Invalid or expired invite link.' };
+    }
+    return { ok: true, inviteIdToConsume: null, waitlistRowId: wl.waitlistId };
+  }
+
+  if (params.mode === 'OPEN') return { ok: true, inviteIdToConsume: null, waitlistRowId: null };
   if (params.mode === 'CLOSED') {
     return {
       ok: false,
@@ -77,6 +90,8 @@ export async function validateSignupAccess(params: {
       error: 'We’re temporarily pausing new signups while we perform updates. Please check back shortly.',
     };
   }
+
+  const inviteToken = String(params.inviteToken ?? '').trim();
   if (!inviteToken) {
     return { ok: false, status: 403, error: 'Invite required to register' };
   }
@@ -95,9 +110,7 @@ export async function validateSignupAccess(params: {
     return { ok: false, status: 403, error: 'Invite required to register' };
   }
   const inviteEmail = invite.email ? String(invite.email).trim().toLowerCase() : '';
-  const reqEmail = String(params.email ?? '')
-    .trim()
-    .toLowerCase();
+  const reqEmail = emailNorm;
   if (inviteEmail && reqEmail && inviteEmail !== reqEmail) {
     return { ok: false, status: 403, error: 'Invite required to register' };
   }
@@ -105,7 +118,7 @@ export async function validateSignupAccess(params: {
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     return { ok: false, status: 403, error: 'Invite required to register' };
   }
-  return { ok: true, inviteIdToConsume: String(invite.id) };
+  return { ok: true, inviteIdToConsume: String(invite.id), waitlistRowId: null };
 }
 
 export async function consumeSignupInvite(params: {

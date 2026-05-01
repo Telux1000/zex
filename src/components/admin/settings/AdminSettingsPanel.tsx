@@ -10,6 +10,7 @@ import type { AdminPlatformSettingsDTO } from '@/lib/admin/admin-platform-settin
 import type { SignupSettings } from '@/lib/auth/signup-control';
 import type { InternalSecuritySettingsDTO } from '@/lib/admin/internal-security-settings';
 import type { AppSystemSettings } from '@/lib/system-access';
+import type { BillingProviderMode } from '@/lib/billing/saas-billing-config';
 
 type TabId =
   | 'platform'
@@ -30,8 +31,9 @@ type SettingsPayload = {
     node_env: string;
     supabase_host?: string | null;
     postmark_configured: boolean;
-    paddle_billing_api_configured: boolean;
-    paddle_billing_webhook_configured: boolean;
+    flutterwave_configured: boolean;
+    paystack_configured: boolean;
+    stripe_saas_configured: boolean;
     app_url_configured: boolean;
   };
   can_edit: boolean;
@@ -234,6 +236,7 @@ export function AdminSettingsPanel() {
         {tab === 'billing' && (
           <BillingTab
             platform={platform}
+            environment={environment}
             disabled={readOnly || saving}
             onSave={(patch) => void saveSection('billing', patch)}
           />
@@ -559,7 +562,7 @@ function PlatformTab({
       </Field>
       <Field
         label="Default plan for new accounts"
-        description="Billing plan stored on new subscriber profiles at signup (Paddle catalog price IDs come from environment / admin defaults)."
+        description="Billing plan stored on new subscriber profiles at signup (public catalog price IDs from environment / admin defaults)."
       >
         <select
           className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
@@ -890,10 +893,12 @@ function AuthenticationTab({
 
 function BillingTab({
   platform,
+  environment,
   disabled,
   onSave,
 }: {
   platform: AdminPlatformSettingsDTO;
+  environment: SettingsPayload['environment'];
   disabled: boolean;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
@@ -902,12 +907,14 @@ function BillingTab({
   const [pGrowth, setPGrowth] = useState(platform.plan_price_growth_cents ?? '');
   const [pProf, setPProf] = useState(platform.plan_price_professional_cents ?? '');
   const [pEnt, setPEnt] = useState(platform.plan_price_enterprise_cents ?? '');
+  const [providerMode, setProviderMode] = useState<BillingProviderMode>(platform.billing_provider_mode);
   useEffect(() => {
     setTrialDays(platform.trial_days);
     setPStarter(platform.plan_price_starter_cents ?? '');
     setPGrowth(platform.plan_price_growth_cents ?? '');
     setPProf(platform.plan_price_professional_cents ?? '');
     setPEnt(platform.plan_price_enterprise_cents ?? '');
+    setProviderMode(platform.billing_provider_mode);
   }, [platform]);
 
   const centsOrNull = (v: string | number) => {
@@ -915,9 +922,61 @@ function BillingTab({
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
+  const stripeConfigured = environment.stripe_saas_configured;
+  const providerModePatch =
+    !stripeConfigured && providerMode.includes('stripe')
+      ? {}
+      : { billing_provider_mode: providerMode };
 
   return (
     <div className="mt-2">
+      <Field
+        label="SaaS billing provider"
+        description="Controls which provider is used for Zenzex subscription checkout."
+      >
+        <div className="space-y-1">
+          <select
+            className="w-72 max-w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            value={providerMode}
+            disabled={disabled}
+            onChange={(e) => setProviderMode(e.target.value as BillingProviderMode)}
+          >
+            <option value="flutterwave_only">Flutterwave only</option>
+            <option value="paystack_only">Paystack only</option>
+            <option value="stripe_only" disabled={!stripeConfigured}>
+              {stripeConfigured ? 'Stripe only' : 'Stripe only — Stripe not configured'}
+            </option>
+            <option value="flutterwave_primary_paystack_fallback">Flutterwave primary, Paystack fallback</option>
+            <option value="paystack_primary_flutterwave_fallback">Paystack primary, Flutterwave fallback</option>
+            <option value="stripe_primary_flutterwave_fallback" disabled={!stripeConfigured}>
+              {stripeConfigured
+                ? 'Stripe primary, Flutterwave fallback'
+                : 'Stripe primary, Flutterwave fallback — Stripe not configured'}
+            </option>
+            <option value="stripe_primary_paystack_fallback" disabled={!stripeConfigured}>
+              {stripeConfigured
+                ? 'Stripe primary, Paystack fallback'
+                : 'Stripe primary, Paystack fallback — Stripe not configured'}
+            </option>
+            <option value="flutterwave_primary_stripe_fallback" disabled={!stripeConfigured}>
+              {stripeConfigured
+                ? 'Flutterwave primary, Stripe fallback'
+                : 'Flutterwave primary, Stripe fallback — Stripe not configured'}
+            </option>
+            <option value="paystack_primary_stripe_fallback" disabled={!stripeConfigured}>
+              {stripeConfigured
+                ? 'Paystack primary, Stripe fallback'
+                : 'Paystack primary, Stripe fallback — Stripe not configured'}
+            </option>
+          </select>
+          {!stripeConfigured && (
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Stripe — not configured</p>
+          )}
+        </div>
+      </Field>
+      {!stripeConfigured && (
+        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Add Stripe keys to enable Stripe checkout.</p>
+      )}
       <Field
         label="Trial length (days)"
         description="Applied to new subscriber profiles and billing page copy. Does not retroactively change existing trials."
@@ -934,7 +993,7 @@ function BillingTab({
       </Field>
       <p className="mt-4 text-xs font-medium text-zinc-600 dark:text-zinc-400">
         Display prices (cents / month){' '}
-        <span className="font-normal text-zinc-500">— leave empty to use built-in defaults. Paddle checkout uses NEXT_PUBLIC_PADDLE_PRICE_* env vars.</span>
+        <span className="font-normal text-zinc-500">— leave empty to use built-in defaults. Marketing prices use NEXT_PUBLIC_CATALOG_PRICE_*.</span>
       </p>
       <Field label="Starter (cents)" description="Shown on subscriber billing page when set.">
         <input
@@ -991,6 +1050,7 @@ function BillingTab({
               plan_price_growth_cents: centsOrNull(pGrowth),
               plan_price_professional_cents: centsOrNull(pProf),
               plan_price_enterprise_cents: centsOrNull(pEnt),
+              ...providerModePatch,
             })
           }
           className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
@@ -1103,12 +1163,16 @@ function EnvironmentTab({
         {environment.postmark_configured ? 'Server token present' : 'Not configured'}
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">Paddle Billing API key</span>:{' '}
-        {environment.paddle_billing_api_configured ? 'Set' : 'Missing'}
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">FLUTTERWAVE_SECRET_KEY</span> (SaaS
+        checkout): {environment.flutterwave_configured ? 'Set' : 'Missing'}
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">Paddle Billing webhook secret</span>:{' '}
-        {environment.paddle_billing_webhook_configured ? 'Set' : 'Missing'}
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">PAYSTACK_SECRET_KEY</span> (SaaS
+        checkout): {environment.paystack_configured ? 'Set' : 'Missing'}
+      </p>
+      <p className="text-zinc-600 dark:text-zinc-400">
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">Stripe — SaaS checkout</span>:{' '}
+        {environment.stripe_saas_configured ? 'Configured' : 'Not configured'}
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
         <span className="font-medium text-zinc-800 dark:text-zinc-200">App URL</span>:{' '}

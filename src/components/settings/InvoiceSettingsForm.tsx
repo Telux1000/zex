@@ -32,6 +32,7 @@ function defaultInvoiceSettings(business: Business): InvoiceSettings {
     show_customer_address: s.show_customer_address ?? true,
     show_tax_breakdown: s.show_tax_breakdown ?? true,
     show_discount_line: s.show_discount_line ?? true,
+    show_zenzex_branding: s.show_zenzex_branding !== false,
   };
 }
 
@@ -180,6 +181,31 @@ export function InvoiceSettingsForm({ business, onSuccess, onClearSuccess }: Pro
             <label htmlFor="show_discount_line" className="text-sm text-slate-700 dark:text-slate-300">
               Show discount line
             </label>
+          </div>
+          <div className="pt-2">
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="show_zenzex_branding"
+                checked={settings.show_zenzex_branding !== false}
+                disabled
+                className="mt-0.5 h-4 w-4 cursor-not-allowed rounded border-slate-300 text-zenzex-600 opacity-80 focus:ring-zenzex-500"
+                aria-describedby="show_zenzex_branding_help"
+              />
+              <div>
+                <label
+                  htmlFor="show_zenzex_branding"
+                  className="text-sm text-slate-600 dark:text-slate-400"
+                >
+                  Show Zenzex branding on invoices
+                </label>
+                <p id="show_zenzex_branding_help" className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                  A small “Powered by Zenzex” line appears on PDFs, previews, and public invoice pages. Option to
+                  remove may be available on higher tiers later; for now, branding stays on to keep a consistent
+                  experience.
+                </p>
+              </div>
+            </div>
           </div>
         </fieldset>
       </div>

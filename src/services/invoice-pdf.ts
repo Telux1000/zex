@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import type { InvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import type { InvoiceDocumentPayload, InvoiceDocTextLine } from '@/lib/invoices/invoice-document-payload';
+import { ZENZEX_INVOICE_FOOTER_LINE } from '@/lib/invoices/zenzex-invoice-branding';
 import { getInvoicePdfPaint, type PdfRgb } from '@/lib/invoices/invoice-pdf-paint';
 
 function clampText(s: string, max = 3000) {
@@ -807,6 +808,22 @@ export async function buildInvoicePdfBase64(
         ctx.y -= 10;
       }
     }
+  }
+
+  if (doc.showZenzexBranding) {
+    const footer = ZENZEX_INVOICE_FOOTER_LINE;
+    const fs = 7.5;
+    ensureSpace(ctx, 20, marginBottom, stampVoid);
+    ctx.y -= 4;
+    const tw = textWidth(fontRegular, footer, fs);
+    drawText(footer, {
+      x: (width - tw) / 2,
+      y: ctx.y,
+      size: fs,
+      font: fontRegular,
+      color: rgb(0.55, 0.58, 0.62),
+      opacity: 0.88,
+    });
   }
 
   const bytes = await pdfDoc.save();

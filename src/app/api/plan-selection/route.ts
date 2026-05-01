@@ -12,6 +12,13 @@ import { newAccountTrialFields } from '@/lib/billing/subscription-access';
 import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 import { fetchAdminPlatformSettings } from '@/lib/admin/admin-platform-settings';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
+import {
+  billingProviderModeFromEnvPrimary,
+  hostedSaaSCheckoutProviderOrder,
+  isInternalSaaSBillingConfigured,
+  normalizeBillingProviderMode,
+} from '@/lib/billing/saas-billing-config';
+import { internalCatalogKey } from '@/lib/billing/plan-provider-refs';
 
 type SelectionMode = 'free' | 'trial' | 'paid';
 
@@ -55,7 +62,7 @@ export async function POST(req: Request) {
       .update({
         billing_plan: plan,
         billing_interval: billingInterval,
-        selected_stripe_price_id: null,
+        selected_catalog_price_id: null,
         selected_plan_at: now,
         plan_selection_status: 'FREE_SELECTED',
         pending_checkout_provider: null,
@@ -81,7 +88,7 @@ export async function POST(req: Request) {
       .update({
         billing_plan: plan,
         billing_interval: billingInterval,
-        selected_stripe_price_id: catalogPriceIdForPlanInterval(plan, billingInterval),
+        selected_catalog_price_id: catalogPriceIdForPlanInterval(plan, billingInterval),
         selected_plan_at: now,
         plan_selection_status: 'TRIAL_SELECTED',
         pending_checkout_provider: null,
@@ -98,39 +105,53 @@ export async function POST(req: Request) {
     return NextResponse.json(state);
   }
 
-  const priceId = catalogPriceIdForPlanInterval(plan, billingInterval);
-  if (!priceId) {
-    return NextResponse.json(
-      { error: `Paddle price not configured for ${plan} (${billingInterval}).` },
-      { status: 400 }
-    );
+  if (isInternalSaaSBillingConfigured()) {
+    const admin = getSupabaseServiceAdmin();
+    const platform = admin ? await fetchAdminPlatformSettings(admin) : null;
+    const providerMode = platform
+      ? normalizeBillingProviderMode(platform.billing_provider_mode)
+      : billingProviderModeFromEnvPrimary();
+    const checkoutOrder = hostedSaaSCheckoutProviderOrder(providerMode);
+    const primary = checkoutOrder[0];
+    if (!primary) {
+      return NextResponse.json(
+        { error: 'Secure checkout is temporarily unavailable. Please try again.' },
+        { status: 503 }
+      );
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        billing_plan: plan,
+        billing_interval: billingInterval,
+        selected_catalog_price_id: internalCatalogKey(primary, plan, billingInterval),
+        selected_plan_at: now,
+        plan_selection_status: 'PAID_PENDING_CHECKOUT',
+        pending_checkout_provider: primary,
+        pending_checkout_plan: plan,
+        onboarding_pricing_completed_at: null,
+      })
+      .eq('id', user.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
+    return NextResponse.json({
+      ...state,
+      checkout_config: {
+        provider: 'internal' as const,
+        plan_key: plan,
+        billing_interval: billingInterval,
+        owner_user_id: user.id,
+        customer_email: user.email ?? null,
+      },
+    });
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      billing_plan: plan,
-      billing_interval: billingInterval,
-      selected_stripe_price_id: priceId,
-      selected_plan_at: now,
-      plan_selection_status: 'PAID_PENDING_CHECKOUT',
-      pending_checkout_provider: 'paddle',
-      pending_checkout_plan: plan,
-      onboarding_pricing_completed_at: null,
-    })
-    .eq('id', user.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
-  return NextResponse.json({
-    ...state,
-    checkout_config: {
-      provider: 'paddle',
-      price_id: priceId,
-      plan_key: plan,
-      billing_interval: billingInterval,
-      owner_user_id: user.id,
-      customer_email: user.email ?? null,
+  return NextResponse.json(
+    {
+      error:
+        'Subscription checkout is not available: configure Flutterwave, Paystack, or Stripe on the server.',
     },
-  });
+    { status: 503 }
+  );
 }

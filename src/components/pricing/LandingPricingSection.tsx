@@ -1,22 +1,22 @@
 'use client';
 
+import { Check } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   type PlanBillingInterval,
   PRICING_TRIAL_DAYS,
   type BillingPlan,
+  landingPriceSecondaryCtaText,
   pricingCardPrimaryCtaLabel,
-  pricingCardSecondaryTrialCtaLabel,
   pricingPlans,
-  pricingPromoBannerHeadline,
-  pricingTrialMessaging,
 } from '@/lib/billing/plans';
 import { createClient } from '@/lib/supabase/client';
 import { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
 import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
 import { buildPricingAuthHref, buildPricingNextPath, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
+import { WaitlistForm } from '@/components/waitlist/WaitlistForm';
 
 export function LandingPricingSection() {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('monthly');
@@ -71,19 +71,17 @@ export function LandingPricingSection() {
       <div className="mx-auto max-w-6xl px-3 sm:px-4">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-            Predictable pricing
+            Simple, predictable pricing
           </h2>
-          <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
-            Straightforward plans with clear limits. Upgrade when you need more automation and scale.
+          <p className="mt-3 text-pretty text-sm font-medium text-slate-800 dark:text-slate-200 sm:text-base">
+            Start free. Upgrade when you need automation.
           </p>
-          <div className="mx-auto mt-5 max-w-lg rounded-xl border border-indigo-200/80 bg-indigo-50/80 px-3 py-2.5 dark:border-indigo-500/30 dark:bg-indigo-950/40 sm:px-4 sm:py-3">
-            <p className="text-pretty text-xs font-semibold text-indigo-900 dark:text-indigo-100 sm:text-sm">
-              {pricingPromoBannerHeadline(PRICING_TRIAL_DAYS)}
-            </p>
-            <p className="mt-1 text-pretty text-[11px] text-indigo-800/90 dark:text-indigo-200/85 sm:text-xs">
-              {pricingTrialMessaging.subline}
-            </p>
-          </div>
+          <p className="mt-2 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+            Create invoices in seconds, get paid faster, and stay in control of your revenue.
+          </p>
+          <p className="mt-4 text-pretty text-xs text-slate-500 dark:text-slate-500 sm:text-sm">
+            Free forever plan • {PRICING_TRIAL_DAYS}-day free trial on paid plans • No credit card required
+          </p>
           <div className="mt-5 flex w-full justify-center px-1 sm:mt-6 sm:px-0">
             <BillingIntervalToggle
               value={billingInterval}
@@ -100,25 +98,72 @@ export function LandingPricingSection() {
             renderDualCta={(plan) => {
               const href = pricingCtaHref(plan.id);
               const primaryLabel = pricingCardPrimaryCtaLabel(plan.id);
+              const isGrowth = plan.id === 'growth';
+              const isStarter = plan.id === 'starter';
+              const primaryClassName = isStarter
+                ? 'app-btn-secondary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold'
+                : isGrowth
+                  ? 'app-btn-primary-lg inline-flex w-full min-h-[48px] items-center justify-center'
+                  : 'app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold';
               return {
                 primary: (
                   <Link
                     href={href}
                     onClick={() => logPricingClick(plan.id, href)}
-                    className="app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold"
+                    className={primaryClassName}
                   >
                     {primaryLabel}
                   </Link>
                 ),
                 secondary:
                   plan.showTrialCTA === true ? (
-                    <Link href={href} onClick={() => logPricingClick(plan.id, href)} className={pricingCardSecondaryCtaClassName}>
-                      {pricingCardSecondaryTrialCtaLabel()}
+                    <Link
+                      href={href}
+                      onClick={() => logPricingClick(plan.id, href)}
+                      className={pricingCardSecondaryCtaClassName}
+                    >
+                      {landingPriceSecondaryCtaText(plan.id, PRICING_TRIAL_DAYS)}
                     </Link>
                   ) : null,
               };
             }}
           />
+        </div>
+
+        <div className="mx-auto mt-14 max-w-3xl border-t border-[var(--sidebar-border)] pt-10 sm:mt-16 sm:pt-12">
+          <h3 className="text-center text-lg font-bold tracking-tight text-slate-900 dark:text-white sm:text-xl">
+            Stop chasing invoices
+          </h3>
+          <p className="mt-3 text-pretty text-center text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+            {
+              "Zenzex helps you automate follow-ups, track what's owed, and stay in control of revenue without spreadsheets or manual reminders."
+            }
+          </p>
+          <ul className="mx-auto mt-6 max-w-md space-y-2.5 text-sm text-slate-600 dark:text-slate-400 sm:mt-7">
+            {(
+              [
+                'Automatically remind clients to pay',
+                "Know what's paid, pending, and overdue",
+                'Save hours every week on invoicing',
+                'Get paid faster with less stress',
+              ] as const
+            ).map((line) => (
+              <li key={line} className="flex gap-2.5 sm:items-start">
+                <Check
+                  className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400"
+                  aria-hidden
+                />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mx-auto mt-12 max-w-lg sm:mt-14">
+          <p className="mb-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
+            Can&apos;t sign up right now?
+          </p>
+          <WaitlistForm source="pricing" />
         </div>
 
         <p className="mt-8 max-w-2xl px-1 text-center text-[11px] text-slate-500 dark:text-slate-500 sm:mt-10 sm:mx-auto sm:text-xs">
