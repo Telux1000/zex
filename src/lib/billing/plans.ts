@@ -131,7 +131,7 @@ export const pricingPlans: PricingPlan[] = [
       'Real-time payment tracking',
       'Unlimited invoices',
     ],
-    popular: true,
+    popular: false,
     marketingDescription: 'For freelancers getting paid regularly',
   },
   {
@@ -159,7 +159,7 @@ export const pricingPlans: PricingPlan[] = [
       'Advanced revenue insights & forecasting',
       'Priority support',
     ],
-    popular: false,
+    popular: true,
     marketingDescription: 'For serious businesses scaling revenue',
   },
   {

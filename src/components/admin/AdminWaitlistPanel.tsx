@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, Loader2, Mail, UserCheck } from 'lucide-react';
+import { IndustrySelect } from '@/components/business/IndustrySelect';
+import { CountrySelect } from '@/components/location/CountrySelect';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
+import { getIndustryLabelFromKey, INDUSTRY_OTHER_KEY } from '@/lib/business/industry-options';
+import { countryDisplayNameFromIso } from '@/lib/location';
 import { cn } from '@/lib/utils/cn';
 
 type WaitlistRow = {
   id: string;
   email: string;
   country: string | null;
+  industry: string | null;
+  industry_custom: string | null;
   business_type: string | null;
   source: string;
   trigger_reason: string | null;
@@ -19,7 +25,6 @@ type WaitlistRow = {
   activated_at: string | null;
   converted_at: string | null;
   linked_user_id: string | null;
-  priority_score: number;
 };
 
 type Metrics = {
@@ -37,6 +42,29 @@ function formatDate(iso: string | null): string {
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
 }
 
+function industryCell(r: WaitlistRow): string {
+  if (r.industry === INDUSTRY_OTHER_KEY) {
+    const custom = r.industry_custom?.trim();
+    if (custom) return custom;
+    return getIndustryLabelFromKey(INDUSTRY_OTHER_KEY) ?? '—';
+  }
+  const fromIndustry =
+    getIndustryLabelFromKey(r.industry) ?? (r.industry?.trim() ? r.industry.trim() : null);
+  if (fromIndustry) return fromIndustry;
+  const fromLegacy =
+    getIndustryLabelFromKey(r.business_type) ?? (r.business_type?.trim() ? r.business_type.trim() : null);
+  return fromLegacy ?? '—';
+}
+
+function countryCell(r: WaitlistRow): string {
+  const raw = r.country?.trim();
+  if (!raw) return '—';
+  return countryDisplayNameFromIso(raw) ?? raw;
+}
+
+const filterSelectClass =
+  'mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950';
+
 export function AdminWaitlistPanel() {
   const [rows, setRows] = useState<WaitlistRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -44,19 +72,19 @@ export function AdminWaitlistPanel() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
-  const [businessTypeFilter, setBusinessTypeFilter] = useState('');
+  const [industryFilter, setIndustryFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const query = useMemo(() => {
     const p = new URLSearchParams();
     if (statusFilter) p.set('status', statusFilter);
-    if (countryFilter.trim()) p.set('country', countryFilter.trim());
-    if (businessTypeFilter.trim()) p.set('business_type', businessTypeFilter.trim());
+    if (countryFilter.trim()) p.set('country', countryFilter.trim().toUpperCase());
+    if (industryFilter.trim()) p.set('industry', industryFilter.trim());
     if (sourceFilter.trim()) p.set('source', sourceFilter.trim());
     const s = p.toString();
     return s ? `?${s}` : '';
-  }, [statusFilter, countryFilter, businessTypeFilter, sourceFilter]);
+  }, [statusFilter, countryFilter, industryFilter, sourceFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,8 +182,8 @@ export function AdminWaitlistPanel() {
 
       <AdminContentCard>
         <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 dark:border-zinc-800 lg:flex-row lg:flex-wrap lg:items-end">
-          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          <div className="grid w-full flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block min-w-0 text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Status
               <select
                 value={statusFilter}
@@ -169,24 +197,30 @@ export function AdminWaitlistPanel() {
                 <option value="converted">Converted</option>
               </select>
             </label>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Country contains
-              <input
+            <label className="block min-w-0 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Country
+              <CountrySelect
+                id="admin-waitlist-filter-country"
+                ariaLabel="Filter by country"
                 value={countryFilter}
-                onChange={(e) => setCountryFilter(e.target.value)}
-                placeholder="e.g. NG"
-                className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                onChange={setCountryFilter}
+                placeholder="All countries"
+                className={filterSelectClass}
+                clearable
               />
             </label>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Business type contains
-              <input
-                value={businessTypeFilter}
-                onChange={(e) => setBusinessTypeFilter(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            <label className="block min-w-0 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Industry
+              <IndustrySelect
+                id="admin-waitlist-filter-industry"
+                ariaLabel="Filter by industry"
+                value={industryFilter}
+                onChange={setIndustryFilter}
+                placeholder="All industries"
+                className={filterSelectClass}
               />
             </label>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            <label className="block min-w-0 text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Source
               <input
                 value={sourceFilter}
@@ -210,26 +244,24 @@ export function AdminWaitlistPanel() {
               <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
             </div>
           ) : (
-            <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[880px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                  <th className="py-2 pr-3">Priority</th>
                   <th className="py-2 pr-3">Email</th>
                   <th className="py-2 pr-3">Country</th>
-                  <th className="py-2 pr-3">Business</th>
+                  <th className="py-2 pr-3">Industry</th>
                   <th className="py-2 pr-3">Source</th>
-                  <th className="py-2 pr-3">Trigger</th>
-                  <th className="py-2 pr-3">Referrals</th>
+                  <th className="py-2 pr-3">Trigger reason</th>
+                  <th className="py-2 pr-3">Referral count</th>
                   <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 pr-3">Activated</th>
-                  <th className="py-2 pr-3">Created</th>
+                  <th className="py-2 pr-3">Created at</th>
                   <th className="py-2 pl-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-10 text-center text-zinc-500">
+                    <td colSpan={9} className="py-10 text-center text-zinc-500">
                       No rows match filters.
                     </td>
                   </tr>
@@ -239,16 +271,11 @@ export function AdminWaitlistPanel() {
                       key={r.id}
                       className="border-b border-zinc-100 hover:bg-zinc-50/80 dark:border-zinc-900 dark:hover:bg-zinc-900/40"
                     >
-                      <td className="py-2.5 pr-3 font-medium tabular-nums text-zinc-900 dark:text-zinc-100">
-                        {r.priority_score}
-                      </td>
                       <td className="max-w-[200px] truncate py-2.5 pr-3 font-mono text-xs text-zinc-800 dark:text-zinc-200">
                         {r.email}
                       </td>
-                      <td className="py-2.5 pr-3 text-zinc-700 dark:text-zinc-300">{r.country ?? '—'}</td>
-                      <td className="max-w-[140px] truncate py-2.5 pr-3 text-zinc-700 dark:text-zinc-300">
-                        {r.business_type ?? '—'}
-                      </td>
+                      <td className="max-w-[160px] truncate py-2.5 pr-3 text-zinc-700 dark:text-zinc-300">{countryCell(r)}</td>
+                      <td className="max-w-[180px] truncate py-2.5 pr-3 text-zinc-700 dark:text-zinc-300">{industryCell(r)}</td>
                       <td className="py-2.5 pr-3 text-zinc-700 dark:text-zinc-300">{r.source}</td>
                       <td className="max-w-[120px] truncate py-2.5 pr-3 text-xs text-zinc-600 dark:text-zinc-400">
                         {r.trigger_reason ?? '—'}
@@ -269,9 +296,6 @@ export function AdminWaitlistPanel() {
                         >
                           {r.status}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap py-2.5 pr-3 text-xs text-zinc-600 dark:text-zinc-400">
-                        {formatDate(r.activated_at)}
                       </td>
                       <td className="whitespace-nowrap py-2.5 pr-3 text-xs text-zinc-600 dark:text-zinc-400">
                         {formatDate(r.created_at)}

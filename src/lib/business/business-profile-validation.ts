@@ -1,3 +1,5 @@
+import { INDUSTRY_OTHER_KEY } from '@/lib/business/industry-options';
+
 export const BUSINESS_PROFILE_FIELD_KEYS = [
   'name',
   'email',
@@ -76,6 +78,21 @@ function hasValue(v: string | null | undefined): boolean {
 }
 
 /**
+ * When `industryKey` is the shared “other” option, custom text is required (Business Profile + waitlist).
+ * @returns Error message or null if valid.
+ */
+export function validateIndustryKeyRequiresOtherText(
+  industryKey: string | null | undefined,
+  otherText: string | null | undefined
+): string | null {
+  const key = String(industryKey ?? '').trim();
+  if (key === INDUSTRY_OTHER_KEY && !hasValue(otherText)) {
+    return MESSAGES.industry_other_text;
+  }
+  return null;
+}
+
+/**
  * Required for onboarding / core setup: legal name, business contact.
  * Country, street address, city, and state/region are optional (add later in Settings → Business Profile).
  */
@@ -96,8 +113,9 @@ export function validateBusinessProfileInput(
   if (!hasValue(input.name)) fieldErrors.name = MESSAGES.name;
   if (!hasValue(input.email)) fieldErrors.email = MESSAGES.email;
   if (!hasValue(input.phone)) fieldErrors.phone = MESSAGES.phone;
-  if (String(input.industry_key ?? '').trim().toLowerCase() === 'other' && !hasValue(input.industry_other_text)) {
-    fieldErrors.industry_other_text = MESSAGES.industry_other_text;
+  const industryOtherErr = validateIndustryKeyRequiresOtherText(input.industry_key, input.industry_other_text);
+  if (industryOtherErr) {
+    fieldErrors.industry_other_text = industryOtherErr;
   }
 
   const firstInvalidField =

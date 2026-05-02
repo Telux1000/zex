@@ -1,6 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { validateIndustryKeyRequiresOtherText } from '@/lib/business/business-profile-validation';
+import { INDUSTRY_OTHER_KEY } from '@/lib/business/industry-options';
+import { CountrySelect } from '@/components/location/CountrySelect';
+import { looksLikeWaitlistReferralCode, normalizeWaitlistSource } from '@/lib/waitlist/waitlist-source';
+import { WaitlistIndustryFields } from '@/components/waitlist/WaitlistIndustryFields';
 import { cn } from '@/lib/utils/cn';
 
 export type WaitlistFormSource =
@@ -16,43 +21,110 @@ type Props = {
   className?: string;
   /** Tighter layout for modals and inline error strips. */
   variant?: 'default' | 'compact';
+  /** Sets `id` on the email input (e.g. landing deep-link focus). */
+  emailInputId?: string;
+  /** Parent supplies the main heading (e.g. landing #waitlist section). */
+  hideMarketingTitle?: boolean;
+  /** One line under the submit button (e.g. trust microcopy). */
+  microcopy?: string;
+  /** Show a visible “Email (required)” label instead of screen-reader-only. */
+  explicitEmailLabel?: boolean;
 };
 
-type SubmitState = 'idle' | 'loading' | 'success' | 'error';
+type SubmitState = 'idle' | 'loading' | 'success';
 
-export function WaitlistForm({ source, className, variant = 'default' }: Props) {
+const selectFieldClass =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white';
+
+const selectFieldClassCompact =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:text-white';
+
+const otherInputClass =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white';
+
+const otherInputClassCompact =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white';
+
+function isIndustryOtherFieldMessage(msg: string | null): boolean {
+  if (!msg) return false;
+  return msg.startsWith('Tell us your industry');
+}
+
+export function WaitlistForm({
+  source,
+  className,
+  variant = 'default',
+  emailInputId,
+  hideMarketingTitle = false,
+  microcopy,
+  explicitEmailLabel = false,
+}: Props) {
   const [email, setEmail] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [country, setCountry] = useState('');
+  const [industryKey, setIndustryKey] = useState('');
+  const [industryCustom, setIndustryCustom] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [referredBy, setReferredBy] = useState('');
+  const [effectiveSource, setEffectiveSource] = useState<string>(source);
   const [state, setState] = useState<SubmitState>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEffectiveSource(source);
+  }, [source]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const ref = new URLSearchParams(window.location.search).get('ref');
-    if (ref?.trim()) setReferredBy(ref.trim());
+    const ref = new URLSearchParams(window.location.search).get('ref')?.trim();
+    if (!ref) return;
+    if (looksLikeWaitlistReferralCode(ref)) {
+      setReferredBy(ref.toUpperCase());
+    } else {
+      setEffectiveSource(normalizeWaitlistSource(ref));
+    }
+  }, []);
+
+  const handleIndustryKeyChange = useCallback((key: string) => {
+    setIndustryKey(key);
+    if (key !== INDUSTRY_OTHER_KEY) setIndustryCustom('');
+    setLastError(null);
   }, []);
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (state === 'loading') return;
+      setLastError(null);
+
+      const otherErr = validateIndustryKeyRequiresOtherText(industryKey.trim() || null, industryCustom);
+      if (otherErr) {
+        setLastError(otherErr);
+        return;
+      }
+
       setState('loading');
       setCopyDone(false);
       try {
+        const trimmedKey = industryKey.trim();
+        const body: Record<string, unknown> = {
+          email,
+          source: effectiveSource,
+          trigger_reason: 'general',
+          referred_by: referredBy.trim() || undefined,
+        };
+        if (countryCode.trim()) body.country = countryCode.trim().toUpperCase();
+        if (trimmedKey) {
+          body.industry = trimmedKey;
+          if (trimmedKey === INDUSTRY_OTHER_KEY) {
+            body.industry_custom = industryCustom.trim();
+          }
+        }
+
         const res = await fetch('/api/waitlist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            source,
-            trigger_reason: 'general',
-            country: country.trim() || undefined,
-            business_type: businessType.trim() || undefined,
-            referred_by: referredBy.trim() || undefined,
-          }),
+          body: JSON.stringify(body),
         });
         const data = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
@@ -60,19 +132,27 @@ export function WaitlistForm({ source, className, variant = 'default' }: Props) 
           share_url?: string;
         };
         if (!res.ok || !data.ok) {
-          setState('error');
+          setState('idle');
+          const msg = typeof data.error === 'string' ? data.error : 'Something went wrong. Try again.';
+          setLastError(msg);
           return;
         }
         setShareUrl(typeof data.share_url === 'string' ? data.share_url : null);
         setState('success');
       } catch {
-        setState('error');
+        setState('idle');
+        setLastError('Something went wrong. Try again.');
       }
     },
-    [email, businessType, country, referredBy, source, state]
+    [email, industryKey, industryCustom, countryCode, referredBy, effectiveSource, state]
   );
 
   const compact = variant === 'compact';
+  const selClass = compact ? selectFieldClassCompact : selectFieldClass;
+  const otherClass = compact ? otherInputClassCompact : otherInputClass;
+  const otherFieldError =
+    industryKey === INDUSTRY_OTHER_KEY && lastError && isIndustryOtherFieldMessage(lastError) ? lastError : null;
+  const bannerError = lastError && !otherFieldError ? lastError : null;
 
   if (state === 'success') {
     return (
@@ -108,26 +188,79 @@ export function WaitlistForm({ source, className, variant = 'default' }: Props) 
     );
   }
 
+  const optionalFields = (
+    <div className={cn('flex flex-col gap-3', !compact && 'sm:max-w-xl')}>
+      <WaitlistIndustryFields
+        idPrefix="waitlist-form"
+        industryKey={industryKey}
+        onIndustryKeyChange={handleIndustryKeyChange}
+        industryCustom={industryCustom}
+        onIndustryCustomChange={(v) => {
+          setIndustryCustom(v);
+          if (lastError && isIndustryOtherFieldMessage(lastError)) setLastError(null);
+        }}
+        selectClassName={selClass}
+        inputClassName={otherClass}
+        otherFieldError={otherFieldError}
+      />
+      <div>
+        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+          Country <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <CountrySelect
+          id="waitlist-form-country"
+          ariaLabel="Country"
+          value={countryCode}
+          onChange={(code) => {
+            setCountryCode(code);
+            setLastError(null);
+          }}
+          placeholder="Select country"
+          className={selClass}
+          clearable
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className={cn(compact ? '' : 'rounded-2xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6', className)}>
-      {!compact ? (
+      {!compact && !hideMarketingTitle ? (
         <h3 className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg">Join the waitlist</h3>
       ) : null}
-      {!compact ? (
+      {!compact && !hideMarketingTitle ? (
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Be first to know when we open the next wave of access.
         </p>
       ) : null}
-      <form onSubmit={onSubmit} className={cn(!compact && 'mt-4', compact && 'mt-0')}>
+      <form onSubmit={onSubmit} className={cn(!compact && !hideMarketingTitle && 'mt-4', !compact && hideMarketingTitle && 'mt-0', compact && 'mt-0')}>
         <label className={cn('block', !compact && 'sm:max-w-md')}>
-          <span className="sr-only">Email</span>
+          <span
+            className={
+              explicitEmailLabel
+                ? 'mb-1.5 block text-left text-xs font-medium text-slate-700 dark:text-slate-300'
+                : 'sr-only'
+            }
+          >
+            {explicitEmailLabel ? (
+              <>
+                Email <span className="text-red-600 dark:text-red-400">(required)</span>
+              </>
+            ) : (
+              'Email'
+            )}
+          </span>
           <input
+            id={emailInputId}
             type="email"
             name="email"
             autoComplete="email"
             required
             value={email}
-            onChange={(ev) => setEmail(ev.target.value)}
+            onChange={(ev) => {
+              setEmail(ev.target.value);
+              setLastError(null);
+            }}
             placeholder="you@company.com"
             className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white"
           />
@@ -138,49 +271,15 @@ export function WaitlistForm({ source, className, variant = 'default' }: Props) 
             <summary className="cursor-pointer text-xs font-medium text-slate-500 dark:text-slate-400">
               Optional details
             </summary>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <input
-                type="text"
-                name="business_type"
-                value={businessType}
-                onChange={(ev) => setBusinessType(ev.target.value)}
-                placeholder="Business type"
-                className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
-              />
-              <input
-                type="text"
-                name="country"
-                value={country}
-                onChange={(ev) => setCountry(ev.target.value)}
-                placeholder="Country"
-                className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
-              />
-            </div>
+            <div className="mt-2">{optionalFields}</div>
           </details>
         ) : (
-          <div className="mt-3 grid gap-3 sm:max-w-xl sm:grid-cols-2">
-            <input
-              type="text"
-              name="business_type"
-              value={businessType}
-              onChange={(ev) => setBusinessType(ev.target.value)}
-              placeholder="Business type (optional)"
-              className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
-            />
-            <input
-              type="text"
-              name="country"
-              value={country}
-              onChange={(ev) => setCountry(ev.target.value)}
-              placeholder="Country (optional)"
-              className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
-            />
-          </div>
+          <div className="mt-3">{optionalFields}</div>
         )}
 
-        {state === 'error' ? (
+        {bannerError ? (
           <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
-            Something went wrong. Try again.
+            {bannerError}
           </p>
         ) : null}
 
@@ -194,6 +293,9 @@ export function WaitlistForm({ source, className, variant = 'default' }: Props) 
         >
           {state === 'loading' ? 'Joining…' : 'Join waitlist'}
         </button>
+        {microcopy ? (
+          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-500">{microcopy}</p>
+        ) : null}
       </form>
     </div>
   );

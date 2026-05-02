@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
 import { logAdminAuditEvent } from '@/lib/admin/audit';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
+import { isKnownIndustryKey } from '@/lib/business/industry-options';
+import { normalizeCountryCode } from '@/lib/location';
 import { computeWaitlistPriorityScore } from '@/lib/waitlist/waitlist-priority';
 
 export const dynamic = 'force-dynamic';
@@ -17,19 +19,30 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const status = url.searchParams.get('status')?.trim().toLowerCase();
-  const country = url.searchParams.get('country')?.trim();
-  const businessType = url.searchParams.get('business_type')?.trim();
+  const countryParam = url.searchParams.get('country')?.trim();
+  const industryParam = url.searchParams.get('industry')?.trim();
+  const legacyBusinessTypeFilter = url.searchParams.get('business_type')?.trim();
   const source = url.searchParams.get('source')?.trim();
 
   let q = admin.from('waitlist').select('*');
   if (status && STATUSES.has(status)) {
     q = q.eq('status', status);
   }
-  if (country) {
-    q = q.ilike('country', `%${country.replace(/%/g, '')}%`);
+  if (countryParam) {
+    const iso = normalizeCountryCode(countryParam);
+    if (iso) {
+      q = q.eq('country', iso);
+    } else {
+      q = q.ilike('country', `%${countryParam.replace(/%/g, '')}%`);
+    }
   }
-  if (businessType) {
-    q = q.ilike('business_type', `%${businessType.replace(/%/g, '')}%`);
+  if (industryParam && isKnownIndustryKey(industryParam)) {
+    q = q.eq('industry', industryParam);
+  } else if (legacyBusinessTypeFilter) {
+    const safe = legacyBusinessTypeFilter.replace(/%/g, '').replace(/,/g, '').trim();
+    if (safe) {
+      q = q.or(`industry.ilike.%${safe}%,business_type.ilike.%${safe}%`);
+    }
   }
   if (source) {
     q = q.eq('source', source.slice(0, 64));
@@ -63,6 +76,8 @@ export async function GET(req: Request) {
       source: String(safe.source ?? ''),
       trigger_reason: safe.trigger_reason != null ? String(safe.trigger_reason) : null,
       country: safe.country != null ? String(safe.country) : null,
+      industry: safe.industry != null ? String(safe.industry) : null,
+      business_type: safe.business_type != null ? String(safe.business_type) : null,
     });
     return { ...safe, priority_score };
   });
@@ -79,7 +94,10 @@ export async function GET(req: Request) {
     actorUserId: gate.user.id,
     actorRole: gate.adminRole,
     action: 'admin_view_waitlist',
-    metadata: { count: mapped.length, filters: { status, country, businessType, source } },
+    metadata: {
+      count: mapped.length,
+      filters: { status, country: countryParam, industry: industryParam, source, legacy_business_type: legacyBusinessTypeFilter },
+    },
   });
 
   return NextResponse.json({

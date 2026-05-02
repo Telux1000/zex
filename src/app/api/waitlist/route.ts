@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
+import { getPublicWaitlistEnabled } from '@/lib/landing/public-waitlist-settings';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { deliverWaitlistConfirmationEmail } from '@/lib/waitlist/deliver-waitlist-confirmation-postmark';
 import { generateWaitlistReferralCode } from '@/lib/waitlist/waitlist-referral-code';
 import { getWaitlistInviteLinkBaseUrl } from '@/lib/billing/app-base-url';
+import { validateIndustryKeyRequiresOtherText } from '@/lib/business/business-profile-validation';
 import { billingLog } from '@/lib/billing/billing-logger';
+import {
+  industryFromRequestInvalid,
+  parseWaitlistCountryIsoFromRequest,
+  parseWaitlistIndustryFromRequest,
+} from '@/lib/waitlist/waitlist-signup-fields';
+import { normalizeWaitlistSource } from '@/lib/waitlist/waitlist-source';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,15 +29,6 @@ function normalizeOptionalString(raw: unknown, max: number): string | null {
   const t = raw.trim();
   if (!t) return null;
   return t.slice(0, max);
-}
-
-function normalizeSource(raw: unknown): string {
-  let s = normalizeOptionalString(raw, 64);
-  if (!s) return 'landing';
-  if (s === 'payment_failure') s = 'payment_error';
-  if (s === 'feature_gate' || s === 'modal') s = 'feature_locked';
-  const cleaned = s.replace(/[^a-z0-9_-]/gi, '_').slice(0, 64) || 'landing';
-  return cleaned;
 }
 
 function normalizeTriggerReason(raw: unknown): string {
@@ -51,6 +50,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Service unavailable.' }, { status: 503 });
   }
 
+  const waitlistOpen = await getPublicWaitlistEnabled();
+  if (!waitlistOpen) {
+    return NextResponse.json({ ok: false, error: 'Waitlist is currently closed.' }, { status: 403 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -63,10 +67,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Please enter a valid email address.' }, { status: 400 });
   }
 
-  const source = normalizeSource(body.source);
+  const source = normalizeWaitlistSource(typeof body.source === 'string' ? body.source : '');
   const triggerReason = normalizeTriggerReason(body.trigger_reason);
-  const country = normalizeOptionalString(body.country, 120);
-  const businessType = normalizeOptionalString(body.business_type, 120);
+  if (industryFromRequestInvalid(body)) {
+    return NextResponse.json({ ok: false, error: 'Please choose a valid industry from the list.' }, { status: 400 });
+  }
+  const { industry, industry_custom, legacyBusinessTypeFreeText } = parseWaitlistIndustryFromRequest(body);
+  const industryOtherErr = validateIndustryKeyRequiresOtherText(industry, industry_custom);
+  if (industryOtherErr) {
+    return NextResponse.json({ ok: false, error: industryOtherErr }, { status: 400 });
+  }
+  const country = parseWaitlistCountryIsoFromRequest(body);
   const referredByCode = normalizeReferralCode(body.referred_by);
 
   const { data: existing, error: existingErr } = await admin
@@ -115,7 +126,9 @@ export async function POST(req: Request) {
     source,
     trigger_reason: triggerReason,
     country,
-    business_type: businessType,
+    industry,
+    industry_custom,
+    business_type: legacyBusinessTypeFreeText,
     referred_by: referrerId,
     status: 'pending' as const,
   };

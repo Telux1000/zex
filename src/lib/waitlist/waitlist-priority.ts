@@ -1,3 +1,5 @@
+import { INDUSTRY_OTHER_KEY, isKnownIndustryKey } from '@/lib/business/industry-options';
+
 const CONSUMER_EMAIL_DOMAINS = new Set([
   'gmail.com',
   'googlemail.com',
@@ -25,7 +27,19 @@ export type WaitlistPriorityInput = {
   source: string;
   trigger_reason: string | null;
   country: string | null;
+  /** Industry option key (preferred). */
+  industry?: string | null;
+  /** Legacy column; used for scoring only when it matches a known industry key. */
+  business_type?: string | null;
 };
+
+function resolveIndustryKeyForScore(row: WaitlistPriorityInput): string | null {
+  const a = (row.industry ?? '').trim();
+  if (a && isKnownIndustryKey(a)) return a;
+  const b = (row.business_type ?? '').trim();
+  if (b && isKnownIndustryKey(b)) return b;
+  return null;
+}
 
 export function computeWaitlistPriorityScore(row: WaitlistPriorityInput): number {
   let score = 0;
@@ -46,6 +60,10 @@ export function computeWaitlistPriorityScore(row: WaitlistPriorityInput): number
   }
   const tr = (row.trigger_reason ?? '').toLowerCase();
   if (tr === 'currency_not_supported' || tr === 'provider_failed' || tr === 'no_payment_provider') {
+    score += 1;
+  }
+  const ik = resolveIndustryKeyForScore(row);
+  if (ik && ik !== INDUSTRY_OTHER_KEY) {
     score += 1;
   }
   return score;

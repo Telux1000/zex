@@ -531,6 +531,16 @@ function PlatformTab({
   return (
     <div className="mt-2">
       <Field
+        label="Show waitlist"
+        description="When enabled, the waitlist section, navigation link, and mobile CTA are visible on the landing page."
+      >
+        <Toggle
+          checked={draft.waitlist_enabled}
+          disabled={disabled}
+          onChange={(v) => setDraft((d) => ({ ...d, waitlist_enabled: v }))}
+        />
+      </Field>
+      <Field
         label="AI assistant"
         description="Global switch for the subscriber AI assistant and related flows. Plan checks still apply when enabled."
       >
@@ -666,6 +676,7 @@ function PlatformTab({
           disabled={disabled}
           onClick={() =>
             onSave({
+              waitlist_enabled: draft.waitlist_enabled,
               feature_ai_assistant_enabled: draft.feature_ai_assistant_enabled,
               feature_reminders_enabled: draft.feature_reminders_enabled,
               feature_scheduled_send_enabled: draft.feature_scheduled_send_enabled,

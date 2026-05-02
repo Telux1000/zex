@@ -18,7 +18,19 @@ import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
 import { buildPricingAuthHref, buildPricingNextPath, shouldRouteThroughAuth } from '@/lib/billing/pricing-cta';
 import { WaitlistForm } from '@/components/waitlist/WaitlistForm';
 
-export function LandingPricingSection() {
+export type LandingPricingWaitlistVisibility = 'always-form' | 'anchor-on-narrow';
+
+type LandingPricingSectionProps = {
+  /** On viewports below `sm`, show a link to #waitlist instead of a second full form. */
+  waitlistVisibility?: LandingPricingWaitlistVisibility;
+  /** When false, omit the “Can’t sign up right now?” waitlist block entirely. */
+  publicWaitlistEnabled?: boolean;
+};
+
+export function LandingPricingSection({
+  waitlistVisibility = 'always-form',
+  publicWaitlistEnabled = true,
+}: LandingPricingSectionProps) {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('monthly');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const isDev = process.env.NODE_ENV !== 'production';
@@ -67,7 +79,7 @@ export function LandingPricingSection() {
   }
 
   return (
-    <section id="pricing" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-12 sm:py-20">
+    <section id="pricing" className="scroll-mt-24 border-t border-[var(--sidebar-border)] py-8 sm:py-20 sm:scroll-mt-28">
       <div className="mx-auto max-w-6xl px-3 sm:px-4">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
@@ -98,11 +110,11 @@ export function LandingPricingSection() {
             renderDualCta={(plan) => {
               const href = pricingCtaHref(plan.id);
               const primaryLabel = pricingCardPrimaryCtaLabel(plan.id);
-              const isGrowth = plan.id === 'growth';
+              const isProfessional = plan.id === 'professional';
               const isStarter = plan.id === 'starter';
               const primaryClassName = isStarter
                 ? 'app-btn-secondary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold'
-                : isGrowth
+                : isProfessional
                   ? 'app-btn-primary-lg inline-flex w-full min-h-[48px] items-center justify-center'
                   : 'app-btn-primary inline-flex w-full items-center justify-center py-2.5 text-sm font-semibold';
               return {
@@ -159,12 +171,36 @@ export function LandingPricingSection() {
           </ul>
         </div>
 
-        <div className="mx-auto mt-12 max-w-lg sm:mt-14">
-          <p className="mb-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
-            Can&apos;t sign up right now?
-          </p>
-          <WaitlistForm source="pricing" />
-        </div>
+        {publicWaitlistEnabled ? (
+          waitlistVisibility === 'anchor-on-narrow' ? (
+            <>
+              <div className="mx-auto mt-12 hidden max-w-lg sm:mt-14 sm:block">
+                <p className="mb-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Can&apos;t sign up right now?
+                </p>
+                <WaitlistForm source="pricing" />
+              </div>
+              <div className="mx-auto mt-10 max-w-lg sm:hidden">
+                <p className="mb-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Can&apos;t sign up right now?
+                </p>
+                <a
+                  href="#waitlist"
+                  className="app-btn-secondary inline-flex w-full min-h-[48px] items-center justify-center rounded-lg px-4 text-sm font-semibold text-slate-900 dark:text-white"
+                >
+                  Join the waitlist
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="mx-auto mt-12 max-w-lg sm:mt-14">
+              <p className="mb-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
+                Can&apos;t sign up right now?
+              </p>
+              <WaitlistForm source="pricing" />
+            </div>
+          )
+        ) : null}
 
         <p className="mt-8 max-w-2xl px-1 text-center text-[11px] text-slate-500 dark:text-slate-500 sm:mt-10 sm:mx-auto sm:text-xs">
           Self-serve checkout. Taxes may apply by region. Cancel or change plans before your trial ends.

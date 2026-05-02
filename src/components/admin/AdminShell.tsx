@@ -124,7 +124,8 @@ export function AdminShell({
       </aside>
 
       <div className="pl-60">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-zinc-200/90 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 lg:px-8">
+        <div className="sticky top-0 z-30 border-b border-zinc-200/90 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
+          <header className="flex h-14 items-center justify-between gap-4 px-4 lg:px-8">
           <div className="min-w-0 flex-1">
             <nav className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-zinc-500 dark:text-zinc-500" aria-label="Breadcrumb">
               {(breadcrumbItems ?? [{ label: 'Admin', href: '/admin' }, { label: pageTitle }]).map((item, idx, arr) => (
@@ -226,9 +227,47 @@ export function AdminShell({
               ) : null}
             </div>
           </div>
-        </header>
+          </header>
+          <nav
+            className="flex gap-1 overflow-x-auto border-t border-zinc-100 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950/80 lg:px-8 [-webkit-overflow-scrolling:touch]"
+            aria-label="Admin sections"
+          >
+          {ADMIN_NAV.map((item) => {
+            const active =
+              item.href === '/admin'
+                ? pathname === '/admin' || pathname === '/admin/'
+                : pathname === item.href || pathname.startsWith(item.href + '/');
+            const supportCount =
+              item.href === '/admin/support' && supportUnread && supportUnread.totalUnread > 0
+                ? supportUnread.totalUnread
+                : 0;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  active
+                    ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
+                )}
+              >
+                <span>{item.label}</span>
+                {supportCount > 0 ? (
+                  <span
+                    className="inline-flex min-w-[1.1rem] justify-center rounded bg-rose-600/90 px-1 py-0.5 text-[10px] font-bold tabular-nums text-white"
+                    aria-label={`${supportCount} unread support messages`}
+                  >
+                    {supportCount > 99 ? '99+' : supportCount}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          })}
+          </nav>
+        </div>
 
-        <main className="min-h-[calc(100vh-3.5rem)] p-4 lg:p-8">{children}</main>
+        <main className="min-h-[calc(100vh-6.25rem)] p-4 lg:p-8">{children}</main>
       </div>
     </div>
   );

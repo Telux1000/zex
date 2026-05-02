@@ -6,6 +6,8 @@ import { defaultCustomerReminderSettings } from '@/lib/invoices/reminder-setting
 import { normalizeBillingProviderMode, type BillingProviderMode } from '@/lib/billing/saas-billing-config';
 
 export type AdminPlatformSettingsDTO = {
+  /** When false, hide public waitlist on marketing site and reject new signups via POST /api/waitlist. */
+  waitlist_enabled: boolean;
   feature_ai_assistant_enabled: boolean;
   feature_reminders_enabled: boolean;
   feature_scheduled_send_enabled: boolean;
@@ -30,6 +32,7 @@ export type AdminPlatformSettingsDTO = {
 };
 
 const DEFAULT_ROW: AdminPlatformSettingsDTO = {
+  waitlist_enabled: true,
   feature_ai_assistant_enabled: true,
   feature_reminders_enabled: true,
   feature_scheduled_send_enabled: true,
@@ -69,6 +72,7 @@ export function mergeAdminPlatformSettingsRow(row: Record<string, unknown> | nul
     return Number.isFinite(x) ? x : null;
   };
   return {
+    waitlist_enabled: row.waitlist_enabled === false ? false : true,
     feature_ai_assistant_enabled: Boolean(row.feature_ai_assistant_enabled),
     feature_reminders_enabled: Boolean(row.feature_reminders_enabled),
     feature_scheduled_send_enabled: Boolean(row.feature_scheduled_send_enabled),

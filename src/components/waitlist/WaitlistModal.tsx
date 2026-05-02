@@ -1,8 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { validateIndustryKeyRequiresOtherText } from '@/lib/business/business-profile-validation';
+import { INDUSTRY_OTHER_KEY } from '@/lib/business/industry-options';
+import { CountrySelect } from '@/components/location/CountrySelect';
+import { WaitlistIndustryFields } from '@/components/waitlist/WaitlistIndustryFields';
 import { cn } from '@/lib/utils/cn';
 import type { WaitlistSource } from '@/lib/billing/checkout-waitlist-meta';
 
@@ -27,7 +31,7 @@ function modalIntro(triggerReason: string, source: string): { title: string; bod
   };
 }
 
-type SubmitState = 'idle' | 'loading' | 'success' | 'error';
+type SubmitState = 'idle' | 'loading' | 'success';
 
 type Props = {
   onClose: () => void;
@@ -35,15 +39,28 @@ type Props = {
   source: WaitlistSource;
 };
 
+const selectFieldClass =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:text-white';
+
+const otherInputClass =
+  'mt-1 block w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white';
+
+function isIndustryOtherFieldMessage(msg: string | null): boolean {
+  if (!msg) return false;
+  return msg.startsWith('Tell us your industry');
+}
+
 export function WaitlistModal({ onClose, triggerReason, source }: Props) {
   const [email, setEmail] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [country, setCountry] = useState('');
+  const [industryKey, setIndustryKey] = useState('');
+  const [industryCustom, setIndustryCustom] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [referredBy, setReferredBy] = useState('');
   const [state, setState] = useState<SubmitState>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const ref = new URLSearchParams(window.location.search).get('ref');
@@ -66,43 +83,72 @@ export function WaitlistModal({ onClose, triggerReason, source }: Props) {
     };
   }, []);
 
+  const handleIndustryKeyChange = useCallback((key: string) => {
+    setIndustryKey(key);
+    if (key !== INDUSTRY_OTHER_KEY) setIndustryCustom('');
+    setLastError(null);
+  }, []);
+
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (state === 'loading') return;
+      setLastError(null);
+
+      const otherErr = validateIndustryKeyRequiresOtherText(industryKey.trim() || null, industryCustom);
+      if (otherErr) {
+        setLastError(otherErr);
+        return;
+      }
+
       setState('loading');
       setCopyDone(false);
       try {
+        const trimmedKey = industryKey.trim();
+        const body: Record<string, unknown> = {
+          email,
+          source,
+          trigger_reason: triggerReason,
+          referred_by: referredBy.trim() || undefined,
+        };
+        if (countryCode.trim()) body.country = countryCode.trim().toUpperCase();
+        if (trimmedKey) {
+          body.industry = trimmedKey;
+          if (trimmedKey === INDUSTRY_OTHER_KEY) {
+            body.industry_custom = industryCustom.trim();
+          }
+        }
+
         const res = await fetch('/api/waitlist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            source,
-            trigger_reason: triggerReason,
-            country: country.trim() || undefined,
-            business_type: businessType.trim() || undefined,
-            referred_by: referredBy.trim() || undefined,
-          }),
+          body: JSON.stringify(body),
         });
         const data = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
+          error?: string;
           share_url?: string;
         };
         if (!res.ok || !data.ok) {
-          setState('error');
+          setState('idle');
+          const msg = typeof data.error === 'string' ? data.error : 'Something went wrong. Try again.';
+          setLastError(msg);
           return;
         }
         setShareUrl(typeof data.share_url === 'string' ? data.share_url : null);
         setState('success');
       } catch {
-        setState('error');
+        setState('idle');
+        setLastError('Something went wrong. Try again.');
       }
     },
-    [email, businessType, country, referredBy, source, triggerReason, state]
+    [email, industryKey, industryCustom, countryCode, referredBy, source, triggerReason, state]
   );
 
   const intro = modalIntro(triggerReason, source);
+  const otherFieldError =
+    industryKey === INDUSTRY_OTHER_KEY && lastError && isIndustryOtherFieldMessage(lastError) ? lastError : null;
+  const bannerError = lastError && !otherFieldError ? lastError : null;
 
   const modal = (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
@@ -115,7 +161,6 @@ export function WaitlistModal({ onClose, triggerReason, source }: Props) {
         }}
       />
       <div
-        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="waitlist-modal-title"
@@ -181,29 +226,48 @@ export function WaitlistModal({ onClose, triggerReason, source }: Props) {
                 required
                 autoComplete="email"
                 value={email}
-                onChange={(ev) => setEmail(ev.target.value)}
+                onChange={(ev) => {
+                  setEmail(ev.target.value);
+                  setLastError(null);
+                }}
                 placeholder="Email"
                 className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white"
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  type="text"
-                  value={businessType}
-                  onChange={(ev) => setBusinessType(ev.target.value)}
-                  placeholder="Business type (optional)"
-                  className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
+              <div className="flex flex-col gap-3">
+                <WaitlistIndustryFields
+                  idPrefix="waitlist-modal"
+                  industryKey={industryKey}
+                  onIndustryKeyChange={handleIndustryKeyChange}
+                  industryCustom={industryCustom}
+                  onIndustryCustomChange={(v) => {
+                    setIndustryCustom(v);
+                    if (lastError && isIndustryOtherFieldMessage(lastError)) setLastError(null);
+                  }}
+                  selectClassName={selectFieldClass}
+                  inputClassName={otherInputClass}
+                  otherFieldError={otherFieldError}
                 />
-                <input
-                  type="text"
-                  value={country}
-                  onChange={(ev) => setCountry(ev.target.value)}
-                  placeholder="Country (optional)"
-                  className="w-full rounded-lg border border-[var(--sidebar-border)] bg-[var(--background)] px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:text-white"
-                />
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Country <span className="font-normal text-slate-400">(optional)</span>
+                  </label>
+                  <CountrySelect
+                    id="waitlist-modal-country"
+                    ariaLabel="Country"
+                    value={countryCode}
+                    onChange={(c) => {
+                      setCountryCode(c);
+                      setLastError(null);
+                    }}
+                    placeholder="Select country"
+                    className={selectFieldClass}
+                    clearable
+                  />
+                </div>
               </div>
-              {state === 'error' ? (
+              {bannerError ? (
                 <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-                  Something went wrong. Try again.
+                  {bannerError}
                 </p>
               ) : null}
               <button

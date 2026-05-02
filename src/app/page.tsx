@@ -1,40 +1,77 @@
 import Link from 'next/link';
+import nextDynamic from 'next/dynamic';
 import type { Metadata } from 'next';
-import {
-  BarChart3,
-  Bell,
-  ChevronDown,
-  CreditCard,
-  Facebook,
-  FileText,
-  Instagram,
-  Linkedin,
-  X as XIcon,
-  Youtube,
-} from 'lucide-react';
-import { LandingPricingSection } from '@/components/pricing/LandingPricingSection';
+import { ChevronDown, Facebook, Instagram, Linkedin, X as XIcon, Youtube } from 'lucide-react';
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
 import { TikTokIcon } from '@/components/branding/TikTokIcon';
-import { LandingOutstandingShowcase } from '@/components/landing/LandingOutstandingShowcase';
+import { LandingFeatureList } from '@/components/landing/LandingFeatureList';
+import { LandingHeroTestimonials } from '@/components/landing/LandingHeroTestimonials';
+import { LandingMarketingMobileNav } from '@/components/landing/LandingMarketingMobileNav';
+import { LandingMarketingSmoothScroll } from '@/components/landing/LandingMarketingSmoothScroll';
+import { LandingMobileStickyWaitlist } from '@/components/landing/LandingMobileStickyWaitlist';
+import { LandingWaitlistDisabledHashHandler } from '@/components/landing/LandingWaitlistDisabledHashHandler';
+import { LandingWaitlistSection } from '@/components/landing/LandingWaitlistSection';
 import { WaitlistForm } from '@/components/waitlist/WaitlistForm';
+import {
+  LANDING_HOW_IT_WORKS_COMPACT,
+  LANDING_HOW_IT_WORKS_STEPS,
+} from '@/lib/landing/landing-how-it-works-steps';
+import { LANDING_WAITLIST_EMAIL_INPUT_ID } from '@/lib/landing/landing-waitlist-ids';
+import { getPublicWaitlistEnabled } from '@/lib/landing/public-waitlist-settings';
+import { cn } from '@/lib/utils/cn';
+
+const LandingOutstandingShowcase = nextDynamic(
+  () =>
+    import('@/components/landing/LandingOutstandingShowcase').then((m) => ({
+      default: m.LandingOutstandingShowcase,
+    })),
+  {
+    loading: () => (
+      <div
+        className="min-h-[min(14rem,42svh)] w-full rounded-xl border border-[var(--sidebar-border)] bg-slate-100/35 dark:bg-slate-800/30"
+        role="status"
+        aria-label="Loading product preview"
+      />
+    ),
+  },
+);
+
+const LandingPricingSection = nextDynamic(
+  () =>
+    import('@/components/pricing/LandingPricingSection').then((m) => ({
+      default: m.LandingPricingSection,
+    })),
+  {
+    loading: () => (
+      <div
+        className="min-h-[28rem] w-full border-t border-[var(--sidebar-border)] bg-[var(--background)] py-10"
+        role="status"
+        aria-label="Loading pricing"
+      />
+    ),
+  },
+);
+
+/** Always resolve waitlist flag at request time (avoid static prerender baking a default). */
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Zenzex | Simple Invoicing Software for Faster Payments',
   description:
-    'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
+    'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
     title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
+      'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
     url: 'https://zenzex.com',
   },
   twitter: {
     title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'Zenzex helps freelancers and businesses turn text, voice, or screenshots into professional invoices, track payments, send reminders, and get paid faster.',
+      'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
   },
 };
 
@@ -73,7 +110,8 @@ const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   },
 ];
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const waitlistEnabled = await getPublicWaitlistEnabled({ debugLog: true });
   const appUrl = 'https://zenzex.com';
   const organizationSchema = {
     '@context': 'https://schema.org',
@@ -116,6 +154,8 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[var(--background)] via-[var(--background)] to-[var(--card)] text-[var(--foreground)]">
+      <LandingMarketingSmoothScroll />
+      {!waitlistEnabled ? <LandingWaitlistDisabledHashHandler /> : null}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
@@ -135,85 +175,151 @@ export default function LandingPage() {
       <header className="app-marketing-header">
         <div className="mx-auto flex h-14 min-h-[3.5rem] max-w-6xl items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
           <AppLogoInline href="/" size="md" priority className="min-w-0 shrink-0" />
-          <nav className="hidden items-center gap-8 sm:flex">
+          <nav
+            className="hidden min-w-0 flex-1 items-center justify-center gap-8 sm:flex"
+            aria-label="Page sections"
+          >
             <a
               href="#features"
-              className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+              className="shrink-0 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white sm:text-sm"
             >
               Features
             </a>
             <a
               href="#how-it-works"
-              className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+              className="shrink-0 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white sm:text-sm"
             >
               How it works
             </a>
             <a
               href="#pricing"
-              className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+              className="shrink-0 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white sm:text-sm"
             >
               Pricing
             </a>
+            {waitlistEnabled ? (
+              <a
+                href="#waitlist"
+                className="shrink-0 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white sm:text-sm"
+              >
+                Waitlist
+              </a>
+            ) : null}
           </nav>
-          <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-6">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+            <LandingMarketingMobileNav waitlistEnabled={waitlistEnabled} />
             <Link
               href="/login"
-              className="shrink-0 text-xs font-medium text-slate-600 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300 sm:text-sm"
+              className="max-sm:hidden shrink-0 text-xs font-medium text-slate-600 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300 sm:text-sm"
             >
               Log in
             </Link>
-            <Link href="/signup" className="app-btn-primary shrink-0 whitespace-nowrap text-xs sm:text-sm">
+            <Link
+              href="/signup"
+              className="app-btn-primary max-sm:hidden shrink-0 whitespace-nowrap text-xs sm:text-sm"
+            >
               Start free
             </Link>
           </div>
         </div>
       </header>
 
-      <main>
+      <main
+        className={cn(
+          'overflow-x-hidden',
+          waitlistEnabled && 'max-sm:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]',
+        )}
+      >
         {/* Hero */}
-        <section className="mx-auto max-w-6xl px-3 pb-12 pt-12 text-center sm:px-4 sm:pb-20 sm:pt-20 md:pt-24">
-          <p className="text-balance text-xs font-semibold uppercase leading-snug tracking-wide text-indigo-600 dark:text-indigo-400 sm:text-sm">
-            Simple invoicing software
-          </p>
-          <h1 className="mt-4 text-balance text-3xl font-bold leading-[1.1] tracking-tight text-slate-900 dark:text-white sm:mt-5 sm:text-5xl sm:leading-tight md:text-6xl">
-            Stop chasing clients for money.
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-pretty text-base font-medium leading-relaxed text-slate-700 dark:text-slate-300 sm:mt-6 sm:text-lg sm:leading-relaxed">
-            Get paid faster with simple, automated invoicing for freelancers and businesses.
-          </p>
-          <p className="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400 sm:mt-5 sm:text-base">
-            Create invoices your way from text, voice, manual entry, or screenshots in seconds. Track
-            what&rsquo;s paid or overdue, and send reminders automatically.
-          </p>
-          <p className="mt-4 text-balance text-sm font-medium text-slate-800 dark:text-slate-200 sm:mt-5 sm:text-base">
-            No spreadsheets. No stress.
-          </p>
-          <div className="mx-auto mt-8 flex w-full max-w-lg flex-col items-stretch justify-center gap-3 px-1 sm:mt-10 sm:max-w-none sm:flex-row sm:items-center sm:justify-center sm:gap-4 sm:px-0">
-            <Link
-              href="/signup"
-              className="app-btn-primary-lg inline-flex w-full min-h-[48px] shrink-0 items-center justify-center sm:w-auto sm:min-w-[10.5rem] sm:min-h-0"
-            >
-              Start free
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex min-h-[48px] w-full shrink-0 items-center justify-center rounded-lg text-sm font-medium text-slate-600 underline-offset-4 transition-colors hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-white sm:w-auto sm:px-2"
-            >
-              See how it works
-            </a>
-          </div>
-          <p className="mt-4 text-balance text-xs font-semibold text-indigo-600 dark:text-indigo-400 sm:mt-5 sm:text-sm">
-            No credit card required &bull; Setup in minutes
-          </p>
-
-          <div className="mx-auto mt-10 w-full max-w-lg px-0 sm:mt-12">
-            <WaitlistForm source="landing" />
+        <section className="mx-auto max-w-6xl px-3 pb-6 pt-6 text-center sm:px-4 sm:pb-20 sm:pt-20 md:pt-24">
+          <div className="sm:hidden">
+            <h1 className="text-balance text-2xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+              Get paid faster. Without the stress.
+            </h1>
+            <p className="mx-auto mt-3 max-w-md text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+              AI-powered invoicing that saves time, automates reminders, and keeps your cashflow predictable.
+            </p>
+            <div className="mx-auto mt-6 flex w-full max-w-md flex-col gap-2.5">
+              {waitlistEnabled ? (
+                <a
+                  href="#waitlist"
+                  className="app-btn-primary-lg inline-flex min-h-[48px] w-full items-center justify-center"
+                >
+                  Join waitlist
+                </a>
+              ) : (
+                <Link
+                  href="/signup"
+                  className="app-btn-primary-lg inline-flex min-h-[48px] w-full items-center justify-center"
+                >
+                  Sign up
+                </Link>
+              )}
+              <a
+                href="#how-it-works"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-transparent text-sm font-semibold text-indigo-700 underline-offset-4 transition-colors hover:bg-indigo-50 hover:underline dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+              >
+                See how it works
+              </a>
+            </div>
           </div>
 
-          {/* Social proof: TODO(placeholder): Replace counts, rating source, and quotes with real data / testimonials. */}
-          <div className="mx-auto mt-10 max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-12 sm:pt-10">
+          <div className="hidden sm:block">
+            <p className="text-balance text-xs font-semibold uppercase leading-snug tracking-wide text-indigo-600 dark:text-indigo-400 sm:text-sm">
+              Simple invoicing software
+            </p>
+            <h1 className="mt-4 text-balance text-3xl font-bold leading-[1.1] tracking-tight text-slate-900 dark:text-white sm:mt-5 sm:text-5xl sm:leading-tight md:text-6xl">
+              Stop chasing clients for money.
+            </h1>
+            <p className="mx-auto mt-5 max-w-2xl text-pretty text-base font-medium leading-relaxed text-slate-700 dark:text-slate-300 sm:mt-6 sm:text-lg sm:leading-relaxed">
+              Get paid faster with simple, automated invoicing for freelancers and businesses.
+            </p>
+            <p className="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400 sm:mt-5 sm:text-base">
+              Create invoices your way from text, voice, manual entry, or screenshots in seconds. Track
+              what&rsquo;s paid or overdue, and send reminders automatically.
+            </p>
+            <p className="mt-4 text-balance text-sm font-medium text-slate-800 dark:text-slate-200 sm:mt-5 sm:text-base">
+              No spreadsheets. No stress.
+            </p>
+            <div className="mx-auto mt-8 flex w-full max-w-lg flex-col items-stretch justify-center gap-3 px-1 sm:mt-10 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-4 sm:px-0">
+              {waitlistEnabled ? (
+                <a
+                  href="#waitlist"
+                  className="app-btn-primary-lg inline-flex w-full min-h-[48px] shrink-0 items-center justify-center sm:w-auto sm:min-w-[10.5rem] sm:min-h-0"
+                >
+                  Join waitlist
+                </a>
+              ) : null}
+              <Link
+                href="/signup"
+                className={
+                  waitlistEnabled
+                    ? 'app-btn-secondary inline-flex w-full min-h-[48px] shrink-0 items-center justify-center rounded-lg px-4 text-sm font-semibold sm:w-auto sm:min-w-[10.5rem]'
+                    : 'app-btn-primary-lg inline-flex w-full min-h-[48px] shrink-0 items-center justify-center sm:w-auto sm:min-w-[10.5rem] sm:min-h-0'
+                }
+              >
+                {waitlistEnabled ? 'Start free' : 'Sign up'}
+              </Link>
+              <a
+                href="#how-it-works"
+                className="inline-flex min-h-[48px] w-full shrink-0 items-center justify-center rounded-lg text-sm font-medium text-slate-600 underline-offset-4 transition-colors hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-white sm:w-auto sm:px-2"
+              >
+                See how it works
+              </a>
+            </div>
+            <p className="mt-4 text-balance text-xs font-semibold text-indigo-600 dark:text-indigo-400 sm:mt-5 sm:text-sm">
+              No credit card required &bull; Setup in minutes
+            </p>
+          </div>
+        </section>
+
+        {/* Social proof */}
+        <section className="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
+          <p className="text-pretty text-center text-sm font-medium leading-snug text-slate-600 dark:text-slate-400 sm:hidden">
+            Built for freelancers, agencies, and growing businesses.
+          </p>
+          <div className="mx-auto mt-0 hidden max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-0 sm:block sm:pt-10">
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:gap-10">
-              {/* TODO(placeholder): Replace 400+ with live business count. */}
               <p className="text-center text-xs font-semibold text-slate-800 dark:text-slate-200 sm:text-sm">
                 Join <span className="text-indigo-600 dark:text-indigo-400">400+ businesses</span>
               </p>
@@ -224,87 +330,17 @@ export default function LandingPage() {
                 <span className="flex shrink-0 text-sm text-amber-500 sm:text-base" aria-hidden>
                   {'★★★★★'}
                 </span>
-                {/* TODO(placeholder): Verify rating and attribution source. */}
                 <span className="text-center text-xs font-medium text-slate-700 dark:text-slate-300 sm:text-sm">
                   4.8 on Product Hunt
                 </span>
               </div>
             </div>
-            <div className="mt-8 sm:mt-10">
-              <h3 className="text-center text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
-                Loved by freelancers and businesses
-              </h3>
-              <div className="mt-5 grid gap-4 sm:mt-6 sm:gap-5 md:grid-cols-3">
-                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="https://ui-avatars.com/api/?name=Maya+Chen&background=e2e8f0&color=334155"
-                      alt="Avatar of Maya Chen"
-                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
-                      loading="lazy"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Maya Chen</p>
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Freelance designer</p>
-                    </div>
-                  </div>
-                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    &ldquo;I dictate invoices between client calls, Zenzex is the first tool that actually keeps up.&rdquo;
-                    {/* TODO(placeholder): testimonial copy */}
-                  </p>
-                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
-                    ★★★★★
-                  </p>
-                </blockquote>
-                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="https://ui-avatars.com/api/?name=Jordan+Okonkwo&background=e2e8f0&color=334155"
-                      alt="Avatar of Jordan Okonkwo"
-                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
-                      loading="lazy"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Jordan Okonkwo</p>
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Creative studio lead</p>
-                    </div>
-                  </div>
-                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    &ldquo;Our three-person studio finally stopped chasing payments, reminders just happen.&rdquo;
-                    {/* TODO(placeholder): testimonial copy */}
-                  </p>
-                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
-                    ★★★★★
-                  </p>
-                </blockquote>
-                <blockquote className="flex h-full flex-col rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] p-5 text-left shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="https://ui-avatars.com/api/?name=Sam+Rivera&background=e2e8f0&color=334155"
-                      alt="Avatar of Sam Rivera"
-                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--sidebar-border)]"
-                      loading="lazy"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-white">Sam Rivera</p>
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">Independent consultant</p>
-                    </div>
-                  </div>
-                  <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                    &ldquo;Screenshot a scope email, get an invoice, it&apos;s stupidly fast for IT contracts.&rdquo;
-                    {/* TODO(placeholder): testimonial copy */}
-                  </p>
-                  <p className="mt-3 text-xs tracking-wide text-amber-500 dark:text-amber-400" aria-label="5 out of 5 stars">
-                    ★★★★★
-                  </p>
-                </blockquote>
-              </div>
-            </div>
+            <LandingHeroTestimonials />
           </div>
         </section>
 
         {/* Features */}
-        <section id="features" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-12 sm:py-20">
+        <section id="features" className="scroll-mt-24 border-t border-[var(--sidebar-border)] py-6 sm:scroll-mt-28 sm:py-20">
           <div className="mx-auto max-w-6xl px-3 sm:px-4">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
@@ -315,107 +351,112 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="mx-auto mt-8 max-w-4xl sm:mt-12">
+            <div className="mx-auto mt-6 max-w-4xl sm:mt-12">
               <LandingOutstandingShowcase />
             </div>
 
-            <ul className="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-              <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
-                  <FileText className="h-5 w-5" aria-hidden />
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Smart invoice creation</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Create invoices your way from text, voice, manual entry, or screenshots in seconds.
-                </p>
-              </li>
-              <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
-                  <CreditCard className="h-5 w-5" aria-hidden />
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Real-time payment tracking</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  See what&apos;s paid, partial, or overdue at a glance. One clear view of your receivables.
-                </p>
-              </li>
-              <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
-                  <Bell className="h-5 w-5" aria-hidden />
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Automated reminders</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Send polite, timely follow-ups before and after due dates, with less manual chasing and steadier cash
-                  flow.
-                </p>
-              </li>
-              <li className="app-card-surface app-card-surface-hover flex flex-col p-5 sm:p-6">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400">
-                  <BarChart3 className="h-5 w-5" aria-hidden />
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Built-in insights</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Clear summaries and reporting so you can see revenue trends and outstanding balances at a glance.
-                </p>
-              </li>
-            </ul>
+            <LandingFeatureList />
           </div>
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" className="scroll-mt-20 py-12 sm:py-20">
+        <section id="how-it-works" className="scroll-mt-24 py-6 sm:scroll-mt-28 sm:py-20">
           <div className="mx-auto max-w-6xl px-3 sm:px-4">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 How it works
               </h2>
-              <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+              <p className="mt-2 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:mt-3 sm:text-base">
                 Set up in minutes. Send your first invoice. Get paid without the follow-up.
               </p>
             </div>
-            <ol className="mx-auto mt-8 grid max-w-4xl gap-6 sm:mt-12 sm:gap-8 md:grid-cols-3 md:gap-10">
-              <li className="relative text-center md:text-left">
-                <span
-                  className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white md:mx-0"
-                  aria-hidden
-                >
-                  1
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Set up your workspace</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Sign up, add your business details, and you&rsquo;re ready to invoice, no setup headaches.
-                </p>
-              </li>
-              <li className="relative text-center md:text-left">
-                <span
-                  className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white md:mx-0"
-                  aria-hidden
-                >
-                  2
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Create invoices in seconds</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Create invoices your way from text, voice, manual entry, or screenshots in seconds.
-                </p>
-              </li>
-              <li className="relative text-center md:text-left">
-                <span
-                  className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white md:mx-0"
-                >
-                  3
-                </span>
-                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">Get paid and stay in control</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-                  Track what&rsquo;s paid or overdue in real time, and let automatic reminders handle the follow-up.
-                </p>
-              </li>
+
+            <ol className="mx-auto mt-5 max-w-md list-none space-y-4 p-0 md:hidden">
+              {LANDING_HOW_IT_WORKS_COMPACT.map((step) => (
+                <li key={step.n} className="flex min-w-0 gap-3 text-left">
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white"
+                    aria-hidden
+                  >
+                    {step.n}
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{step.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <ol className="mx-auto mt-8 hidden max-w-4xl list-none gap-6 p-0 sm:mt-12 sm:gap-8 md:grid md:grid-cols-3 md:gap-10">
+              {LANDING_HOW_IT_WORKS_STEPS.map((step) => (
+                <li key={step.n} className="relative text-center md:text-left">
+                  <span
+                    className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white md:mx-0"
+                    aria-hidden
+                  >
+                    {step.n}
+                  </span>
+                  <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{step.body}</p>
+                </li>
+              ))}
             </ol>
           </div>
         </section>
 
-        <LandingPricingSection />
+        {/* Pain → solution */}
+        <section
+          aria-labelledby="landing-pain-heading"
+          className="scroll-mt-24 border-t border-[var(--sidebar-border)] py-6 sm:scroll-mt-28 sm:py-12"
+        >
+          <div className="mx-auto max-w-xl px-3 text-center sm:px-4">
+            <h2 id="landing-pain-heading" className="sr-only">
+              Why Zenzex
+            </h2>
+            <p className="text-pretty text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-200 sm:text-lg">
+              Stop chasing invoices. Stop guessing your cashflow. Zenzex helps you stay in control.
+            </p>
+          </div>
+        </section>
+
+        {/* Waitlist */}
+        {waitlistEnabled ? (
+          <div className="mx-auto max-w-lg px-3 py-6 sm:py-10">
+            <LandingWaitlistSection
+              heading="Get early access to Zenzex"
+              description="Join the waitlist and be first to use AI-powered invoicing built for speed and simplicity."
+            >
+              <WaitlistForm
+                source="landing"
+                emailInputId={LANDING_WAITLIST_EMAIL_INPUT_ID}
+                hideMarketingTitle
+                explicitEmailLabel
+                microcopy="No spam. Early access only."
+              />
+            </LandingWaitlistSection>
+          </div>
+        ) : null}
+
+        {waitlistEnabled ? (
+          <div className="mx-auto max-w-lg px-3 pb-6 text-center sm:hidden">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Want early access?</p>
+            <a
+              href="#waitlist"
+              className="app-btn-primary-lg mt-3 inline-flex min-h-[48px] w-full items-center justify-center"
+            >
+              Join waitlist
+            </a>
+          </div>
+        ) : null}
+
+        <LandingPricingSection
+          waitlistVisibility="anchor-on-narrow"
+          publicWaitlistEnabled={waitlistEnabled}
+        />
 
         {/* FAQ */}
-        <section id="faq" className="scroll-mt-20 border-t border-[var(--sidebar-border)] py-12 sm:py-20">
+        <section id="faq" className="scroll-mt-24 border-t border-[var(--sidebar-border)] py-8 sm:py-20 sm:scroll-mt-28">
           <div className="mx-auto max-w-2xl px-3 sm:px-4">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
@@ -448,7 +489,7 @@ export default function LandingPage() {
         </section>
 
         {/* Final CTA */}
-        <section className="border-t border-[var(--sidebar-border)] py-12 sm:py-24">
+        <section className="border-t border-[var(--sidebar-border)] py-8 sm:py-24">
           <div className="mx-auto max-w-3xl px-3 text-center sm:px-4">
             <h2 className="text-balance text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Start invoicing with confidence
@@ -471,7 +512,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <footer className="border-t border-[var(--sidebar-border)] py-6 sm:py-8">
+        <footer className="border-t border-[var(--sidebar-border)] py-5 sm:py-8">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-3 sm:flex-row sm:px-4">
             <AppLogoInline href="/" size="sm" />
             <div className="flex flex-col items-center gap-3 sm:items-end">
@@ -519,6 +560,7 @@ export default function LandingPage() {
           </div>
         </footer>
       </main>
+      {waitlistEnabled ? <LandingMobileStickyWaitlist /> : null}
     </div>
   );
 }

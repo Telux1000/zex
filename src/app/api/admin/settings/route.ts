@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireAdminApiAccess } from '@/lib/admin/auth';
@@ -35,6 +36,7 @@ function nullableInt(min: number, max: number) {
 const platformSectionSchema = z
   .object({
     section: z.literal('platform'),
+    waitlist_enabled: z.boolean().optional(),
     feature_ai_assistant_enabled: z.boolean().optional(),
     feature_reminders_enabled: z.boolean().optional(),
     feature_scheduled_send_enabled: z.boolean().optional(),
@@ -320,6 +322,9 @@ export async function PATCH(req: Request) {
 
   switch (patch.section) {
     case 'platform': {
+      if (patch.waitlist_enabled !== undefined) {
+        next.waitlist_enabled = patch.waitlist_enabled;
+      }
       if (patch.feature_ai_assistant_enabled !== undefined) {
         next.feature_ai_assistant_enabled = patch.feature_ai_assistant_enabled;
       }
@@ -398,6 +403,7 @@ export async function PATCH(req: Request) {
   const { error: upErr } = await admin
     .from('admin_platform_settings')
     .update({
+      waitlist_enabled: next.waitlist_enabled,
       feature_ai_assistant_enabled: next.feature_ai_assistant_enabled,
       feature_reminders_enabled: next.feature_reminders_enabled,
       feature_scheduled_send_enabled: next.feature_scheduled_send_enabled,
@@ -437,6 +443,13 @@ export async function PATCH(req: Request) {
     const a = JSON.stringify(before[k]);
     const b = JSON.stringify(next[k]);
     if (a !== b) changed[k] = { from: before[k], to: next[k] };
+  }
+
+  if ('waitlist_enabled' in changed) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[waitlist] admin_saved waitlist_enabled=${next.waitlist_enabled}`);
+    }
+    revalidatePath('/');
   }
 
   await logAdminAuditEvent({

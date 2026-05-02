@@ -569,6 +569,10 @@ export interface Waitlist {
   /** Why the user joined (migration 116). */
   trigger_reason: string | null;
   country: string | null;
+  /** Industry option key (see migration 119); legacy free-text may live in `business_type`. */
+  industry: string | null;
+  /** When industry is `other`, user-provided label (migration 120). */
+  industry_custom: string | null;
   business_type: string | null;
   referral_code: string;
   referred_by: string | null;
