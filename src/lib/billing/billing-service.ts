@@ -330,6 +330,7 @@ export async function applyVerifiedSuccessfulCharge(
       selected_plan_at: nowIso,
       trial_started_at: null,
       trial_ends_at: null,
+      trial_used: true,
     })
     .eq('id', input.userId);
 

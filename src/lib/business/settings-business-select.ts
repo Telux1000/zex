@@ -1,6 +1,6 @@
 /** Columns loaded for Settings and onboarding so forms share one server shape. */
 export const SETTINGS_BUSINESS_SELECT = `
-  id, name, logo_url, currency,
+  id, name, account_type, logo_url, currency,
   address_line1, address_line2, city, state, postal_code, country,
   tax_id, tax_name, email, phone, website, registration_number,
   industry_key, industry_label, industry_other_text,

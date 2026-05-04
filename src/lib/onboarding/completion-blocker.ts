@@ -38,7 +38,9 @@ export function getOnboardingCompletionBlockerFromSnapshot(input: {
   }
   if (!progress.businessProfileComplete) {
     const snap = businessRowToValidationInput(input.business);
-    const v = validateBusinessProfileInput(snap);
+    const v = validateBusinessProfileInput(snap, {
+      phoneDefaultCountryIso2: snap?.country ?? null,
+    });
     return {
       step: 2,
       code: 'business',

@@ -31,6 +31,9 @@ import CustomerFormModal from '@/components/customers/CustomerFormModal';
 import { CustomerRequiredModal } from '@/components/customers/CustomerRequiredModal';
 import { formatCountryDisplayName } from '@/lib/addresses/country-display';
 import { cn } from '@/lib/utils/cn';
+import { PhoneNumberInput } from '@/components/phone/PhoneNumberInput';
+import { resolvePhoneDefaultCountryIso2 } from '@/lib/phone/default-country';
+import { coercePhoneForStorage, formatPhoneForUi } from '@/lib/phone/e164';
 import { getBusinessBaseCurrency, resolveInvoiceTransactionCurrency } from '@/lib/business/currency-policy';
 import { CalendarDays, Lock, Plus, Trash2 } from 'lucide-react';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
@@ -134,43 +137,6 @@ function resolveStateCode(countryCode: string, value: string | null | undefined)
 
 function getCountryNameFromCode(code: string): string {
   return locationCountries.find((c) => c.code === code)?.name ?? code;
-}
-
-const PHONE_DIAL_CODE_BY_COUNTRY: Record<string, string> = {
-  US: '+1',
-  CA: '+1',
-  GB: '+44',
-  AU: '+61',
-  DE: '+49',
-  FR: '+33',
-  IN: '+91',
-  IE: '+353',
-  NL: '+31',
-  NZ: '+64',
-  ES: '+34',
-};
-
-function normalizePhone(value: string): string {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  const hasPlus = raw.startsWith('+');
-  const digits = raw.replace(/\D/g, '');
-  return `${hasPlus ? '+' : ''}${digits}`;
-}
-
-function formatPhoneForDisplay(value: string): string {
-  const normalized = normalizePhone(value);
-  if (!normalized) return '';
-  const hasPlus = normalized.startsWith('+');
-  const digits = normalized.replace(/\D/g, '');
-  const groups: string[] = [];
-  let i = 0;
-  while (i < digits.length) {
-    const size = i === 0 && digits.length > 10 ? 3 : 3;
-    groups.push(digits.slice(i, i + size));
-    i += size;
-  }
-  return `${hasPlus ? '+' : ''}${groups.join(' ')}`.trim();
 }
 
 export type EditModeInitialData = {
@@ -1280,7 +1246,13 @@ export default function ManualInvoiceForm({
     }
     if ((c.email ?? '').trim()) setCustomerEmail(c.email ?? '');
     if ((c.name ?? '').trim()) setContactPerson(c.name ?? '');
-    if ((c.phone ?? '').trim()) setBillingPhone(formatPhoneForDisplay(c.phone ?? ''));
+    if ((c.phone ?? '').trim()) {
+      const hint =
+        normalizeCountryCodeLocation(String((c as { country_code?: string | null }).country_code ?? '').trim()) ||
+        resolveCountryCode(c.country ?? '') ||
+        null;
+      setBillingPhone(coercePhoneForStorage(c.phone ?? '', hint) ?? String(c.phone).trim());
+    }
 
     // Company in invoice billing is "if different", so keep empty by default.
     setCustomerCompany('');
@@ -2539,12 +2511,19 @@ export default function ManualInvoiceForm({
             billing_state: billingState.trim() || null,
             billing_postal_code: billingPostalCode.trim() || null,
             billing_country: resolveCountryCode(billingCountry) || null,
-            billing_phone: billingPhone.trim() ? normalizePhone(billingPhone) : null,
+            billing_phone: billingPhone.trim()
+              ? coercePhoneForStorage(billingPhone, resolveCountryCode(billingCountry))
+              : null,
             use_delivery_address: useDeliveryAddress,
             delivery_company: useDeliveryAddress ? (deliveryCompany.trim() || null) : null,
             delivery_email: useDeliveryAddress ? (deliveryEmail.trim() || null) : null,
             delivery_contact_person: useDeliveryAddress ? (deliveryContactPerson.trim() || null) : null,
-            delivery_phone: useDeliveryAddress ? (normalizePhone(deliveryPhone) || null) : null,
+            delivery_phone: useDeliveryAddress
+              ? coercePhoneForStorage(
+                  deliveryPhone,
+                  resolveCountryCode(deliveryCountry) || resolveCountryCode(billingCountry)
+                )
+              : null,
             delivery_address: useDeliveryAddress ? (deliveryAddress.trim() || null) : null,
             delivery_city: useDeliveryAddress ? (deliveryCity.trim() || null) : null,
             delivery_state: useDeliveryAddress ? (deliveryState.trim() || null) : null,
@@ -2910,12 +2889,19 @@ export default function ManualInvoiceForm({
       billing_state: billingState.trim() || null,
       billing_postal_code: billingPostalCode.trim() || null,
       billing_country: resolveCountryCode(billingCountry) || null,
-      billing_phone: billingPhone.trim() ? normalizePhone(billingPhone) : null,
+      billing_phone: billingPhone.trim()
+        ? coercePhoneForStorage(billingPhone, resolveCountryCode(billingCountry))
+        : null,
       use_delivery_address: useDeliveryAddress,
       delivery_company: useDeliveryAddress ? (deliveryCompany.trim() || null) : null,
       delivery_email: useDeliveryAddress ? (deliveryEmail.trim() || null) : null,
       delivery_contact_person: useDeliveryAddress ? (deliveryContactPerson.trim() || null) : null,
-      delivery_phone: useDeliveryAddress ? (normalizePhone(deliveryPhone) || null) : null,
+      delivery_phone: useDeliveryAddress
+        ? coercePhoneForStorage(
+            deliveryPhone,
+            resolveCountryCode(deliveryCountry) || resolveCountryCode(billingCountry)
+          )
+        : null,
       delivery_address: useDeliveryAddress ? (deliveryAddress.trim() || null) : null,
       delivery_city: useDeliveryAddress ? (deliveryCity.trim() || null) : null,
       delivery_state: useDeliveryAddress ? (deliveryState.trim() || null) : null,
@@ -3167,8 +3153,11 @@ export default function ManualInvoiceForm({
     deliveryCountryCode && deliveryState
       ? getStates(deliveryCountryCode).find((s) => s.code === deliveryState)?.name ?? deliveryState
       : deliveryState;
-  const effectiveDeliveryCountry = deliveryCountryCode || billingCountryCode || 'US';
-  const deliveryDialCode = PHONE_DIAL_CODE_BY_COUNTRY[effectiveDeliveryCountry] ?? '+';
+  const deliveryPhoneDefaultCountry = resolvePhoneDefaultCountryIso2({
+    savedE164: deliveryPhone || null,
+    businessCountryIso2: deliveryCountryCode || billingCountryCode || null,
+    localeHintIso2: null,
+  });
   const getScheduleStatusText = (row: Pick<PaymentScheduleRow, 'status' | 'due_date' | 'paid_at'>, isOverdue: boolean) => {
     const st = (row.status ?? 'pending') as 'pending' | 'paid' | 'refund';
     if (st === 'refund') {
@@ -3317,7 +3306,9 @@ export default function ManualInvoiceForm({
                   <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{customerEmail.trim()}</p>
                 ) : null}
                 {billingPhone.trim() ? (
-                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{billingPhone.trim()}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    {formatPhoneForUi(billingPhone.trim(), billingCountryCode || null)}
+                  </p>
                 ) : null}
                 {billingAddress || billingCity || billingState || billingPostalCode || billingCountry ? (
                   <p className="mt-2 min-w-0 max-w-full break-words [overflow-wrap:anywhere] text-xs text-slate-600 dark:text-slate-400">
@@ -3534,27 +3525,18 @@ export default function ManualInvoiceForm({
                   </div>
                   <div>
                     <label className={labelClass}>Delivery phone (optional)</label>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {deliveryDialCode}
-                      </span>
-                      <input
-                        type="tel"
-                        className={inputClass(false)}
+                    <div className="mt-1">
+                      <PhoneNumberInput
+                        id="invoice-delivery-phone"
+                        countrySelectorId="invoice-delivery-phone-country"
                         value={deliveryPhone}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const withPrefix = raw.startsWith('+') ? raw : `${deliveryDialCode}${raw}`;
-                          setDeliveryPhone(formatPhoneForDisplay(withPrefix));
-                        }}
-                        placeholder={`${deliveryDialCode} 555 123 4567`}
-                        inputMode="tel"
-                        autoComplete="tel"
+                        onChange={setDeliveryPhone}
+                        defaultCountry={deliveryPhoneDefaultCountry}
                         disabled={criticalFieldsLocked}
                       />
                     </div>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      International format supported. We save as normalized number.
+                      Stored in international E.164 format when possible.
                     </p>
                   </div>
                 </div>

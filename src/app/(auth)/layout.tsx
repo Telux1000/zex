@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { AuthShellThemeSlot } from '@/components/auth/AuthShellThemeSlot';
 
 export const metadata: Metadata = {
   robots: {
@@ -9,5 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <>
+      <AuthShellThemeSlot />
+      {children}
+    </>
+  );
 }

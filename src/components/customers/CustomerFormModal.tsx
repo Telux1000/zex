@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Plus, Trash2 } from 'lucide-react';
@@ -14,6 +14,15 @@ import { CurrencySelect } from '@/components/currency/CurrencySelect';
 import { labelForCurrencyCode } from '@/lib/currency/supported';
 import { CountrySelect } from '@/components/location/CountrySelect';
 import { useToasts } from '@/components/feedback/toast/ToastProvider';
+import { PhoneNumberInput } from '@/components/phone/PhoneNumberInput';
+import { browserLocaleCountryHint, resolvePhoneDefaultCountryIso2 } from '@/lib/phone/default-country';
+import {
+  formatPhoneForUi,
+  isPhoneCountryCallingCodeOnly,
+  isValidPhoneForCountry,
+  normalizePhoneToE164OrNull,
+  PHONE_MSG,
+} from '@/lib/phone/e164';
 import {
   defaultCustomerReminderSettings,
   parseCustomerReminderSettings,
@@ -90,6 +99,16 @@ export default function CustomerFormModal({
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const companyInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const customerPhoneDefaultCountry = useMemo(
+    () =>
+      resolvePhoneDefaultCountryIso2({
+        savedE164: form.phone.trim() || customer?.phone || null,
+        businessCountryIso2: form.country,
+        localeHintIso2: browserLocaleCountryHint(),
+      }),
+    [form.phone, form.country, customer?.phone]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -175,6 +194,20 @@ export default function CustomerFormModal({
           message = 'Enter a valid email address.';
         }
       }
+      if (key === 'phone' && next) {
+        if (isPhoneCountryCallingCodeOnly(next)) {
+          message = undefined;
+        } else {
+          const hint = resolvePhoneDefaultCountryIso2({
+            savedE164: next,
+            businessCountryIso2: form.country,
+            localeHintIso2: browserLocaleCountryHint(),
+          });
+          if (!isValidPhoneForCountry(next, hint)) {
+            message = PHONE_MSG.invalid;
+          }
+        }
+      }
 
       setFieldErrors((prev) => {
         const updated = { ...prev };
@@ -183,7 +216,7 @@ export default function CustomerFormModal({
         return updated;
       });
     },
-    []
+    [form.country]
   );
 
   const handleSubmit = useCallback(
@@ -202,6 +235,12 @@ export default function CustomerFormModal({
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.email = 'Enter a valid email address.';
       }
+      const phoneTrim = form.phone.trim();
+      if (phoneTrim && !isPhoneCountryCallingCodeOnly(phoneTrim)) {
+        if (!isValidPhoneForCountry(phoneTrim, customerPhoneDefaultCountry)) {
+          errors.phone = PHONE_MSG.invalid;
+        }
+      }
       if (Object.keys(errors).length > 0) {
         setFieldErrors(errors);
         setError(null);
@@ -219,7 +258,10 @@ export default function CustomerFormModal({
               name: name || '',
               email: form.email.trim() || null,
               company: company || null,
-              phone: form.phone.trim() || null,
+              phone:
+                !phoneTrim || isPhoneCountryCallingCodeOnly(phoneTrim)
+                  ? null
+                  : normalizePhoneToE164OrNull(phoneTrim, customerPhoneDefaultCountry) ?? phoneTrim,
               address_line1: form.address_line1.trim() || null,
               address_line2: form.address_line2.trim() || null,
               city: form.city.trim() || null,
@@ -249,7 +291,10 @@ export default function CustomerFormModal({
               name: name || '',
               email: form.email.trim() || null,
               company: company || null,
-              phone: form.phone.trim() || null,
+              phone:
+                !phoneTrim || isPhoneCountryCallingCodeOnly(phoneTrim)
+                  ? null
+                  : normalizePhoneToE164OrNull(phoneTrim, customerPhoneDefaultCountry) ?? phoneTrim,
               address_line1: form.address_line1.trim() || null,
               address_line2: form.address_line2.trim() || null,
               city: form.city.trim() || null,
@@ -286,7 +331,7 @@ export default function CustomerFormModal({
         setSubmitting(false);
       }
     },
-    [form, businessId, customer, isEdit, readOnly, onSaved, onClose, showErrorToast]
+    [form, businessId, customer, isEdit, readOnly, onSaved, onClose, showErrorToast, customerPhoneDefaultCountry]
   );
 
   const inputClass =
@@ -393,8 +438,14 @@ export default function CustomerFormModal({
                   <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">Phone</dt>
                   <dd className="mt-0.5 text-sm text-slate-900 dark:text-white">
                     {customer.phone?.trim() ? (
-                      <a href={`tel:${customer.phone}`} className="text-indigo-600 hover:underline dark:text-indigo-400">
-                        {customer.phone}
+                      <a
+                        href={`tel:${customer.phone.replace(/\s/g, '')}`}
+                        className="text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        {formatPhoneForUi(
+                          customer.phone,
+                          customer.country_code || normalizeCountryCode(customer.country ?? '')
+                        )}
                       </a>
                     ) : (
                       '—'
@@ -567,14 +618,17 @@ export default function CustomerFormModal({
               <label htmlFor="customer-phone" className={labelClass}>
                 Phone <span className="text-slate-400">(optional)</span>
               </label>
-              <input
-                id="customer-phone"
-                type="tel"
-                className={inputClass}
-                value={form.phone}
-                onChange={(e) => update('phone', e.target.value)}
-                placeholder="+1 234 567 8900"
-              />
+              <div className="mt-1">
+                <PhoneNumberInput
+                  id="customer-phone"
+                  countrySelectorId="customer-phone-country"
+                  value={form.phone}
+                  onChange={(next) => update('phone', next)}
+                  defaultCountry={customerPhoneDefaultCountry}
+                  error={fieldErrors.phone ?? null}
+                  layout="stacked"
+                />
+              </div>
             </div>
 
             <div>

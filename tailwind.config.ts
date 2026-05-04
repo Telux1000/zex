@@ -14,6 +14,7 @@ const config: Config = {
         mono: ['var(--font-geist-mono)', 'monospace'],
       },
       colors: {
+        /** Product UI accent (CTAs, form accents). Not the logomark fill — that comes from `/zenzex-mark.png`. */
         zenzex: {
           50: '#f0fdf4',
           100: '#dcfce7',

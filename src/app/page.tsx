@@ -11,6 +11,7 @@ import { LandingMarketingSmoothScroll } from '@/components/landing/LandingMarket
 import { LandingMobileStickyWaitlist } from '@/components/landing/LandingMobileStickyWaitlist';
 import { LandingWaitlistDisabledHashHandler } from '@/components/landing/LandingWaitlistDisabledHashHandler';
 import { LandingWaitlistSection } from '@/components/landing/LandingWaitlistSection';
+import { ThemeModeSegmented } from '@/components/theme/ThemeModeSegmented';
 import { WaitlistForm } from '@/components/waitlist/WaitlistForm';
 import {
   LANDING_HOW_IT_WORKS_COMPACT,
@@ -206,7 +207,8 @@ export default async function LandingPage() {
               </a>
             ) : null}
           </nav>
-          <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <ThemeModeSegmented density="compact" className="max-sm:order-first" />
             <LandingMarketingMobileNav waitlistEnabled={waitlistEnabled} />
             <Link
               href="/login"

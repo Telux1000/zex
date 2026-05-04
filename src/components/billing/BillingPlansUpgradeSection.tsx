@@ -2,10 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BillingIntervalToggle } from '@/components/pricing/BillingIntervalToggle';
-import { PricingPlanCards } from '@/components/pricing/PricingPlanCards';
+import { PricingPlanCards, type PricingCardsSubscriptionUi } from '@/components/pricing/PricingPlanCards';
 import { BillingPlanActionButton } from '@/components/billing/BillingPlanActionButton';
 import type { BillingPlan, PlanBillingInterval, PricingPlan } from '@/lib/billing/plans';
-import { pricingCardPrimaryCtaLabel, pricingCardSecondaryTrialCtaLabel, pricingTrialMessaging } from '@/lib/billing/plans';
+import {
+  pricingCardBillingUpgradeCtaLabel,
+  pricingCardPrimaryCtaLabel,
+  pricingCardSecondaryTrialCtaLabel,
+  pricingTrialMessaging,
+} from '@/lib/billing/plans';
 import type { PlanPricingCtaAction } from '@/lib/billing/pricing-cta-action';
 import { planPricingCtaTrialAction, planPricingCtaUpgradeAction } from '@/lib/billing/pricing-cta-action';
 import type { BillingProviderMode } from '@/lib/billing/saas-billing-config';
@@ -19,6 +24,8 @@ export function BillingPlansUpgradeSection({
   trialDays,
   customerEmail,
   billingProviderMode,
+  subscriptionCardUi,
+  showPaidPlanTrialButtons,
 }: {
   plans: PricingPlan[];
   currentPlan: BillingPlan;
@@ -28,6 +35,9 @@ export function BillingPlansUpgradeSection({
   trialDays: number;
   customerEmail?: string | null;
   billingProviderMode: BillingProviderMode;
+  subscriptionCardUi?: PricingCardsSubscriptionUi | null;
+  /** When false, omit “Start N-day trial” on paid tiers (post-expiry or ineligible). */
+  showPaidPlanTrialButtons?: boolean;
 }) {
   const [billingInterval, setBillingInterval] = useState<PlanBillingInterval>('yearly');
   const [selectedPlan, setSelectedPlan] = useState<BillingPlan>(currentPlan);
@@ -51,6 +61,7 @@ export function BillingPlansUpgradeSection({
   }, []);
 
   const secondaryLabel = pricingCardSecondaryTrialCtaLabel(trialDays);
+  const paidTrialRowVisible = showPaidPlanTrialButtons !== false;
 
   return (
     <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5 sm:p-6">
@@ -78,6 +89,7 @@ export function BillingPlansUpgradeSection({
           billingInterval={billingInterval}
           currentPlanId={currentPlan}
           selectedPlanId={selectedPlan}
+          subscriptionCardUi={subscriptionCardUi ?? null}
           onPlanClick={(plan) => {
             setSelectedPlan(plan);
             if (process.env.NODE_ENV !== 'production') {
@@ -88,23 +100,35 @@ export function BillingPlansUpgradeSection({
           renderDualCta={(option) => {
             const current = option.id === currentPlan;
             const isPaidPlan = option.id !== 'starter';
-            const primaryCta = requiresPayment
-              ? current
-                ? 'Pay securely'
-                : pricingCardPrimaryCtaLabel(option.id)
-              : current
-                ? isPaidPlan
-                  ? 'Upgrade now'
-                  : 'Current plan'
-                : pricingCardPrimaryCtaLabel(option.id);
-            // Keep paid-plan primary CTA clickable during trial/current plan so users can convert early.
-            const planButtonDisabled = current && !requiresPayment && !isPaidPlan;
+            const starterRow = option.id === 'starter';
+            const postTrialUpgradeCopy =
+              subscriptionCardUi?.starterShowsYourPlan === true && isPaidPlan
+                ? pricingCardBillingUpgradeCtaLabel(option.id)
+                : null;
+
+            let primaryCta: string;
+            if (current && starterRow) {
+              primaryCta = 'Your Plan';
+            } else if (requiresPayment && current && isPaidPlan) {
+              primaryCta = 'Pay securely';
+            } else if (requiresPayment && !current && isPaidPlan) {
+              primaryCta = postTrialUpgradeCopy ?? pricingCardPrimaryCtaLabel(option.id);
+            } else if (!requiresPayment && current && isPaidPlan) {
+              primaryCta = 'Upgrade now';
+            } else {
+              primaryCta = postTrialUpgradeCopy ?? pricingCardPrimaryCtaLabel(option.id);
+            }
+
+            const planButtonDisabled = current && starterRow;
+            const trialRowDisabled =
+              planButtonDisabled ||
+              (Boolean(subscriptionCardUi?.trialActivePlanId === option.id) && current && !requiresPayment);
 
             if (!canSwitchPlan) {
               return {
                 primary: (
                   <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                    {current ? 'Current plan' : 'Owner manages plan changes'}
+                    {current ? (starterRow ? 'Your Plan' : 'Current plan') : 'Owner manages plan changes'}
                   </p>
                 ),
                 secondary: null,
@@ -130,11 +154,17 @@ export function BillingPlansUpgradeSection({
                 />
               ),
               secondary:
-                option.showTrialCTA === true ? (
+                option.showTrialCTA === true && paidTrialRowVisible ? (
                   <BillingPlanActionButton
                     targetPlan={option.id}
-                    cta={current && !requiresPayment ? 'Current trial plan' : secondaryLabel}
-                    disabled={planButtonDisabled}
+                    cta={
+                      current && !requiresPayment && subscriptionCardUi?.trialActivePlanId === option.id
+                        ? 'Trial active'
+                        : current && !requiresPayment
+                          ? 'Current trial plan'
+                          : secondaryLabel
+                    }
+                    disabled={trialRowDisabled}
                     popular={false}
                     requiresPayment={requiresPayment}
                     preferInternalTrialAction

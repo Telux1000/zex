@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { readBrowserThemePreference } from '@/lib/theme/read-browser-theme';
 
 function safeNextPath(raw: string | null): string {
   const n = (raw ?? '/dashboard').trim();
@@ -103,6 +104,17 @@ function AuthCallbackContent() {
           }
         } catch {
           // If policy check fails, continue with standard callback redirect.
+        }
+
+        try {
+          const theme = readBrowserThemePreference() ?? 'system';
+          await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme }),
+          });
+        } catch {
+          /* non-blocking: ThemeProvider SIGNED_IN also syncs */
         }
 
         router.replace(next);

@@ -20,8 +20,9 @@ import { fetchDedupeKeysForInvoices, resolveNextReminderForInvoiceDisplay } from
 import { processScheduledInvoiceSends } from '@/lib/invoices/scheduled-invoice-send-cron';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { fetchAdminPlatformSettings, monthlyInvoiceLimitForPlan } from '@/lib/admin/admin-platform-settings';
-import { featureUpgradeMessage, fetchActorLabelAndBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
-import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
+import { profileDisplayNameFromProfileRow } from '@/lib/audit-log';
+import { featureUpgradeMessage, hasPlanFeature } from '@/lib/billing/plans';
+import { assertWorkspaceCoreWriteAccess, getOwnerBillingPlanAfterReconcile } from '@/lib/billing/subscription-access';
 import {
   createServerInvoiceSaveTimer,
   type InvoiceSaveServerSummaryMeta,
@@ -205,14 +206,10 @@ export async function POST(req: Request) {
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     postT.mark('load_business');
 
-    const subGate = await assertWorkspaceCoreWriteAccess(
-      supabase,
-      String((business as { owner_id: string }).owner_id)
-    );
+    const ownerIdForRbac = String((business as { owner_id: string }).owner_id);
+    const subGate = await assertWorkspaceCoreWriteAccess(supabase, ownerIdForRbac);
     if (!subGate.ok) return subGate.response;
     postT.mark('subscription_gate');
-
-    const ownerIdForRbac = String((business as { owner_id: string }).owner_id);
     const [readiness, createGate] = await Promise.all([
       assertInvoiceCreationReadiness(
         supabase,
@@ -240,7 +237,13 @@ export async function POST(req: Request) {
     }
     postT.mark('readiness_and_create_permission_parallel');
 
-    const { actorLabel, billingPlan } = await fetchActorLabelAndBillingPlan(supabase, user.id);
+    const [{ data: actorProf }, billingPlan] = await Promise.all([
+      supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle(),
+      getOwnerBillingPlanAfterReconcile(supabase, ownerIdForRbac),
+    ]);
+    const actorLabel = profileDisplayNameFromProfileRow(
+      actorProf as { full_name?: string | null; email?: string | null } | null
+    );
     const actorName = (actorLabel ?? user.email) ?? 'User';
     postT.mark('actor_name_and_billing_plan');
 

@@ -86,6 +86,20 @@ export function pricingCardPrimaryCtaLabel(planId: BillingPlan): string {
   }
 }
 
+/** Billing / post-trial upgrade row: “Upgrade to Growth”, etc. */
+export function pricingCardBillingUpgradeCtaLabel(planId: BillingPlan): string {
+  switch (planId) {
+    case 'growth':
+      return 'Upgrade to Growth';
+    case 'professional':
+      return 'Upgrade to Professional';
+    case 'enterprise':
+      return 'Upgrade to Enterprise';
+    default:
+      return 'Upgrade';
+  }
+}
+
 /** Secondary trial CTA under the primary button (e.g. “14-day free trial”). */
 export function pricingCardSecondaryTrialCtaLabel(trialDays: number = PRICING_TRIAL_DAYS): string {
   return `${trialDays}-day free trial`;
@@ -311,6 +325,21 @@ export function formatTrialDaysRemaining(trialEndsAtIso: string | null): string 
   return `Trial ends in ${days} days`;
 }
 
+/** Short copy for pricing cards (e.g. “7 days left”). */
+export function formatTrialDaysRemainingShort(
+  trialEndsAtIso: string | null,
+  nowMs: number = Date.now()
+): string | null {
+  if (!trialEndsAtIso) return null;
+  const end = new Date(trialEndsAtIso).getTime();
+  if (Number.isNaN(end)) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.ceil((end - nowMs) / dayMs);
+  if (days <= 0) return 'Trial ends today';
+  if (days === 1) return '1 day left';
+  return `${days} days left`;
+}
+
 export function hasPlanFeature(planRaw: unknown, feature: PlanFeature): boolean {
   const plan = normalizeBillingPlan(planRaw);
   switch (feature) {
@@ -337,8 +366,8 @@ export async function getUserBillingPlan(
   supabase: SupabaseClient,
   userId: string
 ): Promise<BillingPlan> {
-  const { data } = await supabase.from('profiles').select('billing_plan').eq('id', userId).maybeSingle();
-  return normalizeBillingPlan((data as { billing_plan?: unknown } | null)?.billing_plan);
+  const { getOwnerBillingPlanAfterReconcile } = await import('@/lib/billing/subscription-access');
+  return getOwnerBillingPlanAfterReconcile(supabase, userId);
 }
 
 /**

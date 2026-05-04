@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { findQuoteByPublicToken } from '@/lib/quotes/public-token';
 import { resolveInvoicePublicTokenForQuote } from '@/lib/quotes/public-quote-invoice-token';
-import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
 import { PublicQuoteViewClient } from '@/components/quotes/PublicQuoteViewClient';
 
 export const metadata: Metadata = {
@@ -22,19 +21,16 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   if (!resolved) notFound();
   if (resolved.linkExpired) {
     return (
-      <>
-        <ForcePublicDocumentLight />
-        <div className="min-h-screen bg-white text-slate-900">
-          <div className="mx-auto max-w-xl px-4 py-20">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-              <h1 className="text-2xl font-semibold text-slate-900">This link has expired</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Please request a new quote link from the sender.
-              </p>
-            </div>
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <h1 className="text-2xl font-semibold">This link has expired</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Please request a new quote link from the sender.
+            </p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
   const resolvedQuote = resolved.quotes as Record<string, unknown>;

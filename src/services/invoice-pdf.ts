@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import type { InvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 import type { InvoiceDocumentPayload, InvoiceDocTextLine } from '@/lib/invoices/invoice-document-payload';
+import { getZenzexEmailLogoUrl } from '@/lib/billing/app-base-url';
 import { ZENZEX_INVOICE_FOOTER_LINE } from '@/lib/invoices/zenzex-invoice-branding';
 import { getInvoicePdfPaint, type PdfRgb } from '@/lib/invoices/invoice-pdf-paint';
 
@@ -813,17 +814,45 @@ export async function buildInvoicePdfBase64(
   if (doc.showZenzexBranding) {
     const footer = ZENZEX_INVOICE_FOOTER_LINE;
     const fs = 7.5;
-    ensureSpace(ctx, 20, marginBottom, stampVoid);
-    ctx.y -= 4;
+    const gap = 6;
+    const logoH = 14;
+    const zenzexMark = await tryEmbedLogo(pdfDoc, getZenzexEmailLogoUrl());
     const tw = textWidth(fontRegular, footer, fs);
-    drawText(footer, {
-      x: (width - tw) / 2,
-      y: ctx.y,
-      size: fs,
-      font: fontRegular,
-      color: rgb(0.55, 0.58, 0.62),
-      opacity: 0.88,
-    });
+    const logoW = zenzexMark ? (zenzexMark.image.width * logoH) / zenzexMark.image.height : 0;
+    const rowW = (zenzexMark ? logoW + gap : 0) + tw;
+    ensureSpace(ctx, zenzexMark ? 26 : 20, marginBottom, stampVoid);
+    ctx.y -= zenzexMark ? 8 : 4;
+    const baseline = ctx.y;
+    const startX = (width - rowW) / 2;
+    const textColor = rgb(0.55, 0.58, 0.62);
+    if (zenzexMark) {
+      const capLift = fs * 0.32;
+      const imgBottom = baseline + capLift - logoH / 2;
+      ctx.page.drawImage(zenzexMark.image, {
+        x: startX,
+        y: imgBottom,
+        width: logoW,
+        height: logoH,
+        opacity: 0.92,
+      });
+      drawText(footer, {
+        x: startX + logoW + gap,
+        y: baseline,
+        size: fs,
+        font: fontRegular,
+        color: textColor,
+        opacity: 0.88,
+      });
+    } else {
+      drawText(footer, {
+        x: (width - tw) / 2,
+        y: baseline,
+        size: fs,
+        font: fontRegular,
+        color: textColor,
+        opacity: 0.88,
+      });
+    }
   }
 
   const bytes = await pdfDoc.save();

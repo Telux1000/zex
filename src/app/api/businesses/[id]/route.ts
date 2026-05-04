@@ -143,6 +143,14 @@ export async function PATCH(
     updates.invoice_settings = stripDefaultCurrencyFromInvoiceSettings(body.invoice_settings);
   }
 
+  if (body.account_type !== undefined) {
+    const raw = String(body.account_type ?? '').trim().toLowerCase();
+    if (raw !== 'individual' && raw !== 'business') {
+      return NextResponse.json({ error: 'Invalid account type.' }, { status: 400 });
+    }
+    updates.account_type = raw;
+  }
+
   if (body.finance_settings !== undefined && typeof body.finance_settings === 'object' && body.finance_settings) {
     const effectiveBase =
       (updates.currency as string | undefined) ??

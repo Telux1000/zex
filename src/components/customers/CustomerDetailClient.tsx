@@ -5,6 +5,8 @@ import type { Customer } from '@/lib/database.types';
 import { ActivitySection } from '@/components/activity/ActivitySection';
 import type { AuditLogRow } from '@/lib/audit-log';
 import { formatDisplayDate } from '@/lib/utils/date';
+import { normalizeCountryCode } from '@/lib/location';
+import { formatPhoneForUi } from '@/lib/phone/e164';
 
 type Props = {
   customer: Customer;
@@ -44,7 +46,12 @@ export function CustomerDetailClient({ customer, auditLogs }: Props) {
               {customer.phone ? (
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Phone</dt>
-                  <dd className="text-slate-900 dark:text-slate-100">{customer.phone}</dd>
+                  <dd className="text-slate-900 dark:text-slate-100">
+                    {formatPhoneForUi(
+                      customer.phone,
+                      customer.country_code || normalizeCountryCode(customer.country ?? '')
+                    )}
+                  </dd>
                 </div>
               ) : null}
               {(customer.address_line1 || customer.city) && (

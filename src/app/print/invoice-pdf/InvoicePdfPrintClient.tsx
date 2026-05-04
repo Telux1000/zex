@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
 import {
   InvoicePrintDocument,
   type InvoicePrintDocumentData,
@@ -22,7 +21,6 @@ export function InvoicePdfPrintClient({ data }: { data: InvoicePrintDocumentData
 
   return (
     <div ref={rootRef} className="invoice-print-container min-h-screen bg-white p-4">
-      <ForcePublicDocumentLight />
       {/** Match dashboard saved preview: quote link allowed for internal PDF */}
       <InvoicePrintDocument data={data} showSourceQuoteLink />
     </div>

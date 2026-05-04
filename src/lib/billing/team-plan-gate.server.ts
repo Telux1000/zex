@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { featureUpgradeMessage, hasPlanFeature, normalizeBillingPlan } from '@/lib/billing/plans';
+import { getOwnerBillingPlanAfterReconcile } from '@/lib/billing/subscription-access';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 
 /**
@@ -19,12 +20,9 @@ export async function requireTeamInvitesForBusiness(businessId: string): Promise
   if (bizErr || !biz) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  const { data: prof } = await admin
-    .from('profiles')
-    .select('billing_plan')
-    .eq('id', String(biz.owner_id))
-    .maybeSingle();
-  if (!hasPlanFeature(prof?.billing_plan, 'teams')) {
+  const ownerId = String(biz.owner_id);
+  const billingPlan = await getOwnerBillingPlanAfterReconcile(admin, ownerId);
+  if (!hasPlanFeature(billingPlan, 'teams')) {
     return NextResponse.json(
       { error: featureUpgradeMessage('teams'), code: 'plan_feature_teams' },
       { status: 403 }

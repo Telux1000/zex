@@ -3,8 +3,11 @@ import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
-import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
-import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
+import {
+  assertWorkspaceCoreWriteAccess,
+  getOwnerBillingPlanAfterReconcile,
+} from '@/lib/billing/subscription-access';
+import { featureUpgradeMessage, hasPlanFeature } from '@/lib/billing/plans';
 
 function inferTaxPercentFromText(text: string): number {
   const lower = text.toLowerCase();
@@ -39,7 +42,15 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const billingPlan = await getUserBillingPlan(supabase, user.id);
+
+    const primary = await getPrimaryBusinessForUser(user.id);
+    if (!primary?.ownerId) {
+      return NextResponse.json({ error: 'No workspace found.' }, { status: 400 });
+    }
+    const subGate = await assertWorkspaceCoreWriteAccess(supabase, primary.ownerId);
+    if (!subGate.ok) return subGate.response;
+
+    const billingPlan = await getOwnerBillingPlanAfterReconcile(supabase, primary.ownerId);
     if (!hasPlanFeature(billingPlan, 'voice_screenshot_invoice')) {
       return NextResponse.json(
         {
@@ -51,13 +62,6 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
-
-    const primary = await getPrimaryBusinessForUser(user.id);
-    if (!primary?.ownerId) {
-      return NextResponse.json({ error: 'No workspace found.' }, { status: 400 });
-    }
-    const subGate = await assertWorkspaceCoreWriteAccess(supabase, primary.ownerId);
-    if (!subGate.ok) return subGate.response;
 
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.includes('multipart/form-data')) {

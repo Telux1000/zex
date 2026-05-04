@@ -62,6 +62,8 @@ export interface Profile {
   theme?: 'light' | 'dark' | 'system' | null;
   /** Self-serve billing tier for feature gating. */
   billing_plan?: 'starter' | 'growth' | 'professional' | 'enterprise' | null;
+  /** True after trial expiry without payment or after a successful paid subscription activation. */
+  trial_used?: boolean | null;
   /** monthly | yearly — set at signup pricing step with locked catalog price. */
   billing_interval?: 'monthly' | 'yearly' | null;
   /** Opaque catalog / internal billing key for selected plan and interval. */
@@ -197,6 +199,8 @@ export interface Business {
   id: string;
   owner_id: string;
   name: string;
+  /** individual | business — invoice labeling / admin only; defaults to individual. */
+  account_type?: 'individual' | 'business' | null;
   logo_url: string | null;
   currency: string;
   address_line1: string | null;

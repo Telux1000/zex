@@ -14,6 +14,15 @@ import { cn } from '@/lib/utils/cn';
 
 export { pricingCardSecondaryCtaClassName } from '@/components/pricing/pricing-card-cta-styles';
 
+export type PricingCardsSubscriptionUi = {
+  /** Starter card shows “Your plan” when the effective tier is free (post-trial or never paid). */
+  starterShowsYourPlan: boolean;
+  /** Paid tier currently in an active trial window. */
+  trialActivePlanId: BillingPlan | null;
+  /** Short countdown (e.g. “7 days left”) shown under the plan name for the active trial card. */
+  trialRemainingShort: string | null;
+};
+
 export function PricingPlanCards({
   plans,
   billingInterval,
@@ -24,6 +33,7 @@ export function PricingPlanCards({
   selectedPlanId,
   /** Optional card click handler for local plan selection. */
   onPlanClick,
+  subscriptionCardUi,
 }: {
   plans: PricingPlan[];
   billingInterval: PlanBillingInterval;
@@ -31,13 +41,18 @@ export function PricingPlanCards({
   currentPlanId?: BillingPlan | null;
   selectedPlanId?: BillingPlan | null;
   onPlanClick?: (plan: BillingPlan) => void;
+  subscriptionCardUi?: PricingCardsSubscriptionUi | null;
 }) {
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-1 items-stretch gap-4 [overflow:visible] sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 xl:gap-4">
       {plans.map((plan) => {
         const { amount: mainPrice, suffix: priceSuffix } = formatPricingCardMainPriceParts(plan, billingInterval);
         const yearlySavings = formatYearlySavingsComparedToMonthlyBilling(plan);
-        const current = currentPlanId != null && plan.id === currentPlanId;
+        const trialHere = subscriptionCardUi?.trialActivePlanId === plan.id;
+        const starterAsCurrent =
+          Boolean(subscriptionCardUi?.starterShowsYourPlan) && plan.id === 'starter';
+        const currentByPlanId = currentPlanId != null && plan.id === currentPlanId && !trialHere;
+        const current = starterAsCurrent || currentByPlanId;
         const selected = selectedPlanId != null && plan.id === selectedPlanId;
         return (
           <div
@@ -59,7 +74,7 @@ export function PricingPlanCards({
             className={cn(
               'relative flex h-full flex-col overflow-visible',
               onPlanClick && 'cursor-pointer',
-              plan.popular
+              plan.popular || trialHere
                 ? 'z-20 rounded-xl border-2 border-indigo-500/50 bg-[var(--card)] p-5 shadow-2xl shadow-indigo-950/15 ring-1 ring-indigo-500/20 [transform:translateZ(0)] sm:scale-[1.02] sm:p-8 dark:border-indigo-400/40 dark:shadow-indigo-950/30 dark:ring-indigo-400/15'
                 : 'app-card-surface p-5 sm:p-8',
               selected &&
@@ -70,14 +85,20 @@ export function PricingPlanCards({
                 'ring-2 ring-indigo-500/60 ring-offset-2 ring-offset-[var(--card)] dark:ring-indigo-400/50 dark:ring-offset-slate-900'
             )}
           >
-            {(plan.popular || current) && (
+            {(plan.popular || trialHere || current) && (
               <div className="absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2">
                 {plan.popular ? (
                   <span className="whitespace-nowrap rounded-full bg-indigo-600 px-3.5 py-1 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-indigo-500">
                     Most popular
                   </span>
                 ) : null}
-                {current ? (
+                {trialHere ? (
+                  <span className="whitespace-nowrap rounded-full bg-blue-600 px-3.5 py-1 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-blue-500">
+                    Trial active
+                  </span>
+                ) : null}
+                {current &&
+                !(subscriptionCardUi?.starterShowsYourPlan === true && plan.id === 'starter') ? (
                   <span className="whitespace-nowrap rounded-full bg-emerald-600 px-3.5 py-1 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-emerald-500">
                     Your plan
                   </span>
@@ -92,13 +113,18 @@ export function PricingPlanCards({
             ) : null}
             <h3
               className={
-                plan.popular || current
+                plan.popular || current || trialHere
                   ? 'pt-1 text-lg font-semibold tracking-tight text-slate-900 dark:text-white'
                   : 'text-lg font-semibold tracking-tight text-slate-900 dark:text-white'
               }
             >
               {plan.name}
             </h3>
+            {trialHere && subscriptionCardUi?.trialRemainingShort ? (
+              <p className="mt-1 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                {subscriptionCardUi.trialRemainingShort}
+              </p>
+            ) : null}
             <p className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
               {plan.marketingDescription}
             </p>

@@ -10,7 +10,7 @@ const sizeConfig = {
   lg: { mark: 'h-10 w-10', text: 'text-2xl font-semibold', gap: 'gap-3.5' },
 } as const;
 
-/** Purple Z mark only — use in sidebars, mobile chrome, and compact UI. */
+/** Raster Z mark (`zenzex-mark.png`). Color is whatever the asset uses — not the Tailwind `zenzex-*` green scale. */
 export function ZenzexLogoMark({
   className,
   priority,

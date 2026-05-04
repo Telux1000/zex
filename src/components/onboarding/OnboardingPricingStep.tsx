@@ -35,12 +35,14 @@ type EntryState = {
   selected_plan: BillingPlan | null;
   selection_status: 'NOT_SELECTED' | 'FREE_SELECTED' | 'TRIAL_SELECTED' | 'PAID_PENDING_CHECKOUT' | 'PAID_ACTIVE';
   subscription_status: string | null;
+  trial_eligible?: boolean;
   onboarding_ready: boolean;
   pending_checkout_plan: BillingPlan | null;
   billing_interval: PlanBillingInterval;
 };
 
 type PlanSelectionResponse = EntryState & {
+  trial_eligible?: boolean;
   error?: string;
   checkout_config?: {
     provider: 'internal';
@@ -89,6 +91,7 @@ export function OnboardingPricingStep({
   const confirmingRef = useRef(false);
   const anyLoading = loadingAction !== null;
   const secondaryLabel = pricingCardSecondaryTrialCtaLabel(trialDays);
+  const trialEligibleForUi = entryState?.trial_eligible !== false;
   const showCheckoutOverlay = useCheckoutRedirectOverlay(awaitingHostedCheckout);
   const providerPolicy = cardCheckoutProviderPolicy(billingProviderMode);
 
@@ -451,7 +454,7 @@ export function OnboardingPricingStep({
               </button>
             ),
             secondary:
-              plan.showTrialCTA === true && plan.id !== 'starter' ? (
+              plan.showTrialCTA === true && plan.id !== 'starter' && trialEligibleForUi ? (
                 <button
                   type="button"
                   disabled={anyLoading}

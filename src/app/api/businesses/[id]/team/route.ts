@@ -4,6 +4,7 @@ import { assertBusinessPermission } from '@/lib/rbac/server';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import type { BusinessRole } from '@/lib/rbac/types';
 import { ownerHasTeamInvitesEntitlement } from '@/lib/billing/team-plan-gate.server';
+import { reconcileOwnerBillingEntitlements } from '@/lib/billing/subscription-access';
 
 type TeamMemberRow = {
   user_id: string;
@@ -57,6 +58,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .eq('id', businessId)
     .single();
   if (bizErr || !biz) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  await reconcileOwnerBillingEntitlements(String(biz.owner_id));
 
   const { data: members, error: memErr } = await admin
     .from('business_members')

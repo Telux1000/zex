@@ -10,12 +10,10 @@ import {
   useState,
 } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { persistThemeToClient } from '@/lib/theme/client-persist';
 import type { ThemeMode } from '@/lib/theme/constants';
-import {
-  isThemeMode,
-  THEME_STORAGE_KEY,
-  THEME_STORAGE_KEY_LEGACY,
-} from '@/lib/theme/constants';
+import { isThemeMode } from '@/lib/theme/constants';
+import { readBrowserThemePreference } from '@/lib/theme/read-browser-theme';
 
 type ThemeContextValue = {
   theme: ThemeMode;
@@ -35,14 +33,8 @@ function resolveDark(t: ThemeMode): boolean {
   return t === 'dark' || (t === 'system' && getSystemDark());
 }
 
-function readStoredTheme(): ThemeMode | null {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY) ?? localStorage.getItem(THEME_STORAGE_KEY_LEGACY);
-    if (isThemeMode(stored)) return stored;
-  } catch {
-    /* ignore */
-  }
-  return null;
+function fallbackFromInitial(initialTheme?: ThemeMode | null): ThemeMode {
+  return isThemeMode(initialTheme) ? initialTheme : 'system';
 }
 
 export function ThemeProvider({
@@ -52,11 +44,11 @@ export function ThemeProvider({
   children: React.ReactNode;
   initialTheme?: ThemeMode | null;
 }) {
-  const serverDefault: ThemeMode = isThemeMode(initialTheme) ? initialTheme : 'light';
-  const [theme, setThemeState] = useState<ThemeMode>(serverDefault);
+  const serverHint = fallbackFromInitial(initialTheme);
+  const [theme, setThemeState] = useState<ThemeMode>(serverHint);
 
   const [resolved, setResolved] = useState<'light' | 'dark'>(() =>
-    resolveDark(serverDefault) ? 'dark' : 'light'
+    resolveDark(serverHint) ? 'dark' : 'light'
   );
 
   const apply = useCallback((t: ThemeMode) => {
@@ -67,8 +59,8 @@ export function ThemeProvider({
   }, []);
 
   useLayoutEffect(() => {
-    const stored = readStoredTheme();
-    const t = stored ?? (isThemeMode(initialTheme) ? initialTheme : null) ?? 'light';
+    const stored = readBrowserThemePreference();
+    const t = stored ?? fallbackFromInitial(initialTheme);
     setThemeState(t);
     apply(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time sync after ThemeBootScript
@@ -98,12 +90,7 @@ export function ThemeProvider({
   const setTheme = useCallback(
     (t: ThemeMode) => {
       setThemeState(t);
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, t);
-        localStorage.setItem(THEME_STORAGE_KEY_LEGACY, t);
-      } catch {
-        /* ignore */
-      }
+      persistThemeToClient(t);
       apply(t);
       void persistRemote(t);
     },
@@ -114,29 +101,14 @@ export function ThemeProvider({
     const supabase = createClient();
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event) => {
+    } = supabase.auth.onAuthStateChange((event) => {
       if (event !== 'SIGNED_IN') return;
-      try {
-        const res = await fetch('/api/profile');
-        if (!res.ok) return;
-        const data = await res.json();
-        const t = (data.profile as { theme?: unknown } | undefined)?.theme;
-        if (isThemeMode(t)) {
-          setThemeState(t);
-          try {
-            localStorage.setItem(THEME_STORAGE_KEY, t);
-            localStorage.setItem(THEME_STORAGE_KEY_LEGACY, t);
-          } catch {
-            /* ignore */
-          }
-          apply(t);
-        }
-      } catch {
-        /* ignore */
-      }
+      const local = readBrowserThemePreference();
+      const t = isThemeMode(local) ? local : 'system';
+      void persistRemote(t);
     });
     return () => subscription.unsubscribe();
-  }, [apply]);
+  }, [persistRemote]);
 
   const toggleLightDark = useCallback(() => {
     const next = resolved === 'dark' ? 'light' : 'dark';

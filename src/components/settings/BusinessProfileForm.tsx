@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   countries as locationCountries,
@@ -25,6 +25,9 @@ import {
   isKnownIndustryKey,
 } from '@/lib/business/industry-options';
 import { cn } from '@/lib/utils/cn';
+import { PhoneNumberInput } from '@/components/phone/PhoneNumberInput';
+import { resolvePhoneDefaultCountryIso2 } from '@/lib/phone/default-country';
+import { normalizePhoneToE164OrNull } from '@/lib/phone/e164';
 
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -36,16 +39,6 @@ function normalizeInitialLegalBusinessName(raw: string | null | undefined): stri
   if (!t) return '';
   if (/^my business$/i.test(t)) return '';
   return t;
-}
-
-/** E.164-style entry: optional leading +, then digits only (strips spaces, dashes, etc.). */
-function sanitizeBusinessPhoneInput(raw: string): string {
-  let out = '';
-  for (const ch of raw) {
-    if (ch >= '0' && ch <= '9') out += ch;
-    else if (ch === '+' && out.length === 0) out += '+';
-  }
-  return out;
 }
 
 type Props = {
@@ -101,6 +94,13 @@ export function BusinessProfileForm({
   );
 
   const [name, setName] = useState(() => normalizeInitialLegalBusinessName(business.name));
+  /** Mirrors `businesses.account_type`; drives name-field labels only. */
+  const [operatingKind, setOperatingKind] = useState<'individual' | 'business'>(() => {
+    const t = business.account_type;
+    if (t === 'business' || t === 'individual') return t;
+    if (onboarding && normalizeInitialLegalBusinessName(business.name) !== '') return 'business';
+    return 'individual';
+  });
   const [logoUrl, setLogoUrl] = useState(business.logo_url ?? '');
   const [logoPreview, setLogoPreview] = useState(business.logo_url ?? '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -109,7 +109,7 @@ export function BusinessProfileForm({
   const initialLogoUrlRef = useRef<string | null>(business.logo_url ?? null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [email, setEmail] = useState(business.email ?? '');
-  const [phone, setPhone] = useState(() => sanitizeBusinessPhoneInput(String(business.phone ?? '')));
+  const [phone, setPhone] = useState(() => String(business.phone ?? '').trim());
   const [industryKey, setIndustryKey] = useState(() =>
     isKnownIndustryKey(business.industry_key ?? null) ? String(business.industry_key) : ''
   );
@@ -129,28 +129,59 @@ export function BusinessProfileForm({
     return saved || '';
   });
 
+  const phoneDefaultCountry = useMemo(
+    () =>
+      resolvePhoneDefaultCountryIso2({
+        savedE164: phone || business.phone,
+        businessCountryIso2: country,
+        localeHintIso2: onboarding
+          ? normalizeCountryCode(geoCountryCode ?? '') ||
+            normalizeCountryCode(requestLocaleCountryCode ?? '')
+          : normalizeCountryCode(suggestedCountryCode ?? ''),
+      }),
+    [
+      phone,
+      business.phone,
+      country,
+      onboarding,
+      geoCountryCode,
+      requestLocaleCountryCode,
+      suggestedCountryCode,
+    ]
+  );
+
   function setCountryFromUser(next: string) {
     countryDirtyRef.current = true;
     setCountry(next);
   }
 
   useEffect(() => {
+    const t = business.account_type;
+    if (t === 'business' || t === 'individual') {
+      setOperatingKind(t);
+    }
+  }, [business.id, business.account_type]);
+
+  useEffect(() => {
     if (!onCanSubmitChange) return;
-    const v = validateBusinessProfileInput({
-      name,
-      email,
-      phone,
-      industry_key: industryKey || null,
-      industry_other_text: industryOtherText,
-      ...(onboarding
-        ? {}
-        : {
-            address_line1: addressLine1,
-            city,
-            state,
-            country,
-          }),
-    });
+    const v = validateBusinessProfileInput(
+      {
+        name,
+        email,
+        phone,
+        industry_key: industryKey || null,
+        industry_other_text: industryOtherText,
+        ...(onboarding
+          ? {}
+          : {
+              address_line1: addressLine1,
+              city,
+              state,
+              country,
+            }),
+      },
+      { phoneDefaultCountryIso2: phoneDefaultCountry }
+    );
     onCanSubmitChange(v.valid);
   }, [
     name,
@@ -164,6 +195,7 @@ export function BusinessProfileForm({
     country,
     onboarding,
     onCanSubmitChange,
+    phoneDefaultCountry,
   ]);
 
   useLayoutEffect(() => {
@@ -369,21 +401,24 @@ export function BusinessProfileForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLogoError(null);
-    const v = validateBusinessProfileInput({
-      name,
-      email,
-      phone,
-      industry_key: industryKey || null,
-      industry_other_text: industryOtherText,
-      ...(onboarding
-        ? {}
-        : {
-            address_line1: addressLine1,
-            city,
-            state,
-            country,
-          }),
-    });
+    const v = validateBusinessProfileInput(
+      {
+        name,
+        email,
+        phone,
+        industry_key: industryKey || null,
+        industry_other_text: industryOtherText,
+        ...(onboarding
+          ? {}
+          : {
+              address_line1: addressLine1,
+              city,
+              state,
+              country,
+            }),
+      },
+      { phoneDefaultCountryIso2: phoneDefaultCountry }
+    );
     if (!v.valid) {
       setProfileFieldErrors(v.fieldErrors);
       const n = Object.keys(v.fieldErrors).length;
@@ -457,9 +492,10 @@ export function BusinessProfileForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name || null,
+          account_type: operatingKind,
           logo_url: nextLogoUrl,
           email: email || null,
-          phone: phone || null,
+          phone: normalizePhoneToE164OrNull(phone.trim(), phoneDefaultCountry),
           industry_key: industryKey || null,
           industry_label: getIndustryLabelFromKey(industryKey) ?? null,
           industry_other_text:
@@ -491,6 +527,18 @@ export function BusinessProfileForm({
 
   const suppressOrgAutofill = initialLegalNameBlankRef.current;
 
+  const nameFieldLabel = operatingKind === 'individual' ? 'Your name' : 'Business name';
+  const nameFieldHint =
+    'This will appear on your invoices. You can use your personal name if you don’t have a registered business.';
+  const namePlaceholder =
+    operatingKind === 'individual' ? 'e.g. Jane Smith' : 'e.g. Acme Inc.';
+  const nameDescribedBy = [
+    'business-profile-field-name-hint',
+    profileFieldErrors.name ? 'business-profile-field-name-err' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <form
       id={formId}
@@ -517,22 +565,61 @@ export function BusinessProfileForm({
         </div>
       ) : null}
       <div className="mt-6 space-y-4">
+        <fieldset className="min-w-0 border-0 p-0">
+            <legend id="business-profile-operating-kind-legend" className={`${labelClass} float-none w-full`}>
+              How do you operate?
+            </legend>
+            <div
+              role="radiogroup"
+              aria-labelledby="business-profile-operating-kind-legend"
+              className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={operatingKind === 'individual'}
+                onClick={() => setOperatingKind('individual')}
+                className={cn(
+                  'min-h-[44px] flex-1 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:min-w-[10rem]',
+                  operatingKind === 'individual'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-900 dark:border-indigo-400 dark:bg-indigo-950/50 dark:text-indigo-100'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/80'
+                )}
+              >
+                Individual / Freelancer
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={operatingKind === 'business'}
+                onClick={() => setOperatingKind('business')}
+                className={cn(
+                  'min-h-[44px] flex-1 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:min-w-[10rem]',
+                  operatingKind === 'business'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-900 dark:border-indigo-400 dark:bg-indigo-950/50 dark:text-indigo-100'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/80'
+                )}
+              >
+                Registered Business
+              </button>
+            </div>
+          </fieldset>
         <div id={BUSINESS_PROFILE_FIELD_IDS.name}>
           <label className={labelClass} htmlFor="business-profile-field-name-input">
-            Legal or business name <span className="text-red-500">*</span>
+            {nameFieldLabel} <span className="text-red-500">*</span>
           </label>
           <input
             id="business-profile-field-name-input"
             type="text"
             name="legal-business-name"
             value={name}
-            placeholder="e.g. Acme Inc."
+            placeholder={namePlaceholder}
             autoComplete={suppressOrgAutofill ? 'off' : 'organization'}
             data-1p-ignore={suppressOrgAutofill ? true : undefined}
             data-lpignore={suppressOrgAutofill ? 'true' : undefined}
             readOnly={legalNameReadOnlyBoot}
             aria-invalid={Boolean(profileFieldErrors.name)}
-            aria-describedby={profileFieldErrors.name ? 'business-profile-field-name-err' : undefined}
+            aria-describedby={nameDescribedBy}
             onChange={(e) => {
               setName(e.target.value);
               clearProfileField('name');
@@ -543,6 +630,12 @@ export function BusinessProfileForm({
             }}
             className={inputClassFor('name')}
           />
+          <p
+            id="business-profile-field-name-hint"
+            className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          >
+            {nameFieldHint}
+          </p>
           {profileFieldErrors.name ? (
             <p id="business-profile-field-name-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
               {profileFieldErrors.name}
@@ -641,8 +734,8 @@ export function BusinessProfileForm({
           </div>
         </div>
         ) : null}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div id={BUSINESS_PROFILE_FIELD_IDS.email}>
+        <div className="grid grid-cols-1 gap-4">
+          <div id={BUSINESS_PROFILE_FIELD_IDS.email} className="min-w-0">
             <label className={labelClass} htmlFor="business-profile-field-email-input">
               Business email <span className="text-red-500">*</span>
             </label>
@@ -671,31 +764,25 @@ export function BusinessProfileForm({
               </p>
             )}
           </div>
-          <div id={BUSINESS_PROFILE_FIELD_IDS.phone}>
+          <div id={BUSINESS_PROFILE_FIELD_IDS.phone} className="min-w-0">
             <label className={labelClass} htmlFor="business-profile-field-phone-input">
               Business phone <span className="text-red-500">*</span>
             </label>
-            <input
-              id="business-profile-field-phone-input"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+15551234567"
-              value={phone}
-              aria-invalid={Boolean(profileFieldErrors.phone)}
-              aria-describedby={profileFieldErrors.phone ? 'business-profile-field-phone-err' : undefined}
-              onChange={(e) => {
-                setPhone(sanitizeBusinessPhoneInput(e.target.value));
-                clearProfileField('phone');
-                setProfileSummary(null);
-              }}
-              className={inputClassFor('phone')}
-            />
-            {profileFieldErrors.phone ? (
-              <p id="business-profile-field-phone-err" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                {profileFieldErrors.phone}
-              </p>
-            ) : null}
+            <div className="mt-1 min-w-0 max-w-full">
+              <PhoneNumberInput
+                id="business-profile-field-phone-input"
+                countrySelectorId="business-profile-field-phone-country"
+                value={phone}
+                onChange={(next) => {
+                  setPhone(next);
+                  clearProfileField('phone');
+                  setProfileSummary(null);
+                }}
+                defaultCountry={phoneDefaultCountry}
+                error={profileFieldErrors.phone ?? null}
+                required
+              />
+            </div>
           </div>
         </div>
         <div id={BUSINESS_PROFILE_FIELD_IDS.industry_key}>

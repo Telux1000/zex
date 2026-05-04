@@ -14,7 +14,9 @@ export async function GET() {
     .single();
 
   const snap = businessRowToValidationInput(business ?? null);
-  const validation = validateBusinessProfileInput(snap);
+  const validation = validateBusinessProfileInput(snap, {
+    phoneDefaultCountryIso2: snap?.country ?? null,
+  });
   return NextResponse.json({
     isComplete: validation.valid,
     fieldErrors: validation.valid ? undefined : validation.fieldErrors,

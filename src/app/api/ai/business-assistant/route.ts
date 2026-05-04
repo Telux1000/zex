@@ -10,8 +10,8 @@ import {
 } from '@/lib/business-assistant/claude/run-business-assistant-claude-turn';
 import { coerceAssistantResponseMetaFromUnknown } from '@/lib/business-assistant/claude/assistant-response-meta';
 import { isSafeIanaTimeZone } from '@/lib/dashboard/date-range';
-import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
-import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
+import { featureUpgradeMessage, hasPlanFeature } from '@/lib/billing/plans';
+import { assertWorkspaceCoreWriteAccess, getOwnerBillingPlanAfterReconcile } from '@/lib/billing/subscription-access';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import {
   gateBusinessAssistantPlatformLimits,
@@ -66,7 +66,21 @@ export async function POST(req: Request) {
     });
     if (platformGate) return platformGate;
 
-    const billingPlan = await getUserBillingPlan(supabase, user.id);
+    const gate = await assertBusinessPermission(supabase, businessId, user.id, 'create_invoice');
+    if (!gate.ok) return gate.response;
+
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('id, owner_id, currency, timezone, invoice_settings')
+      .eq('id', businessId)
+      .maybeSingle();
+    if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+
+    const ownerId = String((business as { owner_id: string }).owner_id);
+    const subGate = await assertWorkspaceCoreWriteAccess(supabase, ownerId);
+    if (!subGate.ok) return subGate.response;
+
+    const billingPlan = await getOwnerBillingPlanAfterReconcile(supabase, ownerId);
     if (!hasPlanFeature(billingPlan, 'ai_assistant')) {
       return NextResponse.json(
         {
@@ -79,21 +93,6 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
-    const gate = await assertBusinessPermission(supabase, businessId, user.id, 'create_invoice');
-    if (!gate.ok) return gate.response;
-
-    const { data: business } = await supabase
-      .from('businesses')
-      .select('id, owner_id, currency, timezone, invoice_settings')
-      .eq('id', businessId)
-      .maybeSingle();
-    if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-
-    const subGate = await assertWorkspaceCoreWriteAccess(
-      supabase,
-      String((business as { owner_id: string }).owner_id)
-    );
-    if (!subGate.ok) return subGate.response;
 
     const reportingCurrency = getBusinessBaseCurrency(
       business as {

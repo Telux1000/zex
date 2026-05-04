@@ -15,7 +15,8 @@ import { DashboardSubscriptionBanner } from '@/components/billing/DashboardSubsc
 import {
   computeEffectiveSubscription,
   fetchOwnerSubscriptionRow,
-  reconcileSubscriptionStatusInDb,
+  reconcileOwnerBillingEntitlements,
+  resolveShowDashboardSidebarUpgradeCard,
   trialDaysRemaining,
   trialUrgencyBannerDays,
 } from '@/lib/billing/subscription-access';
@@ -76,7 +77,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
       const serviceAdmin = getSupabaseServiceAdmin();
       return serviceAdmin ? fetchAppSystemSettings(serviceAdmin) : null;
     })(),
-    business?.ownerId ? fetchOwnerSubscriptionRow(supabase, business.ownerId) : Promise.resolve(null),
+    business?.ownerId
+      ? (async () => {
+          await reconcileOwnerBillingEntitlements(business.ownerId);
+          return fetchOwnerSubscriptionRow(supabase, business.ownerId);
+        })()
+      : Promise.resolve(null),
   ]);
 
   const profileTyped = profileRow;
@@ -128,12 +134,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   let subscriptionBanner: ReactNode = null;
   if (business?.ownerId && ownerSub) {
-    void reconcileSubscriptionStatusInDb(business.ownerId, ownerSub);
     const { effective, trialEndsAtIso } = computeEffectiveSubscription(ownerSub);
     const daysLeft = trialDaysRemaining(trialEndsAtIso);
     const urgency = trialUrgencyBannerDays(daysLeft);
     subscriptionBanner = <DashboardSubscriptionBanner effective={effective} urgency={urgency} />;
   }
+
+  const showSidebarUpgradeCard =
+    business?.ownerId && ownerSub
+      ? await resolveShowDashboardSidebarUpgradeCard(supabase, business.ownerId, ownerSub)
+      : false;
 
   if (isLoginPerfEnabled()) {
     loginPerfLog('dashboard: layout_block_ms', { ms: Date.now() - layoutStart });
@@ -154,6 +164,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       notificationBadgeCount={0}
       profileBanner={profileBanner}
       subscriptionBanner={subscriptionBanner}
+      showSidebarUpgradeCard={showSidebarUpgradeCard}
     >
       <LoginPerfDashboardShellMarker />
       {children}

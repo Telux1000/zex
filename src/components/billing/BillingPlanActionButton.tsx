@@ -164,6 +164,26 @@ export function BillingPlanActionButton({
         return;
       }
 
+      if (preferInternalTrialAction) {
+        const res = await fetch('/api/plan-selection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_key: targetPlan,
+            billing_interval: chosenInterval,
+            selection_mode: 'trial',
+          }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          const msg = typeof j.error === 'string' ? j.error : 'Could not start trial.';
+          setErrorMessage(msg);
+          return;
+        }
+        router.refresh();
+        return;
+      }
+
       const res = await fetch('/api/billing/plan', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

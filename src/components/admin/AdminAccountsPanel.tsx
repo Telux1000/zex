@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils/cn';
 type AccountRow = {
   id: string;
   name: string;
+  account_type: 'individual' | 'business';
   industry?: string | null;
   owner_name: string;
   owner_email: string;
@@ -40,6 +41,10 @@ type AccountRow = {
 };
 
 const MS_DAY = 86_400_000;
+
+function formatAccountTypeLabel(t: AccountRow['account_type']): string {
+  return t === 'business' ? 'Business' : 'Individual';
+}
 
 function formatDateDMonY(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -111,6 +116,7 @@ function matchesQuery(row: AccountRow, q: string): boolean {
   const s = q.trim().toLowerCase();
   return (
     row.name.toLowerCase().includes(s) ||
+    formatAccountTypeLabel(row.account_type).toLowerCase().includes(s) ||
     (row.industry ?? '').toLowerCase().includes(s) ||
     row.owner_name.toLowerCase().includes(s) ||
     row.owner_email.toLowerCase().includes(s) ||
@@ -351,6 +357,7 @@ export function AdminAccountsPanel() {
           <AdminTable>
             <AdminTableHead>
               <AdminTh>Company</AdminTh>
+              <AdminTh>Type</AdminTh>
               <AdminTh>Industry</AdminTh>
               <AdminTh>Owner</AdminTh>
               <AdminTh>Plan</AdminTh>
@@ -373,6 +380,9 @@ export function AdminAccountsPanel() {
                     onClick={() => router.push(`/admin/accounts/${a.id}`)}
                   >
                     <AdminTd className="font-medium text-zinc-900 dark:text-zinc-100">{a.name}</AdminTd>
+                    <AdminTd className="whitespace-nowrap text-zinc-600 dark:text-zinc-400">
+                      {formatAccountTypeLabel(a.account_type)}
+                    </AdminTd>
                     <AdminTd>{a.industry || '—'}</AdminTd>
                     <AdminTd>
                       <p>{a.owner_name}</p>

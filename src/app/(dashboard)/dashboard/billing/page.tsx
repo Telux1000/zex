@@ -6,6 +6,7 @@ import { hasPermission } from '@/lib/rbac/permissions';
 import {
   formatPlanMonthlyPrice,
   formatTrialDaysRemaining,
+  formatTrialDaysRemainingShort,
   normalizeBillingPlan,
   normalizePlanBillingInterval,
   PRICING_TRIAL_DAYS,
@@ -16,10 +17,10 @@ import type { BillingPlan } from '@/lib/billing/plans';
 import { fetchAdminPlatformSettings, pricingPlansWithPlatformOverrides } from '@/lib/admin/admin-platform-settings';
 import {
   computeEffectiveSubscription,
-  coreWriteBlockedStatuses,
   fetchOwnerSubscriptionRow,
-  reconcileSubscriptionStatusInDb,
+  reconcileOwnerBillingEntitlements,
   subscriptionLapsedMessage,
+  subscriptionRequiresBillingAction,
   trialDaysRemaining,
   trialUrgencyBannerDays,
   type SubscriptionLifecycleStatus,
@@ -102,22 +103,20 @@ export default async function BillingPaymentsPage({
   const trialMessagingHeadline = pricingPromoBannerHeadline(trialDaysConfigured);
 
   const profileClient = admin ?? supabase;
+  await reconcileOwnerBillingEntitlements(ownerId);
+
   const { data: subscriberProfile } = await profileClient
     .from('profiles')
-    .select('billing_plan, billing_interval, trial_started_at, trial_ends_at, subscription_status, created_at')
+    .select(
+      'billing_plan, billing_interval, trial_started_at, trial_ends_at, subscription_status, created_at, trial_used, plan_selection_status'
+    )
     .eq('id', ownerId)
     .maybeSingle();
 
   const plan = normalizeBillingPlan((subscriberProfile as { billing_plan?: unknown } | null)?.billing_plan);
 
   const subRow = await fetchOwnerSubscriptionRow(supabase, ownerId);
-  let freshRow = subRow;
-  if (subRow) {
-    const did = await reconcileSubscriptionStatusInDb(ownerId, subRow);
-    if (did) freshRow = { ...subRow, subscription_status: 'trial_expired' as const };
-  }
-
-  const { effective, trialEndsAtIso } = computeEffectiveSubscription(freshRow ?? {});
+  const { effective, trialEndsAtIso } = computeEffectiveSubscription(subRow ?? {});
 
   const trialStartedAt =
     (subscriberProfile as { trial_started_at?: string | null } | null)?.trial_started_at ?? null;
@@ -147,7 +146,23 @@ export default async function BillingPaymentsPage({
   const showPastDueAlert = effective === 'past_due';
   const showTrialExpiredAlert = effective === 'trial_expired';
   const canSwitchPlan = user.id === ownerId;
-  const requiresPayment = coreWriteBlockedStatuses().has(effective);
+  const requiresPayment = subscriptionRequiresBillingAction(effective);
+  const trialUsed = Boolean((subscriberProfile as { trial_used?: boolean | null } | null)?.trial_used);
+  const paidActiveProfile =
+    String((subscriberProfile as { subscription_status?: string | null } | null)?.subscription_status ?? '')
+      .toLowerCase() === 'active' &&
+    String(
+      (subscriberProfile as { plan_selection_status?: string | null } | null)?.plan_selection_status ?? ''
+    ) === 'PAID_ACTIVE';
+  const trialEligibleForButtons =
+    !trialUsed && !paidActiveProfile && effective !== 'trialing' && effective !== 'trial_expired';
+  const trialRemainingShort =
+    effective === 'trialing' ? formatTrialDaysRemainingShort(derivedTrialEnd) : null;
+  const subscriptionCardUi = {
+    starterShowsYourPlan: plan === 'starter' && effective !== 'trialing',
+    trialActivePlanId: effective === 'trialing' ? plan : null,
+    trialRemainingShort,
+  };
   const checkoutNotice = searchParams?.checkout;
 
   const planCard = pricingPlansEffective.find((p) => p.id === plan) ?? pricingPlansEffective[0];
@@ -266,7 +281,9 @@ export default async function BillingPaymentsPage({
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
             {canSwitchPlan
               ? requiresPayment
-                ? 'Pay securely to restore access. Renewals follow the payment method you use at checkout.'
+                ? planCard.isFree
+                  ? 'Your trial has ended on the free plan. Pick a paid tier below — checkout opens when you choose Growth, Professional, or Enterprise.'
+                  : 'Pay securely to restore access. Renewals follow the payment method you use at checkout.'
                 : planCard.isFree
                   ? 'Add a payment method when you move to a paid plan.'
                   : 'Manage your card or bank details in the email receipts from your last successful payment, or use Pay securely below if you need to pay again.'
@@ -274,7 +291,7 @@ export default async function BillingPaymentsPage({
           </p>
           {canSwitchPlan ? (
             <div className="mt-4">
-              {requiresPayment ? (
+              {requiresPayment && !planCard.isFree ? (
                 <BillingCheckoutButton
                   plan={plan}
                   billingInterval={profileBillingInterval}
@@ -283,6 +300,10 @@ export default async function BillingPaymentsPage({
                 >
                   Pay securely
                 </BillingCheckoutButton>
+              ) : requiresPayment && planCard.isFree ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No payment on Starter. Use the Upgrade section below to start checkout for a paid plan.
+                </p>
               ) : planCard.isFree ? (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   No payment method is needed on Starter. Choose a paid plan below to add one at checkout.
@@ -308,6 +329,8 @@ export default async function BillingPaymentsPage({
         billingProviderMode={
           platformBilling?.billing_provider_mode ?? 'flutterwave_primary_paystack_fallback'
         }
+        subscriptionCardUi={subscriptionCardUi}
+        showPaidPlanTrialButtons={trialEligibleForButtons}
       />
 
       <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5">

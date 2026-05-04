@@ -9,7 +9,7 @@ import { formatMoneyCodeFirst } from '@/lib/utils/currency';
 import { findInvoiceByPublicToken } from '@/lib/invoices/public-token';
 import { buildPreviewSavedBundleFromServerRows } from '@/lib/invoices/map-api-invoice-to-preview-saved';
 import { PublicInvoiceDocumentClient } from '@/components/invoices/PublicInvoiceDocumentClient';
-import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
+import { ZenzexLogoMark } from '@/components/branding/AppLogoInline';
 
 export const metadata: Metadata = {
   robots: {
@@ -30,70 +30,58 @@ export default async function PublicInvoiceTokenPage({
     resolved = await findInvoiceByPublicToken(supabase as any, token);
   } catch {
     return (
-      <>
-        <ForcePublicDocumentLight />
-        <div className="min-h-screen bg-white text-slate-900">
-          <div className="mx-auto max-w-xl px-4 py-20">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-              <h1 className="text-2xl font-semibold text-slate-900">Something went wrong</h1>
-              <p className="mt-2 text-sm text-slate-600">Could not load this invoice. Please try again later.</p>
-            </div>
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <h1 className="text-2xl font-semibold">Something went wrong</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">Could not load this invoice. Please try again later.</p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
   if (!resolved || !resolved.invoices) {
     return (
-      <>
-        <ForcePublicDocumentLight />
-        <div className="min-h-screen bg-white text-slate-900">
-          <div className="mx-auto max-w-xl px-4 py-20">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-              <h1 className="text-2xl font-semibold text-slate-900">Invoice not found</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                This link is invalid or the invoice is no longer available.
-              </p>
-            </div>
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <h1 className="text-2xl font-semibold">Invoice not found</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              This link is invalid or the invoice is no longer available.
+            </p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
   if (resolved.linkExpired) {
     return (
-      <>
-        <ForcePublicDocumentLight />
-        <div className="min-h-screen bg-white text-slate-900">
-          <div className="mx-auto max-w-xl px-4 py-20">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-              <h1 className="text-2xl font-semibold text-slate-900">This link has expired</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Please request a new invoice link from the sender.
-              </p>
-            </div>
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <h1 className="text-2xl font-semibold">This link has expired</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Please request a new invoice link from the sender.
+            </p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
   const invoice = resolved.invoices as any;
   if (!invoice) {
     return (
-      <>
-        <ForcePublicDocumentLight />
-        <div className="min-h-screen bg-white text-slate-900">
-          <div className="mx-auto max-w-xl px-4 py-20">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-              <h1 className="text-2xl font-semibold text-slate-900">Invoice not found</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                This link is invalid or the invoice is no longer available.
-              </p>
-            </div>
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <h1 className="text-2xl font-semibold">Invoice not found</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              This link is invalid or the invoice is no longer available.
+            </p>
           </div>
         </div>
-      </>
+      </div>
     );
   }
   const id = String(invoice.id);
@@ -157,9 +145,8 @@ export default async function PublicInvoiceTokenPage({
   return (
     <>
       <MarkViewed token={token} invoiceId={id} status={invoice.status} />
-      <ForcePublicDocumentLight />
       <div
-        className="min-h-screen bg-slate-50 text-slate-900"
+        className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"
         style={
           {
             '--invoice-primary': primaryColor,
@@ -167,7 +154,7 @@ export default async function PublicInvoiceTokenPage({
         }
       >
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-          <header className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-8 sm:flex-row sm:items-start sm:justify-between">
+          <header className="mb-8 flex flex-col gap-4 border-b border-[var(--card-border)] pb-8 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-4">
               {business && (business.logo_url as string | null) ? (
                 <div className="relative h-12 w-32">
@@ -186,23 +173,23 @@ export default async function PublicInvoiceTokenPage({
               )}
             </div>
             <div className="text-right">
-              <h1 className="text-2xl font-semibold text-slate-900">
+              <h1 className="text-2xl font-semibold">
                 Invoice {invoice.invoice_number}
               </h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-[var(--muted)]">
                 Due {formatDisplayDate(invoice.due_date)}
               </p>
             </div>
           </header>
 
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
             <div>
               {invoice.status === 'paid' ? (
                 <>
                   <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
                     Invoice Paid
                   </span>
-                  <p className="mt-2 text-sm text-slate-600">
+                  <p className="mt-2 text-sm text-[var(--muted)]">
                     Paid on {invoice.paid_at ? formatDisplayDate(invoice.paid_at) : '—'}
                   </p>
                 </>
@@ -211,7 +198,7 @@ export default async function PublicInvoiceTokenPage({
                   <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
                     Amount due: {formatMoneyCodeFirst(balanceDue, invCurrency)}
                   </span>
-                  <p className="mt-2 text-sm text-slate-600">
+                  <p className="mt-2 text-sm text-[var(--muted)]">
                     Pay securely with card via Stripe.
                   </p>
                 </>
@@ -224,11 +211,12 @@ export default async function PublicInvoiceTokenPage({
 
           {documentBundle ? <PublicInvoiceDocumentClient data={documentBundle} /> : null}
 
-          <footer className="mt-12 rounded-xl border border-slate-200 bg-white p-6 text-center">
-            <p className="text-sm font-medium text-slate-700">
-              Powered by Zenzex
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
+          <footer className="mt-12 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <div className="flex flex-nowrap items-center justify-center gap-2">
+              <ZenzexLogoMark className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
+              <p className="text-sm font-medium text-[var(--muted)]">Powered by Zenzex</p>
+            </div>
+            <p className="mt-1 text-sm text-[var(--muted)]">
               AI-powered invoicing. Create invoices by chat, voice, or screenshot.
             </p>
             <Link

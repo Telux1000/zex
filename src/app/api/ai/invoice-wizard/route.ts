@@ -133,8 +133,8 @@ import {
 import { coerceActiveWorkflowFromClient } from '@/lib/business-assistant/assistant-intent-hierarchy';
 import { routeBusinessAssistantUserTurn } from '@/lib/business-assistant/router';
 import { isSafeIanaTimeZone } from '@/lib/dashboard/date-range';
-import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
-import { assertWorkspaceCoreWriteAccess } from '@/lib/billing/subscription-access';
+import { featureUpgradeMessage, hasPlanFeature } from '@/lib/billing/plans';
+import { assertWorkspaceCoreWriteAccess, getOwnerBillingPlanAfterReconcile } from '@/lib/billing/subscription-access';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { assertPlatformInvoiceWizardAiEnabled } from '@/lib/admin/ai-assistant-platform-gate';
 import { extractRawInvoiceTextFromImageBase64 } from '@/lib/ai/document-parser';
@@ -1271,18 +1271,6 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const billingPlan = await getUserBillingPlan(supabase, user.id);
-    if (!hasPlanFeature(billingPlan, 'ai_assistant')) {
-      return NextResponse.json(
-        {
-          error: featureUpgradeMessage('ai_assistant'),
-          code: 'plan_feature_ai_assistant',
-          current_plan: billingPlan,
-          cta: 'Upgrade',
-        },
-        { status: 403 }
-      );
-    }
 
     const wizAdmin = getSupabaseServiceAdmin();
     const wizGate = await assertPlatformInvoiceWizardAiEnabled(wizAdmin);
@@ -1370,11 +1358,22 @@ export async function POST(req: Request) {
       workspaceHasNoCustomers = 'missing' in setupProbe && setupProbe.missing === 'customer';
     }
 
-    const subGate = await assertWorkspaceCoreWriteAccess(
-      supabase,
-      String((business as { owner_id: string }).owner_id)
-    );
+    const ownerIdWizard = String((business as { owner_id: string }).owner_id);
+    const subGate = await assertWorkspaceCoreWriteAccess(supabase, ownerIdWizard);
     if (!subGate.ok) return subGate.response;
+
+    const billingPlan = await getOwnerBillingPlanAfterReconcile(supabase, ownerIdWizard);
+    if (!hasPlanFeature(billingPlan, 'ai_assistant')) {
+      return NextResponse.json(
+        {
+          error: featureUpgradeMessage('ai_assistant'),
+          code: 'plan_feature_ai_assistant',
+          current_plan: billingPlan,
+          cta: 'Upgrade',
+        },
+        { status: 403 }
+      );
+    }
 
     const reportingCurrency = getBusinessBaseCurrency(
       business as {

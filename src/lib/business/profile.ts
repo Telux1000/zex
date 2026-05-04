@@ -8,6 +8,7 @@ export type {
   BusinessProfileFieldKey,
   BusinessProfileValidationInput,
   BusinessProfileValidationResult,
+  ValidateBusinessProfileOptions,
 } from '@/lib/business/business-profile-validation';
 
 export {
@@ -37,7 +38,9 @@ export function isBusinessProfileComplete(business: BusinessLike | null | undefi
     state: business.state,
     country: business.country,
   };
-  return validateBusinessProfileInput(input).valid;
+  return validateBusinessProfileInput(input, {
+    phoneDefaultCountryIso2: business.country,
+  }).valid;
 }
 
 /** True when business address line 1 is empty — invoice flows may show a non-blocking “add address” prompt. */

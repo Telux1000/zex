@@ -25,6 +25,7 @@ export function DashboardSidebar({
   mobileOpen,
   onMobileClose,
   supportHref,
+  showUpgradePlanCard = false,
 }: {
   businessName: string | null;
   navItems: DashboardNavItem[];
@@ -32,6 +33,8 @@ export function DashboardSidebar({
   onMobileClose?: () => void;
   /** When set, shows unread count from SupportUnreadProvider for this nav href. */
   supportHref?: string;
+  /** Server-driven: Starter / trialing / trial_expired only; hidden for active paid tiers. */
+  showUpgradePlanCard?: boolean;
 }) {
   const pathname = usePathname() ?? '';
   const supportUnread = useSupportUnread();
@@ -39,9 +42,7 @@ export function DashboardSidebar({
     supportHref && supportUnread && navItems.some((i) => i.href === supportHref)
       ? supportUnread.totalUnread
       : 0;
-  const billingHref = navItems.some((item) => item.href === '/dashboard/billing')
-    ? '/dashboard/billing'
-    : '/settings';
+  const billingPlansHref = '/dashboard/billing';
 
   return (
     <aside
@@ -111,18 +112,21 @@ export function DashboardSidebar({
         })}
       </nav>
 
-      <div className="border-t border-[var(--sidebar-border)] p-3">
-        <div className="rounded-xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 to-violet-50 p-4 dark:border-indigo-500/20 dark:from-indigo-950/40 dark:to-violet-950/30">
-          <p className="text-sm font-semibold text-slate-900 dark:text-white">Upgrade Plan</p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Go Premium</p>
-          <Link
-            href={billingHref}
-            className="mt-3 flex w-full items-center justify-center rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-          >
-            View plans
-          </Link>
+      {showUpgradePlanCard ? (
+        <div className="shrink-0 border-t border-[var(--sidebar-border)] p-3">
+          <div className="rounded-xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 to-violet-50 p-4 dark:border-indigo-500/20 dark:from-indigo-950/40 dark:to-violet-950/30">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Upgrade Plan</p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Go Premium</p>
+            <Link
+              href={billingPlansHref}
+              onClick={() => onMobileClose?.()}
+              className="mt-3 flex w-full items-center justify-center rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            >
+              View plans
+            </Link>
+          </div>
         </div>
-      </div>
+      ) : null}
     </aside>
   );
 }

@@ -6,6 +6,8 @@ import { Search } from 'lucide-react';
 import { AdminBadge } from '@/components/admin/AdminBadge';
 import { AdminContentCard } from '@/components/admin/AdminContentCard';
 import { AdminTable, AdminTableHead, AdminTd, AdminTh, AdminTr } from '@/components/admin/AdminTable';
+import { normalizeCountryCode } from '@/lib/location';
+import { formatPhoneForUi } from '@/lib/phone/e164';
 
 type CustomerRow = {
   id: string;
@@ -350,7 +352,14 @@ export function AdminAccountCustomersSection({ accountId }: { accountId: string 
                       </div>
                       <div className="flex justify-between gap-4">
                         <dt className="text-zinc-500">Phone</dt>
-                        <dd className="text-right text-zinc-900 dark:text-zinc-100">{customerDetail.phone || '—'}</dd>
+                        <dd className="text-right text-zinc-900 dark:text-zinc-100">
+                          {customerDetail.phone
+                            ? formatPhoneForUi(
+                                customerDetail.phone,
+                                customerDetail.country_code || normalizeCountryCode(customerDetail.country ?? '')
+                              )
+                            : '—'}
+                        </dd>
                       </div>
                       <div className="flex justify-between gap-4">
                         <dt className="text-zinc-500">Status</dt>

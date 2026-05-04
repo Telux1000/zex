@@ -1,4 +1,7 @@
+import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
 import { INDUSTRY_OTHER_KEY } from '@/lib/business/industry-options';
+import { normalizeCountryCode } from '@/lib/location';
+import { isPhoneCountryCallingCodeOnly, PHONE_MSG } from '@/lib/phone/e164';
 
 export const BUSINESS_PROFILE_FIELD_KEYS = [
   'name',
@@ -61,8 +64,26 @@ export type BusinessProfileValidationResult = {
   noBusinessRow: boolean;
 };
 
+export type ValidateBusinessProfileOptions = {
+  /**
+   * ISO alpha-2 used to parse numbers without a leading + (legacy / national-only).
+   * Defaults from `input.country`, then ZA.
+   */
+  phoneDefaultCountryIso2?: string | null;
+};
+
+function isValidBusinessPhone(phone: string, defaultCountryIso2: string): boolean {
+  const t = phone.trim();
+  if (!t) return false;
+  const dc = (normalizeCountryCode(defaultCountryIso2) || 'ZA') as CountryCode;
+  let p = parsePhoneNumberFromString(t);
+  if (p?.isValid()) return true;
+  p = parsePhoneNumberFromString(t, dc);
+  return Boolean(p?.isValid());
+}
+
 const MESSAGES: Record<BusinessProfileFieldKey, string> = {
-  name: 'Legal or business name is required.',
+  name: 'Your name or business name is required.',
   email: 'Business email is required.',
   phone: 'Business phone is required.',
   industry_key: 'Please select an industry.',
@@ -93,11 +114,12 @@ export function validateIndustryKeyRequiresOtherText(
 }
 
 /**
- * Required for onboarding / core setup: legal name, business contact.
+ * Required for onboarding / core setup: name on invoices, business contact.
  * Country, street address, city, and state/region are optional (add later in Settings → Business Profile).
  */
 export function validateBusinessProfileInput(
-  input: BusinessProfileValidationInput | null | undefined
+  input: BusinessProfileValidationInput | null | undefined,
+  options?: ValidateBusinessProfileOptions
 ): BusinessProfileValidationResult {
   const fieldErrors: Partial<Record<BusinessProfileFieldKey, string>> = {};
 
@@ -113,6 +135,18 @@ export function validateBusinessProfileInput(
   if (!hasValue(input.name)) fieldErrors.name = MESSAGES.name;
   if (!hasValue(input.email)) fieldErrors.email = MESSAGES.email;
   if (!hasValue(input.phone)) fieldErrors.phone = MESSAGES.phone;
+  else {
+    const rawPhone = String(input.phone);
+    if (isPhoneCountryCallingCodeOnly(rawPhone)) {
+      fieldErrors.phone = PHONE_MSG.afterCountryCode;
+    } else {
+      const dc =
+        normalizeCountryCode(options?.phoneDefaultCountryIso2 ?? input.country ?? '') || 'ZA';
+      if (!isValidBusinessPhone(rawPhone, dc)) {
+        fieldErrors.phone = PHONE_MSG.invalid;
+      }
+    }
+  }
   const industryOtherErr = validateIndustryKeyRequiresOtherText(input.industry_key, input.industry_other_text);
   if (industryOtherErr) {
     fieldErrors.industry_other_text = industryOtherErr;

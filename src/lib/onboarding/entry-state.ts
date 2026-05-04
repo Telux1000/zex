@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { planIsFree, type BillingPlan } from '@/lib/billing/plans';
+import { computeEffectiveSubscription } from '@/lib/billing/subscription-access';
 import type { PrimaryBusinessRow } from '@/lib/supabase/server-auth';
 import { createClient } from '@/lib/supabase/server';
 import { isLoginPerfEnabled, loginPerfLog } from '@/lib/dev/login-perf';
@@ -29,7 +30,9 @@ export type OnboardingEntryProfile = {
   subscription_status?: unknown;
   onboarding_pricing_completed_at?: string | null;
   onboarding_completed_at?: string | null;
+  trial_started_at?: string | null;
   trial_ends_at?: string | null;
+  trial_used?: boolean | null;
   plan_selection_status?: unknown;
   selected_plan_at?: string | null;
   pending_checkout_provider?: unknown;
@@ -50,7 +53,9 @@ export const DASHBOARD_PROFILE_COLUMNS = [
   'billing_plan',
   'billing_interval',
   'subscription_status',
+  'trial_started_at',
   'trial_ends_at',
+  'trial_used',
   'plan_selection_status',
   'selected_plan_at',
   'pending_checkout_provider',
@@ -88,6 +93,8 @@ export type OnboardingEntryState = {
   subscription_status: string | null;
   trial_status: 'active' | 'expired' | 'none';
   trial_ends_at: string | null;
+  /** False after a trial was consumed or expired; hides “Start N-day trial” in pricing UIs. */
+  trial_eligible: boolean;
   onboarding_status: OnboardingStatus;
   onboarding_ready: boolean;
   should_show_plan_selection: boolean;
@@ -127,12 +134,32 @@ function normalizePendingProvider(
   return null;
 }
 
-function computeTrialStatus(subscriptionStatus: string | null, trialEndsAt: string | null): 'active' | 'expired' | 'none' {
-  if (String(subscriptionStatus ?? '').toLowerCase() !== 'trialing') return 'none';
-  if (!trialEndsAt) return 'active';
-  const endMs = new Date(trialEndsAt).getTime();
-  if (!Number.isFinite(endMs)) return 'active';
-  return endMs > Date.now() ? 'active' : 'expired';
+function deriveTrialUiFromProfile(profile: OnboardingEntryProfile): {
+  trial_status: 'active' | 'expired' | 'none';
+  trial_eligible: boolean;
+} {
+  const effective = computeEffectiveSubscription({
+    subscription_status:
+      profile.subscription_status != null ? String(profile.subscription_status) : null,
+    trial_started_at: profile.trial_started_at ?? null,
+    trial_ends_at: profile.trial_ends_at ?? null,
+  }).effective;
+  const subLower = String(profile.subscription_status ?? '').toLowerCase();
+  const selection = normalizePlanSelectionStatus(profile.plan_selection_status);
+  const paidActive = selection === 'PAID_ACTIVE' && subLower === 'active';
+  const trialUsed = Boolean(profile.trial_used);
+
+  let trial_status: 'active' | 'expired' | 'none' = 'none';
+  if (effective === 'trialing') trial_status = 'active';
+  else if (effective === 'trial_expired') trial_status = 'expired';
+
+  const trial_eligible =
+    !paidActive &&
+    !trialUsed &&
+    effective !== 'trialing' &&
+    effective !== 'trial_expired';
+
+  return { trial_status, trial_eligible };
 }
 
 function computeOnboardingStatus(input: {
@@ -159,7 +186,7 @@ export function deriveOnboardingEntryState(params: {
       ? profile.subscription_status.trim().toLowerCase()
       : null;
   const trialEndsAt = profile.trial_ends_at ?? null;
-  const trialStatus = computeTrialStatus(subscriptionStatus, trialEndsAt);
+  const { trial_status: trialStatus, trial_eligible } = deriveTrialUiFromProfile(profile);
   const hasBusiness = Boolean(params.primaryBusiness?.id);
 
   const paidReady = selectionStatus === 'PAID_ACTIVE' && subscriptionStatus === 'active';
@@ -197,6 +224,7 @@ export function deriveOnboardingEntryState(params: {
     subscription_status: subscriptionStatus,
     trial_status: trialStatus,
     trial_ends_at: trialEndsAt,
+    trial_eligible,
     onboarding_status: onboardingStatus,
     onboarding_ready: onboardingReady,
     should_show_plan_selection: shouldShowPlanSelection,

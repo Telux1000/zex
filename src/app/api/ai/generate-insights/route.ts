@@ -4,7 +4,8 @@ import { generateInsights } from '@/lib/ai/insights-engine';
 import { parseFinancialWindowFromRequestBody } from '@/lib/ai/insights-financial-window';
 import { logActivity } from '@/lib/activity';
 import { assertAiInsightsAccess } from '@/lib/rbac/server';
-import { featureUpgradeMessage, getUserBillingPlan, hasPlanFeature } from '@/lib/billing/plans';
+import { featureUpgradeMessage, hasPlanFeature } from '@/lib/billing/plans';
+import { getOwnerBillingPlanAfterReconcile } from '@/lib/billing/subscription-access';
 
 export async function POST(req: Request) {
   try {
@@ -13,18 +14,6 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const billingPlan = await getUserBillingPlan(supabase, user.id);
-    if (!hasPlanFeature(billingPlan, 'advanced_insights')) {
-      return NextResponse.json(
-        {
-          error: featureUpgradeMessage('advanced_insights'),
-          code: 'plan_feature_advanced_insights',
-          current_plan: billingPlan,
-          cta: 'Upgrade',
-        },
-        { status: 403 }
-      );
-    }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const businessId = body.business_id as string | undefined;
@@ -36,6 +25,28 @@ export async function POST(req: Request) {
 
     const gate = await assertAiInsightsAccess(supabase, businessId, user.id);
     if (!gate.ok) return gate.response;
+
+    const { data: bizOwner } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessId)
+      .maybeSingle();
+    if (!bizOwner) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    const billingPlan = await getOwnerBillingPlanAfterReconcile(
+      supabase,
+      String((bizOwner as { owner_id: string }).owner_id)
+    );
+    if (!hasPlanFeature(billingPlan, 'advanced_insights')) {
+      return NextResponse.json(
+        {
+          error: featureUpgradeMessage('advanced_insights'),
+          code: 'plan_feature_advanced_insights',
+          current_plan: billingPlan,
+          cta: 'Upgrade',
+        },
+        { status: 403 }
+      );
+    }
 
     const insights = await generateInsights(supabase, businessId, financialWindow);
 

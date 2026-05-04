@@ -1,9 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CurrencySelect } from '@/components/currency/CurrencySelect';
+import { PhoneNumberInput } from '@/components/phone/PhoneNumberInput';
+import { browserLocaleCountryHint, resolvePhoneDefaultCountryIso2 } from '@/lib/phone/default-country';
+import {
+  isPhoneCountryCallingCodeOnly,
+  isValidPhoneForCountry,
+  normalizePhoneToE164OrNull,
+  PHONE_MSG,
+} from '@/lib/phone/e164';
 import { cn } from '@/lib/utils/cn';
 import {
   MANUAL_INVOICE_FIELD_FOCUS,
@@ -28,6 +36,17 @@ export function InvoiceManualEntrySetup({ onWorkspaceReady }: Props) {
   const [currency, setCurrency] = useState('USD');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const phoneDefaultCountry = useMemo(
+    () =>
+      resolvePhoneDefaultCountryIso2({
+        savedE164: businessPhone || null,
+        businessCountryIso2: null,
+        localeHintIso2: browserLocaleCountryHint(),
+      }),
+    [businessPhone]
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,8 +69,20 @@ export function InvoiceManualEntrySetup({ onWorkspaceReady }: Props) {
     }
     if (!ph) {
       setError('Enter a business phone number.');
+      setPhoneError(null);
       return;
     }
+    if (isPhoneCountryCallingCodeOnly(ph)) {
+      setPhoneError(PHONE_MSG.afterCountryCode);
+      setError(null);
+      return;
+    }
+    if (!isValidPhoneForCountry(ph, phoneDefaultCountry)) {
+      setPhoneError(PHONE_MSG.invalid);
+      setError(null);
+      return;
+    }
+    setPhoneError(null);
     setSubmitting(true);
     try {
       const profileRes = await fetch('/api/profile', {
@@ -71,7 +102,7 @@ export function InvoiceManualEntrySetup({ onWorkspaceReady }: Props) {
           business_name: bn,
           currency: currency.trim().toUpperCase(),
           email: em,
-          phone: ph,
+          phone: normalizePhoneToE164OrNull(ph, phoneDefaultCountry) ?? ph,
         }),
       });
       const bootData = (await bootRes.json().catch(() => ({}))) as { error?: string };
@@ -151,19 +182,25 @@ export function InvoiceManualEntrySetup({ onWorkspaceReady }: Props) {
             />
           </div>
           <div>
-            <label htmlFor="manual-setup-phone" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              Business phone
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Business phone <span className="text-red-500">*</span>
             </label>
-            <input
-              id="manual-setup-phone"
-              type="tel"
-              autoComplete="tel"
-              value={businessPhone}
-              onChange={(e) => setBusinessPhone(e.target.value)}
-              disabled={submitting}
-              className={inputClass(false)}
-              placeholder="+1 …"
-            />
+            <div className="mt-1">
+              <PhoneNumberInput
+                id="manual-setup-phone"
+                countrySelectorId="manual-setup-phone-country"
+                value={businessPhone}
+                onChange={(next) => {
+                  setBusinessPhone(next);
+                  setPhoneError(null);
+                  setError(null);
+                }}
+                defaultCountry={phoneDefaultCountry}
+                disabled={submitting}
+                required
+                error={phoneError}
+              />
+            </div>
           </div>
           <div>
             <label htmlFor="manual-setup-currency" className="block text-sm font-medium text-slate-700 dark:text-slate-300">

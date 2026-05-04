@@ -8,7 +8,12 @@ import {
   planIsFree,
   type BillingPlan,
 } from '@/lib/billing/plans';
-import { newAccountTrialFields } from '@/lib/billing/subscription-access';
+import {
+  computeEffectiveSubscription,
+  newAccountTrialFields,
+  ownerHasPaidEntitlement,
+  reconcileOwnerBillingEntitlements,
+} from '@/lib/billing/subscription-access';
 import { fetchOnboardingEntryState } from '@/lib/onboarding/entry-state';
 import { fetchAdminPlatformSettings } from '@/lib/admin/admin-platform-settings';
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
@@ -47,12 +52,19 @@ export async function POST(req: Request) {
   const mode = normalizeSelectionMode(body.selection_mode, plan);
   const primaryBusiness = await getPrimaryBusinessForUser(user.id);
 
-  if (primaryBusiness && mode !== 'paid') {
+  if (primaryBusiness && mode === 'free') {
     const state = await fetchOnboardingEntryState(supabase, user.id, primaryBusiness);
     return NextResponse.json({
       ...state,
-      error: 'Plan selection onboarding applies before creating your first workspace.',
+      error: 'Use billing settings to manage your plan after your workspace exists.',
     });
+  }
+
+  if (primaryBusiness && (mode === 'trial' || mode === 'paid') && primaryBusiness.ownerId !== user.id) {
+    return NextResponse.json(
+      { error: 'Only the workspace owner can change subscription or trial.' },
+      { status: 403 }
+    );
   }
 
   const now = new Date().toISOString();
@@ -81,6 +93,48 @@ export async function POST(req: Request) {
 
   if (mode === 'trial') {
     const admin = getSupabaseServiceAdmin();
+    await reconcileOwnerBillingEntitlements(user.id);
+    const profileClient = admin ?? supabase;
+    const { data: trialProfile } = await profileClient
+      .from('profiles')
+      .select(
+        'trial_used, subscription_status, trial_started_at, trial_ends_at, plan_selection_status, billing_plan'
+      )
+      .eq('id', user.id)
+      .maybeSingle();
+    if (!trialProfile) {
+      return NextResponse.json({ error: 'Could not load profile.' }, { status: 500 });
+    }
+    if (admin) {
+      const paid = await ownerHasPaidEntitlement(admin, user.id, trialProfile);
+      if (paid) {
+        return NextResponse.json(
+          { error: 'Trial is not available while you have an active paid subscription.' },
+          { status: 409 }
+        );
+      }
+    }
+    if (trialProfile.trial_used === true) {
+      return NextResponse.json(
+        { error: 'Free trial can only be started once for this account.' },
+        { status: 403 }
+      );
+    }
+    const { effective } = computeEffectiveSubscription({
+      subscription_status: trialProfile.subscription_status,
+      trial_started_at: trialProfile.trial_started_at,
+      trial_ends_at: trialProfile.trial_ends_at,
+    });
+    if (effective === 'trialing') {
+      return NextResponse.json({ error: 'You already have an active trial.' }, { status: 409 });
+    }
+    if (effective === 'trial_expired') {
+      return NextResponse.json(
+        { error: 'Your trial has ended. Upgrade to a paid plan to continue.' },
+        { status: 403 }
+      );
+    }
+
     const trialDays = admin ? (await fetchAdminPlatformSettings(admin)).trial_days : 14;
     const trial = newAccountTrialFields(new Date(), trialDays);
     const { error } = await supabase

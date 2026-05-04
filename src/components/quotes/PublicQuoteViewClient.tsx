@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { QuoteDocumentPreview } from '@/components/quotes/QuoteDocumentPreview';
-import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
 import { formatDisplayDate } from '@/lib/utils/date';
 
 type PublicQuote = {
@@ -182,32 +181,30 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
   const business = (quote.business ?? {}) as Record<string, unknown>;
   const isFinalState = isAccepted || isRejected;
   return (
-    <>
-      <ForcePublicDocumentLight />
-      <div className="min-h-screen bg-white text-slate-900">
-        <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
       {!isFinalState ? (
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-          <h1 className="text-xl font-semibold text-slate-900">Quote</h1>
-          <p className="mt-1 text-sm text-slate-500">Review and confirm quote {quote.quote_number}</p>
+        <div className="mb-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
+          <h1 className="text-xl font-semibold">Quote</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">Review and confirm quote {quote.quote_number}</p>
         </div>
       ) : null}
 
       {message ? <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
       {error ? <div className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mt-6 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5">
         {isAccepted ? (
           <div className="mx-auto flex max-w-xl flex-col items-center text-center">
             <CheckCircle2 className="h-12 w-12 text-emerald-600" aria-hidden />
-            <h2 className="mt-3 text-xl font-semibold text-slate-900">Quote Accepted</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <h2 className="mt-3 text-xl font-semibold">Quote Accepted</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
               {message && !message.toLowerCase().includes('already')
                 ? 'This quote has been accepted successfully.'
                 : 'This quote has already been accepted.'}
             </p>
             {(quote.accepted_at || channelLabel) ? (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-[var(--muted)]">
                 {[quote.accepted_at ? formatDisplayDate(quote.accepted_at) : null, channelLabel]
                   .filter(Boolean)
                   .join(' · ')}
@@ -225,14 +222,14 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
         ) : isRejected ? (
           <div className="mx-auto flex max-w-xl flex-col items-center text-center">
             <XCircle className="h-12 w-12 text-rose-600" aria-hidden />
-            <h2 className="mt-3 text-xl font-semibold text-slate-900">Quote Declined</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <h2 className="mt-3 text-xl font-semibold">Quote Declined</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
               {message && !message.toLowerCase().includes('already')
                 ? 'This quote has been declined.'
                 : 'This quote has already been declined.'}
             </p>
             {(quote.rejected_at || channelLabel) ? (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-[var(--muted)]">
                 {[quote.rejected_at ? formatDisplayDate(quote.rejected_at) : null, channelLabel]
                   .filter(Boolean)
                   .join(' · ')}
@@ -242,8 +239,8 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
         ) : isExpired ? (
           <div className="mx-auto flex max-w-xl flex-col items-center text-center">
             <XCircle className="h-12 w-12 text-amber-600" aria-hidden />
-            <h2 className="mt-3 text-xl font-semibold text-slate-900">Quote Expired</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <h2 className="mt-3 text-xl font-semibold">Quote Expired</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
               This quote expired{quote.expiry_date ? ` on ${formatDisplayDate(quote.expiry_date)}.` : '.'}
             </p>
           </div>
@@ -313,20 +310,20 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
       </div>
 
       {acceptOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !loading && setAcceptOpen(false)}>
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-slate-900">Accept Quote</h2>
-            <p className="mt-3 text-sm text-slate-600">Quote number</p>
-            <p className="mt-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold tracking-wide text-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 dark:bg-black/60" onClick={() => !loading && setAcceptOpen(false)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold">Accept Quote</h2>
+            <p className="mt-3 text-sm text-[var(--muted)]">Quote number</p>
+            <p className="mt-1 rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm font-semibold tracking-wide">
               {quote.quote_number}
             </p>
-            <label className="mt-4 block text-sm text-slate-600">
+            <label className="mt-4 block text-sm text-[var(--muted)]">
               Note (optional)
               <textarea
                 rows={4}
                 value={acceptNote}
                 onChange={(e) => setAcceptNote(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="mt-1 w-full rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
@@ -338,20 +335,20 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
       ) : null}
 
       {rejectOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !loading && setRejectOpen(false)}>
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-slate-900">Reject Quote</h2>
-            <p className="mt-3 text-sm text-slate-600">Quote number</p>
-            <p className="mt-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold tracking-wide text-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 dark:bg-black/60" onClick={() => !loading && setRejectOpen(false)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold">Reject Quote</h2>
+            <p className="mt-3 text-sm text-[var(--muted)]">Quote number</p>
+            <p className="mt-1 rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm font-semibold tracking-wide">
               {quote.quote_number}
             </p>
-            <label className="mt-4 block text-sm text-slate-600">
+            <label className="mt-4 block text-sm text-[var(--muted)]">
               Reason
               <textarea
                 rows={4}
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                className="mt-1 w-full rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]"
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
@@ -368,8 +365,7 @@ export function PublicQuoteViewClient({ token, initialQuote }: { token: string; 
           </div>
         </div>
       ) : null}
-        </div>
       </div>
-    </>
+    </div>
   );
 }

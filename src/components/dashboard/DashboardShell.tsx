@@ -35,6 +35,7 @@ export function DashboardShell({
   initialSupportUnreadCount = 0,
   profileBanner,
   subscriptionBanner,
+  showSidebarUpgradeCard = false,
   children,
 }: {
   user: User;
@@ -52,6 +53,8 @@ export function DashboardShell({
   notificationBadgeCount?: number;
   profileBanner?: React.ReactNode;
   subscriptionBanner?: React.ReactNode;
+  /** From server: show “Upgrade plan” sidebar card for Starter / trial / lapsed trial only. */
+  showSidebarUpgradeCard?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? '';
@@ -142,6 +145,7 @@ export function DashboardShell({
         mobileOpen={mobileNavOpen}
         onMobileClose={() => setMobileNavOpen(false)}
         supportHref="/dashboard/support"
+        showUpgradePlanCard={showSidebarUpgradeCard}
       />
 
       <div

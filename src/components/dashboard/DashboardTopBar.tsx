@@ -5,7 +5,7 @@ import { Activity, Bell, Menu, MessageSquare } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { useMemo, useState } from 'react';
 import { DashboardSearch } from '@/components/dashboard/DashboardSearch';
-import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
+import { ThemeModeSegmented } from '@/components/theme/ThemeModeSegmented';
 import { DashboardUserMenu } from '@/components/dashboard/DashboardUserMenu';
 import { NotificationsPanel } from '@/components/notifications/NotificationsPanel';
 import { useDashboardNotifications } from '@/contexts/DashboardNotificationsContext';
@@ -115,7 +115,7 @@ export function DashboardTopBar({
         >
           <Activity className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.75} />
         </Link>
-        <ThemeToggle />
+        <ThemeModeSegmented density="compact" />
         <div className="ml-0.5 pl-0.5 sm:ml-1 sm:pl-1">
           <DashboardUserMenu user={user} profileFullName={profileFullName ?? null} />
         </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { ZenzexLogoMark } from '@/components/branding/AppLogoInline';
 import { ZENZEX_INVOICE_FOOTER_LINE } from '@/lib/invoices/zenzex-invoice-branding';
 import type { InvoiceTemplateId } from '@/lib/invoices/invoice-template-ids';
 
@@ -15,9 +16,14 @@ export function ZenzexInvoiceBrandingStrip({ templateId }: { templateId: Invoice
 
   return (
     <div
-      className={`mt-4 w-full border-t ${borderClass} px-2 pb-3 pt-3 text-center sm:px-3 md:px-4 print:mt-3 print:pb-2 print:pt-2`}
+      className={`mt-4 w-full border-t ${borderClass} px-2 pb-3 pt-3 sm:px-3 md:px-4 print:mt-3 print:pb-2 print:pt-2`}
     >
-      <p className={`text-[10px] leading-tight print:text-[9px] ${textClass}`}>{ZENZEX_INVOICE_FOOTER_LINE}</p>
+      <div className="flex flex-nowrap items-center justify-center gap-2 print:gap-1.5">
+        <ZenzexLogoMark className="h-4 w-4 shrink-0 print:h-[14px] print:w-[14px]" />
+        <p className={`text-[10px] font-normal leading-tight print:text-[9px] ${textClass}`}>
+          {ZENZEX_INVOICE_FOOTER_LINE}
+        </p>
+      </div>
     </div>
   );
 }

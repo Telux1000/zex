@@ -9,7 +9,7 @@ import { MarkViewed } from '@/components/invoices/MarkViewed';
 import { formatMoneyCodeFirst } from '@/lib/utils/currency';
 import { buildPreviewSavedBundleFromServerRows } from '@/lib/invoices/map-api-invoice-to-preview-saved';
 import { PublicInvoiceDocumentClient } from '@/components/invoices/PublicInvoiceDocumentClient';
-import { ForcePublicDocumentLight } from '@/components/public/ForcePublicDocumentLight';
+import { ZenzexLogoMark } from '@/components/branding/AppLogoInline';
 
 export const metadata: Metadata = {
   robots: {
@@ -92,9 +92,8 @@ export default async function PublicInvoicePage({
   return (
     <>
       <MarkViewed invoiceId={id} status={invoice.status} />
-      <ForcePublicDocumentLight />
       <div
-        className="min-h-screen bg-slate-50 text-slate-900"
+        className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"
         style={
           {
             '--invoice-primary': primaryColor,
@@ -102,7 +101,7 @@ export default async function PublicInvoicePage({
         }
       >
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-          <header className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-8 sm:flex-row sm:items-start sm:justify-between">
+          <header className="mb-8 flex flex-col gap-4 border-b border-[var(--card-border)] pb-8 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-4">
               {business && (business.logo_url as string | null) ? (
                 <div className="relative h-12 w-32">
@@ -121,21 +120,21 @@ export default async function PublicInvoicePage({
               )}
             </div>
             <div className="text-right">
-              <h1 className="text-2xl font-semibold text-slate-900">Invoice {invoice.invoice_number}</h1>
-              <p className="mt-1 text-sm text-slate-500">Due {formatDisplayDate(invoice.due_date)}</p>
+              <h1 className="text-2xl font-semibold">Invoice {invoice.invoice_number}</h1>
+              <p className="mt-1 text-sm text-[var(--muted)]">Due {formatDisplayDate(invoice.due_date)}</p>
             </div>
           </header>
 
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
             <div>
               {invoice.status === 'paid' ? (
-                <p className="text-sm text-slate-600">Thank you for your business.</p>
+                <p className="text-sm text-[var(--muted)]">Thank you for your business.</p>
               ) : (
                 <>
-                  <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                     Amount due: {formatMoneyCodeFirst(balanceDue, invCurrency)}
                   </span>
-                  <p className="mt-2 text-sm text-slate-600">Pay securely with card via Stripe.</p>
+                  <p className="mt-2 text-sm text-[var(--muted)]">Pay securely with card via Stripe.</p>
                 </>
               )}
             </div>
@@ -144,9 +143,12 @@ export default async function PublicInvoicePage({
 
           {documentBundle ? <PublicInvoiceDocumentClient data={documentBundle} /> : null}
 
-          <footer className="mt-12 rounded-xl border border-slate-200 bg-white p-6 text-center">
-            <p className="text-sm font-medium text-slate-700">Powered by Zenzex</p>
-            <p className="mt-1 text-sm text-slate-500">AI-powered invoicing. Create invoices by chat, voice, or screenshot.</p>
+          <footer className="mt-12 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center">
+            <div className="flex flex-nowrap items-center justify-center gap-2">
+              <ZenzexLogoMark className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
+              <p className="text-sm font-medium text-[var(--muted)]">Powered by Zenzex</p>
+            </div>
+            <p className="mt-1 text-sm text-[var(--muted)]">AI-powered invoicing. Create invoices by chat, voice, or screenshot.</p>
             <Link
               href="/signup"
               className="app-link-accent mt-4 inline-block text-sm underline-offset-4 hover:underline"
