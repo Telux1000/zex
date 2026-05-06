@@ -466,6 +466,20 @@ function buildResponse(
     customer_resolution_state?: InvoiceWizardResponse['customer_resolution_state'];
   }
 ): InvoiceWizardResponse {
+  const collectingSteps: InvoiceWizardStep[] = [
+    'GET_CUSTOMER',
+    'CHECK_CUSTOMER',
+    'CREATE_CUSTOMER',
+    'COLLECT_NEW_CUSTOMER_PHONE',
+    'COLLECT_NEW_CUSTOMER_CONTACT',
+    'COLLECT_NEW_CUSTOMER_ADDRESS',
+    'COLLECT_NEW_CUSTOMER_COUNTRY',
+    'COLLECT_ITEMS',
+    'COLLECT_QUANTITY',
+    'COLLECT_PRICING',
+    'COLLECT_DUE_DATE',
+  ];
+  const assistantState = collectingSteps.includes(step) ? 'collecting_invoice_details' : null;
   const missing = computeMissingFields(draft);
   const baseStepLines = assistantLinesForStep(step, missing, draft);
   const prepend = extras?.prepend_assistant_lines?.filter((s) => String(s).trim());
@@ -488,6 +502,7 @@ function buildResponse(
   return {
     session_id: sessionId,
     step,
+    assistant_state: assistantState,
     draft,
     missing_fields: missing,
     assistant_lines: lines,
@@ -1279,10 +1294,7 @@ export async function POST(req: Request) {
     const raw = await req.json();
     const parsedBody = bodySchema.safeParse(raw);
     if (!parsedBody.success) {
-      return NextResponse.json(
-        { error: 'Invalid request', issues: parsedBody.error.flatten() },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
     const { business_id: businessId, session_id: sessionId, action } = parsedBody.data;
     const recentCreatedInvoice = parsedBody.data.recent_created_invoice

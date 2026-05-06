@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
+import { extractInvoiceWizardUserText } from '@/lib/ai/invoice-parser';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
 import {
@@ -31,6 +32,17 @@ function inferTaxPercentFromText(text: string): number {
   }
 
   return 0;
+}
+
+const INVOICE_CREATE_INTENT_RE =
+  /\b(create|make|draft|start|new)\b[\s\w]{0,32}\b(invoice)\b|\binvoice\b[\s\w]{0,24}\b(for me|please)\b/i;
+
+function hasInvoiceCreateIntent(text: string): boolean {
+  return INVOICE_CREATE_INTENT_RE.test(text.trim());
+}
+
+function buildFriendlyIncompletePrompt(): string {
+  return 'Sure - who is the invoice for, and what are you billing them for?';
 }
 
 export const maxDuration = 60;
@@ -97,6 +109,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Empty transcription from OpenAI' }, { status: 500 });
     }
 
+    const wizardExtract = await extractInvoiceWizardUserText(transcript);
+    const extracted = wizardExtract.ok ? wizardExtract.extract : null;
+    const hasCustomer =
+      Boolean(String(extracted?.customer_name ?? '').trim()) ||
+      Boolean(String(extracted?.customer_email ?? '').trim());
+    const firstItem = extracted?.items?.[0];
+    const hasItemName = Boolean(String(firstItem?.name ?? '').trim());
+    const hasQuantity = Number(firstItem?.quantity ?? 0) > 0;
+    const hasAmount = Number(firstItem?.unit_price ?? 0) > 0;
+    const missingInvoiceDetails = !hasCustomer || !hasItemName || !hasQuantity || !hasAmount;
+    const createIntent = hasInvoiceCreateIntent(transcript);
+
+    if (createIntent && missingInvoiceDetails) {
+      return NextResponse.json({
+        transcript,
+        invoice: {
+          clientName: String(extracted?.customer_name ?? '').trim(),
+          invoiceNumber: '',
+          dueDate: String(extracted?.due_date ?? '').trim(),
+          taxPercent: inferTaxPercentFromText(transcript),
+          notes: String(extracted?.notes ?? '').trim(),
+          items: [],
+        },
+        subtotal: 0,
+        taxAmount: 0,
+        total: 0,
+        assistant_state: 'collecting_invoice_details',
+        assistant_prompt: buildFriendlyIncompletePrompt(),
+      });
+    }
+
     const parsed = await parseInvoiceFromText(transcript);
 
     const items = parsed.items.map((item) => ({
@@ -131,7 +174,10 @@ export async function POST(req: Request) {
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown server error';
     console.error('Voice invoice error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const normalized = /line item required|validation|zod/i.test(message)
+      ? 'I still need at least one item before I can create the invoice.'
+      : 'I can help with that. Please tell me the customer, service or product, quantity, and amount.';
+    return NextResponse.json({ error: normalized }, { status: 422 });
   }
 }
 

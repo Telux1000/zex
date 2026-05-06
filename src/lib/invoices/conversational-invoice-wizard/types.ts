@@ -445,6 +445,8 @@ export function flattenAssistantStructured(body: AssistantStructuredBody): strin
 export type InvoiceWizardResponse = {
   session_id: string;
   step: InvoiceWizardStep;
+  /** Assistant collection phase for multi-turn draft capture. */
+  assistant_state?: 'collecting_invoice_details' | null;
   draft: InvoiceWizardDraft;
   missing_fields: WizardMissingField[];
   assistant_lines: string[];

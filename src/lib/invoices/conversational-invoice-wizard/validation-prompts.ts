@@ -24,7 +24,7 @@ export function mapZodIssuesToPrompt(issues: ZodIssue[], draft: InvoiceWizardDra
     const p = pathKey(issue.path);
     if (p === 'items' || p.startsWith('items.')) {
       if (issue.code === 'too_small' && issue.path[0] === 'items') {
-        return WIZARD_COLLECT_ITEMS_LINE;
+        return 'I still need at least one item before I can create the invoice.';
       }
       if (issue.path.includes('quantity') || /items\.\d+\.quantity/.test(p)) {
         return WIZARD_COLLECT_QUANTITY_LINE;
