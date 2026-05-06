@@ -62,7 +62,7 @@ export function pricingTrialMessagingPaidPlansHeadline(trialDays: number = PRICI
 
 /** Onboarding pricing step: explains free Starter vs paid trials. */
 export function onboardingPricingSelectionDescription(trialDays: number): string {
-  return `Starter is free forever. Paid plans start with a ${trialDays}-day trial — pick a plan to continue. You can change or cancel before the trial ends.`;
+  return `Starter is free forever. Paid plans start with a ${trialDays}-day trial — one trial per account. Pick a plan to continue, and cancel anytime from billing settings.`;
 }
 
 /** Colored promo box above shared pricing grids (landing, signup pricing, billing). */
@@ -76,9 +76,9 @@ export function pricingCardPrimaryCtaLabel(planId: BillingPlan): string {
     case 'starter':
       return 'Start free';
     case 'growth':
-      return 'Start Growth';
+      return 'Start Growth plan';
     case 'professional':
-      return 'Start Professional';
+      return 'Upgrade to Professional';
     case 'enterprise':
       return 'Start Enterprise';
     default:
@@ -140,8 +140,8 @@ export const pricingPlans: PricingPlan[] = [
     isFree: false,
     showTrialCTA: true,
     features: [
-      'Automated payment & invoice reminders',
-      'AI invoice creation (text, voice, or upload)',
+      'Invoice reminders and scheduled follow-ups',
+      'Smart invoice creation (text, voice, or upload)',
       'Real-time payment tracking',
       'Unlimited invoices',
     ],

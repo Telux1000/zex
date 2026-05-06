@@ -148,7 +148,7 @@ export default async function PublicInvoicePage({
               <ZenzexLogoMark className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
               <p className="text-sm font-medium text-[var(--muted)]">Powered by Zenzex</p>
             </div>
-            <p className="mt-1 text-sm text-[var(--muted)]">AI-powered invoicing. Create invoices by chat, voice, or screenshot.</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">Smart invoicing. Create invoices by chat, voice, or screenshot.</p>
             <Link
               href="/signup"
               className="app-link-accent mt-4 inline-block text-sm underline-offset-4 hover:underline"

@@ -12,13 +12,13 @@ export const LANDING_HOW_IT_WORKS_STEPS = [
   {
     n: 3,
     title: 'Get paid and stay in control',
-    body: "Track what's paid or overdue in real time, and let automatic reminders handle the follow-up.",
+    body: "Track what's paid or overdue in real time, and send reminders or follow-ups when you choose.",
   },
 ] as const;
 
 /** Short titles for narrow viewports (stacked, no accordion). */
 export const LANDING_HOW_IT_WORKS_COMPACT = [
   { n: 1 as const, title: 'Create invoice', body: 'Add clients, line items, and taxes in minutes.' },
-  { n: 2 as const, title: 'Send automatically', body: 'Professional invoices with payment links and smart reminders.' },
-  { n: 3 as const, title: 'Get paid faster', body: 'Track status and let follow-ups run in the background.' },
+  { n: 2 as const, title: 'Review and send', body: 'Confirm invoice details, then send with payment links and reminders.' },
+  { n: 3 as const, title: 'Track payments', body: 'Monitor paid, pending, and overdue balances with clear status updates.' },
 ] as const;

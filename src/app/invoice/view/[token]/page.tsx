@@ -217,7 +217,7 @@ export default async function PublicInvoiceTokenPage({
               <p className="text-sm font-medium text-[var(--muted)]">Powered by Zenzex</p>
             </div>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              AI-powered invoicing. Create invoices by chat, voice, or screenshot.
+              Smart invoicing. Create invoices by chat, voice, or screenshot.
             </p>
             <Link
               href="https://www.zenzex.com/signup"

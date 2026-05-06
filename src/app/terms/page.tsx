@@ -71,7 +71,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">3. The service</h2>
             <p className="mt-2 leading-relaxed">
-              Zenzex is online software for invoicing, payment tracking, automated reminders, and financial
+              Zenzex is online software for invoicing, payment tracking, reminders, and financial
               summaries and insights based on information you provide. Certain features use intelligent
               automation to help you create invoices from text, voice, or file uploads and to streamline
               routine workflows.
@@ -81,6 +81,15 @@ export default function TermsPage() {
               <strong className="font-semibold text-slate-900 dark:text-white">not</strong> provide financial, accounting, tax, or legal advice, and it does not make
               recommendations tailored to your situation. You are responsible for your business decisions,
               regulatory compliance, and the accuracy of anything you send to customers or regulators.
+            </p>
+            <p className="mt-2 leading-relaxed">
+              You are responsible for reviewing invoice drafts and confirming each invoice, recipient, and
+              reminder before it is sent. Zenzex helps manage invoicing workflows, but you remain responsible
+              for invoice content and delivery choices.
+            </p>
+            <p className="mt-2 leading-relaxed">
+              Payments related to your invoices are processed by your selected payment provider. Zenzex does
+              not hold, custody, or transfer customer funds on your behalf.
             </p>
           </section>
 
@@ -115,6 +124,7 @@ export default function TermsPage() {
             <p className="mt-2 leading-relaxed">You will not, and will not permit others to:</p>
             <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-relaxed">
               <li>use Zenzex for unlawful, fraudulent, deceptive, harassing, or abusive purposes;</li>
+              <li>create, send, or schedule fraudulent invoices or misleading payment requests;</li>
               <li>attempt unauthorized access to Zenzex, another customer&apos;s data, or our networks or systems;</li>
               <li>probe, scan, or test vulnerabilities without our prior written approval;</li>
               <li>interfere with or disrupt the integrity, performance, or security of the service;</li>
@@ -174,6 +184,11 @@ export default function TermsPage() {
               available. Cancellation stops future renewals. Unless the Refund Policy or mandatory law
               requires otherwise, fees for the billing period in progress are not refunded when you cancel
               mid-cycle.
+            </p>
+            <p className="mt-2 leading-relaxed">
+              The current cancellation workflow is available from billing settings in your Zenzex account.
+              If you cannot access billing settings, contact support@zenzex.com from your account email and
+              we will assist.
             </p>
             <p className="mt-2 leading-relaxed">
               We may change plan names, prices, or feature bundles from time to time. Price changes take

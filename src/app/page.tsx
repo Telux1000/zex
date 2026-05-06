@@ -5,7 +5,6 @@ import { ChevronDown, Facebook, Instagram, Linkedin, X as XIcon, Youtube } from 
 import { AppLogoInline } from '@/components/branding/AppLogoInline';
 import { TikTokIcon } from '@/components/branding/TikTokIcon';
 import { LandingFeatureList } from '@/components/landing/LandingFeatureList';
-import { LandingHeroTestimonials } from '@/components/landing/LandingHeroTestimonials';
 import { LandingMarketingMobileNav } from '@/components/landing/LandingMarketingMobileNav';
 import { LandingMarketingSmoothScroll } from '@/components/landing/LandingMarketingSmoothScroll';
 import { LandingMobileStickyWaitlist } from '@/components/landing/LandingMobileStickyWaitlist';
@@ -59,20 +58,20 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Zenzex | Simple Invoicing Software for Faster Payments',
   description:
-    'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
+    'Simple invoicing for freelancers and businesses: create invoices faster, review before sending, and track payments clearly.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
     title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
+      'Simple invoicing for freelancers and businesses: create invoices faster, review before sending, and track payments clearly.',
     url: 'https://zenzex.com',
   },
   twitter: {
     title: 'Zenzex | Simple Invoicing Software for Faster Payments',
     description:
-      'AI-powered invoicing for freelancers and businesses: create invoices fast, automate reminders, and keep cashflow predictable.',
+      'Simple invoicing for freelancers and businesses: create invoices faster, review before sending, and track payments clearly.',
   },
 };
 
@@ -108,6 +107,11 @@ const LANDING_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: 'Can I cancel anytime?',
     answer: "Yes. Cancel before your next billing date and you won't be charged again.",
+  },
+  {
+    question: 'How does payment processing work with Zenzex?',
+    answer:
+      'Zenzex helps you create and manage invoices. Payments are processed by your selected payment provider, and Zenzex does not hold customer funds.',
   },
 ];
 
@@ -220,7 +224,7 @@ export default async function LandingPage() {
               href="/signup"
               className="app-btn-primary max-sm:hidden shrink-0 whitespace-nowrap text-xs sm:text-sm"
             >
-              Start free
+              Start for free
             </Link>
           </div>
         </div>
@@ -239,7 +243,7 @@ export default async function LandingPage() {
               Get paid faster. Without the stress.
             </h1>
             <p className="mx-auto mt-3 max-w-md text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-              AI-powered invoicing that saves time, automates reminders, and keeps your cashflow predictable.
+              Simple invoicing to create polished invoices faster, send reminders, and track payments clearly.
             </p>
             <div className="mx-auto mt-6 flex w-full max-w-md flex-col gap-2.5">
               {waitlistEnabled ? (
@@ -254,14 +258,14 @@ export default async function LandingPage() {
                   href="/signup"
                   className="app-btn-primary-lg inline-flex min-h-[48px] w-full items-center justify-center"
                 >
-                  Sign up
+                  Start for free
                 </Link>
               )}
               <a
                 href="#how-it-works"
                 className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-transparent text-sm font-semibold text-indigo-700 underline-offset-4 transition-colors hover:bg-indigo-50 hover:underline dark:text-indigo-300 dark:hover:bg-indigo-950/40"
               >
-                See how it works
+                Explore how it works
               </a>
             </div>
           </div>
@@ -274,14 +278,14 @@ export default async function LandingPage() {
               Stop chasing clients for money.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-pretty text-base font-medium leading-relaxed text-slate-700 dark:text-slate-300 sm:mt-6 sm:text-lg sm:leading-relaxed">
-              Get paid faster with simple, automated invoicing for freelancers and businesses.
+              Get paid faster with structured invoicing for freelancers and growing businesses.
             </p>
             <p className="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-slate-600 dark:text-slate-400 sm:mt-5 sm:text-base">
               Create invoices your way from text, voice, manual entry, or screenshots in seconds. Track
-              what&rsquo;s paid or overdue, and send reminders automatically.
+              what&rsquo;s paid or overdue, send reminders, and schedule follow-ups on your terms.
             </p>
             <p className="mt-4 text-balance text-sm font-medium text-slate-800 dark:text-slate-200 sm:mt-5 sm:text-base">
-              No spreadsheets. No stress.
+              Fast workflows, with full control before anything goes out.
             </p>
             <div className="mx-auto mt-8 flex w-full max-w-lg flex-col items-stretch justify-center gap-3 px-1 sm:mt-10 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-4 sm:px-0">
               {waitlistEnabled ? (
@@ -300,13 +304,13 @@ export default async function LandingPage() {
                     : 'app-btn-primary-lg inline-flex w-full min-h-[48px] shrink-0 items-center justify-center sm:w-auto sm:min-w-[10.5rem] sm:min-h-0'
                 }
               >
-                {waitlistEnabled ? 'Start free' : 'Sign up'}
+                Start for free
               </Link>
               <a
                 href="#how-it-works"
                 className="inline-flex min-h-[48px] w-full shrink-0 items-center justify-center rounded-lg text-sm font-medium text-slate-600 underline-offset-4 transition-colors hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-white sm:w-auto sm:px-2"
               >
-                See how it works
+                Explore how it works
               </a>
             </div>
             <p className="mt-4 text-balance text-xs font-semibold text-indigo-600 dark:text-indigo-400 sm:mt-5 sm:text-sm">
@@ -315,29 +319,31 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* Social proof */}
+        {/* Who it's for */}
         <section className="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
           <p className="text-pretty text-center text-sm font-medium leading-snug text-slate-600 dark:text-slate-400 sm:hidden">
             Built for freelancers, agencies, and growing businesses.
           </p>
           <div className="mx-auto mt-0 hidden max-w-5xl border-t border-[var(--sidebar-border)] pt-8 sm:mt-0 sm:block sm:pt-10">
-            <div className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:gap-10">
-              <p className="text-center text-xs font-semibold text-slate-800 dark:text-slate-200 sm:text-sm">
-                Join <span className="text-indigo-600 dark:text-indigo-400">400+ businesses</span>
+            <div className="mx-auto max-w-3xl text-center">
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white sm:text-xl">
+                Who Zenzex is for
+              </h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+                Designed to help you create invoices faster and stay in control of payments.
               </p>
-              <div
-                className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-[var(--sidebar-border)] bg-[var(--card)] px-3 py-2 shadow-sm sm:px-4"
-                aria-label="Rating placeholder"
-              >
-                <span className="flex shrink-0 text-sm text-amber-500 sm:text-base" aria-hidden>
-                  {'★★★★★'}
-                </span>
-                <span className="text-center text-xs font-medium text-slate-700 dark:text-slate-300 sm:text-sm">
-                  4.8 on Product Hunt
-                </span>
+            </div>
+            <div className="mx-auto mt-6 grid max-w-4xl grid-cols-3 gap-4 sm:mt-8 sm:gap-5">
+              <div className="rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] px-4 py-4 text-center shadow-sm">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white sm:text-base">Freelancers</p>
+              </div>
+              <div className="rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] px-4 py-4 text-center shadow-sm">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white sm:text-base">Agencies</p>
+              </div>
+              <div className="rounded-xl border border-[var(--sidebar-border)] bg-[var(--card)] px-4 py-4 text-center shadow-sm">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white sm:text-base">Small businesses</p>
               </div>
             </div>
-            <LandingHeroTestimonials />
           </div>
         </section>
 
@@ -346,10 +352,10 @@ export default async function LandingPage() {
           <div className="mx-auto max-w-6xl px-3 sm:px-4">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                Invoicing, payments, and visibility in one place
+                Everything you need to run invoicing
               </h2>
               <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
-                Structured workflows and automation so you spend less time on admin and more time on work that pays.
+                Structured invoicing workflows so you spend less time on admin and stay in control of revenue.
               </p>
             </div>
 
@@ -366,10 +372,10 @@ export default async function LandingPage() {
           <div className="mx-auto max-w-6xl px-3 sm:px-4">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                How it works
+                Your invoicing workflow
               </h2>
               <p className="mt-2 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:mt-3 sm:text-base">
-                Set up in minutes. Send your first invoice. Get paid without the follow-up.
+                Set up in minutes. Send your first invoice. Track follow-ups and payments in one clear flow.
               </p>
             </div>
 
@@ -427,7 +433,7 @@ export default async function LandingPage() {
           <div className="mx-auto max-w-lg px-3 py-6 sm:py-10">
             <LandingWaitlistSection
               heading="Get early access to Zenzex"
-              description="Join the waitlist and be first to use AI-powered invoicing built for speed and simplicity."
+              description="Join the waitlist and be first to use structured invoicing built for speed and simplicity."
             >
               <WaitlistForm
                 source="landing"
@@ -452,8 +458,23 @@ export default async function LandingPage() {
           </div>
         ) : null}
 
+        <section className="border-t border-[var(--sidebar-border)] py-8 sm:py-16">
+          <div className="mx-auto max-w-3xl px-3 sm:px-4">
+            <h2 className="text-center text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+              How Zenzex keeps invoicing predictable
+            </h2>
+            <ul className="mx-auto mt-6 max-w-2xl space-y-2.5 text-sm text-slate-600 dark:text-slate-400 sm:text-base">
+              <li>Every invoice is reviewed before sending.</li>
+              <li>You control when invoices and reminders are sent.</li>
+              <li>Payments are handled by your selected provider.</li>
+              <li>Zenzex does not hold or move funds.</li>
+              <li>You are responsible for the invoices you create.</li>
+            </ul>
+          </div>
+        </section>
+
         <LandingPricingSection
-          waitlistVisibility="anchor-on-narrow"
+          waitlistVisibility="anchor-only"
           publicWaitlistEnabled={waitlistEnabled}
         />
 
@@ -462,10 +483,10 @@ export default async function LandingPage() {
           <div className="mx-auto max-w-2xl px-3 sm:px-4">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                Frequently asked questions
+                Answers before you sign up
               </h2>
               <p className="mt-3 text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
-                Quick answers about billing, payments, and plans.
+                Quick answers on plans, billing, and payment tracking.
               </p>
             </div>
             <div className="mt-8 flex flex-col gap-2.5 sm:mt-10 sm:gap-3">
@@ -494,11 +515,14 @@ export default async function LandingPage() {
         <section className="border-t border-[var(--sidebar-border)] py-8 sm:py-24">
           <div className="mx-auto max-w-3xl px-3 text-center sm:px-4">
             <h2 className="text-balance text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Start invoicing with confidence
+              Start invoicing with clarity
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-pretty text-sm text-slate-600 dark:text-slate-400 sm:text-base">
               Zenzex helps you issue invoices faster, track payments clearly, and reduce manual follow-up, so you always
               know where revenue stands.
+            </p>
+            <p className="mx-auto mt-3 max-w-xl text-pretty text-xs text-slate-500 dark:text-slate-500 sm:text-sm">
+              You control when invoices and reminders are sent.
             </p>
             <p className="mx-auto mt-3 max-w-xl text-xs text-slate-500 dark:text-slate-500 sm:text-sm">
               No credit card required to get started.
@@ -508,7 +532,7 @@ export default async function LandingPage() {
                 href="/signup"
                 className="app-btn-primary-lg inline-flex w-full min-h-[48px] items-center justify-center sm:w-auto sm:min-h-0"
               >
-                Create free account
+                Start your free account
               </Link>
             </div>
           </div>
@@ -555,6 +579,12 @@ export default async function LandingPage() {
                   Refund Policy
                 </Link>
               </div>
+              <a
+                href="mailto:support@zenzex.com"
+                className="text-xs text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
+              >
+                support@zenzex.com
+              </a>
               <p className="text-xs text-slate-500 dark:text-slate-500">
                 © {new Date().getFullYear()} Zenzex. All rights reserved.
               </p>

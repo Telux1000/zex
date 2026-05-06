@@ -45,6 +45,10 @@ export default function RefundPolicyPage() {
               charge (or the first charge after you upgrade to a new paid plan). The refund applies to that
               charge only—not to earlier or later billing periods.
             </p>
+            <p className="mt-2 leading-relaxed">
+              Trial terms: 14-day trial on paid plans. One trial per account. Cancel anytime from billing
+              settings before renewal to avoid charges.
+            </p>
           </section>
 
           <section>
@@ -53,6 +57,10 @@ export default function RefundPolicyPage() {
               Cancel anytime from your account. You keep full access until the{' '}
               <strong className="font-semibold text-slate-900 dark:text-white">end of your current billing period</strong>, and you are not charged again after
               that.
+            </p>
+            <p className="mt-2 leading-relaxed">
+              Zenzex subscription charges are processed by our billing providers. Zenzex does not hold
+              customer invoice funds.
             </p>
           </section>
 
@@ -78,6 +86,9 @@ export default function RefundPolicyPage() {
               from the address on your Zenzex account. Include your workspace or account name and the date
               of the charge. We typically confirm within <strong className="font-semibold text-slate-900 dark:text-white">1–2 business days</strong>; refunds are
               issued to your original payment method once approved.
+            </p>
+            <p className="mt-2 leading-relaxed">
+              We may ask for basic verification details to confirm account ownership and prevent misuse.
             </p>
           </section>
 

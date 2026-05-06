@@ -10,8 +10,8 @@ export type LandingFeatureDef = {
 /** Full grid on `sm+` — unchanged for desktop. */
 export const LANDING_FEATURE_ITEMS: LandingFeatureDef[] = [
   {
-    title: 'Smart invoice creation',
-    body: 'Create invoices your way from text, voice, manual entry, or screenshots in seconds.',
+    title: 'Create invoices from text, voice, or uploads — then review before sending',
+    body: 'Create invoices in seconds — then review and confirm before sending.',
     Icon: FileText,
   },
   {
@@ -20,8 +20,8 @@ export const LANDING_FEATURE_ITEMS: LandingFeatureDef[] = [
     Icon: CreditCard,
   },
   {
-    title: 'Automated reminders',
-    body: 'Send polite, timely follow-ups before and after due dates, with less manual chasing and steadier cash flow.',
+    title: 'Automated reminders (you choose when they’re sent)',
+    body: 'Send polite, timely reminders and schedule follow-ups while you stay in control of timing and recipients.',
     Icon: Bell,
   },
   {
@@ -35,12 +35,12 @@ export const LANDING_FEATURE_ITEMS: LandingFeatureDef[] = [
 export const LANDING_FEATURE_ITEMS_MOBILE_PRIMARY: LandingFeatureDef[] = [
   {
     title: 'Create invoices in seconds',
-    body: 'Turn quotes and line items into polished invoices with AI-assisted drafts.',
+    body: 'Turn quotes and line items into polished invoices with smart assisted drafts you can review before sending.',
     Icon: FileText,
   },
   {
     title: 'Get paid faster with reminders',
-    body: 'Automated follow-ups keep clients on track so you spend less time chasing.',
+    body: 'Send reminders and follow-ups on your schedule so clients stay on track.',
     Icon: Bell,
   },
   {
