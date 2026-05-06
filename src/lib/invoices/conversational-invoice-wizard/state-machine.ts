@@ -37,7 +37,7 @@ export function isWizardDraftReadyForInvoiceCreate(
 ): boolean {
   if (customerNeedsDisambiguation) return false;
   if (draft.awaitingPostCreateCustomerChoice) return false;
-  if (!draft.customerId) return false;
+  if (!draft.customerId && !draft.customerName.trim()) return false;
   if (computeMissingFields(draft).length > 0) return false;
   return resolveWizardStep(draft, { customerNeedsDisambiguation }) === 'CONFIRM';
 }
@@ -47,20 +47,13 @@ export function computeMissingFields(draft: InvoiceWizardDraft): WizardMissingFi
   if (draft.customerId && draft.awaitingPostCreateCustomerChoice) {
     return [];
   }
-  if (!draft.customerId) {
-    const nameMissing = !draft.customerName.trim();
-    if (nameMissing && !(draft.isNewCustomer && draft.customerEmail.trim())) {
-      m.push('customer');
-    } else if (draft.isNewCustomer && !draft.customerEmail.trim()) {
-      m.push('customer_email');
-    } else if (!nameMissing && !draft.isNewCustomer) {
-      /** Linked customer required before line items — same gate as CHECK_CUSTOMER in `resolveWizardStep`. */
-      m.push('customer_pick');
-    }
-    /** Never leave “no missing fields” while `customerId` is unset (avoids item prompts before resolution). */
-    if (m.length === 0) {
-      m.push('customer');
-    }
+  const nameMissing = !draft.customerName.trim();
+  if (!draft.customerId && nameMissing && !(draft.isNewCustomer && draft.customerEmail.trim())) {
+    m.push('customer');
+    return m;
+  }
+  if (draft.isNewCustomer && !draft.customerEmail.trim()) {
+    m.push('customer_email');
     return m;
   }
   if (draft.items.length === 0) m.push('items');
@@ -74,6 +67,18 @@ export function computeMissingFields(draft: InvoiceWizardDraft): WizardMissingFi
 export function getNextMissingInvoiceField(draft: InvoiceWizardDraft): WizardMissingField | null {
   const missing = computeMissingFields(draft);
   return missing[0] ?? null;
+}
+
+export function deriveExpectedInvoiceField(
+  draft: InvoiceWizardDraft
+): 'customer' | 'line_item' | 'amount' | 'due_date' | 'confirm' | null {
+  const next = getNextMissingInvoiceField(draft);
+  if (next === 'customer' || next === 'customer_pick' || next === 'customer_email') return 'customer';
+  if (next === 'items') return 'line_item';
+  if (next === 'pricing' || next === 'quantity') return 'amount';
+  if (next === 'due_date') return 'due_date';
+  if (next === 'confirm') return 'confirm';
+  return null;
 }
 
 /**
@@ -137,15 +142,6 @@ export function resolveWizardStep(
       }
     }
     if (!draft.customerName.trim()) return 'GET_CUSTOMER';
-    /**
-     * Existing-customer invoice flow: stay on `CHECK_CUSTOMER` until `customerId` is set.
-     * Do not use `assistantCustomerEditLock` here — when the client holds `customer_pick_options`
-     * (or similar), the lock must not skip this step or we fall through to `COLLECT_ITEMS` while
-     * the UI is still waiting for a customer selection.
-     */
-    if (!draft.isNewCustomer) {
-      return 'CHECK_CUSTOMER';
-    }
   }
   if (draft.customerId && draft.awaitingPostCreateCustomerChoice) {
     return 'AWAIT_POST_CREATE_CUSTOMER';

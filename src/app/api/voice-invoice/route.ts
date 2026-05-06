@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getOpenAI } from '@/lib/ai/openai-server';
 import { parseInvoiceFromText } from '@/lib/ai/invoice-parser';
 import { extractInvoiceWizardUserText } from '@/lib/ai/invoice-parser';
+import { normalizeAssistantBrandMentionsForRouting } from '@/lib/assistant/brand-mention-normalization';
 import { createClient } from '@/lib/supabase/server';
 import { getPrimaryBusinessForUser } from '@/lib/supabase/server-auth';
 import {
@@ -42,7 +43,7 @@ function hasInvoiceCreateIntent(text: string): boolean {
 }
 
 function buildFriendlyIncompletePrompt(): string {
-  return 'Sure - who is the invoice for, and what are you billing them for?';
+  return 'Sure — who is the invoice for, and what are you billing them for?';
 }
 
 export const maxDuration = 60;
@@ -109,6 +110,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Empty transcription from OpenAI' }, { status: 500 });
     }
 
+    const routingNormalization = normalizeAssistantBrandMentionsForRouting(transcript);
+    if (process.env.NODE_ENV !== 'production' && routingNormalization.matches.length > 0) {
+      for (const m of routingNormalization.matches) {
+        console.debug(`[voice] normalized_brand_mention from=${m.from} to=${m.to}`);
+      }
+    }
+
     const wizardExtract = await extractInvoiceWizardUserText(transcript);
     const extracted = wizardExtract.ok ? wizardExtract.extract : null;
     const hasCustomer =
@@ -119,7 +127,7 @@ export async function POST(req: Request) {
     const hasQuantity = Number(firstItem?.quantity ?? 0) > 0;
     const hasAmount = Number(firstItem?.unit_price ?? 0) > 0;
     const missingInvoiceDetails = !hasCustomer || !hasItemName || !hasQuantity || !hasAmount;
-    const createIntent = hasInvoiceCreateIntent(transcript);
+    const createIntent = hasInvoiceCreateIntent(routingNormalization.normalizedText);
 
     if (createIntent && missingInvoiceDetails) {
       return NextResponse.json({

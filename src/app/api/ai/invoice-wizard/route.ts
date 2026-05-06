@@ -77,6 +77,7 @@ import { buildWizardShellResponse } from '@/lib/business-assistant/wizard-shell'
 import {
   assistantLinesForStep,
   computeMissingFields,
+  deriveExpectedInvoiceField,
   deriveCustomerResolutionState,
   draftToParsedInvoice,
   getNextMissingInvoiceField,
@@ -89,7 +90,10 @@ import {
   type WizardAiExtract,
 } from '@/lib/invoices/conversational-invoice-wizard/wizard-ai-extract';
 import { buildUnifiedInvoiceTurnReplyLines } from '@/lib/invoices/conversational-invoice-wizard/wizard-assistant-turn';
-import { shouldResetDraftForNewInvoiceIntent } from '@/lib/invoices/invoice-chat-intent';
+import {
+  shouldResetDraftForNewInvoiceIntent,
+  textLooksLikeCreateInvoiceFlow,
+} from '@/lib/invoices/invoice-chat-intent';
 import { resolveCustomerBootstrapWhenNoCustomers } from '@/lib/invoices/conversational-invoice-wizard/chat-customer-bootstrap';
 import { shouldAutoCreateInvoiceFromWizardTurn } from '@/lib/invoices/conversational-invoice-wizard/auto-create-policy';
 import { resolveAddressPhase } from '@/lib/invoices/conversational-invoice-wizard/address-intelligence';
@@ -138,6 +142,7 @@ import { assertWorkspaceCoreWriteAccess, getOwnerBillingPlanAfterReconcile } fro
 import { getSupabaseServiceAdmin } from '@/lib/supabase/service-admin';
 import { assertPlatformInvoiceWizardAiEnabled } from '@/lib/admin/ai-assistant-platform-gate';
 import { extractRawInvoiceTextFromImageBase64 } from '@/lib/ai/document-parser';
+import { normalizeAssistantBrandMentionsForRouting } from '@/lib/assistant/brand-mention-normalization';
 
 const NEW_CUSTOMER_ONBOARDING_STEPS: InvoiceWizardStep[] = [
   'COLLECT_NEW_CUSTOMER_PHONE',
@@ -503,6 +508,7 @@ function buildResponse(
     session_id: sessionId,
     step,
     assistant_state: assistantState,
+    expected_field: deriveExpectedInvoiceField(draft),
     draft,
     missing_fields: missing,
     assistant_lines: lines,
@@ -1464,6 +1470,27 @@ export async function POST(req: Request) {
     const pendingInvoiceLookup = normalizePendingInvoiceLookupFromBody(
       parsedBody.data.pending_invoice_lookup
     );
+    const normalizedRouting = normalizeAssistantBrandMentionsForRouting(userText);
+    const routingUserText = normalizedRouting.normalizedText;
+    const expectedFieldBeforeTurn = deriveExpectedInvoiceField(draft);
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug(`[assistant-invoice] expected_field=${expectedFieldBeforeTurn ?? 'none'}`);
+    }
+    if (
+      expectedFieldBeforeTurn === 'customer' &&
+      userText &&
+      !action &&
+      !textLooksLikeCreateInvoiceFlow(routingUserText)
+    ) {
+      const capturedCustomer = userText.trim();
+      if (capturedCustomer) {
+        draft = { ...draft, customerName: capturedCustomer };
+        errorRecovery = { sessionId, draft };
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug(`[assistant-invoice] captured_customer=${capturedCustomer}`);
+        }
+      }
+    }
 
     const tzRaw =
       typeof parsedBody.data.workspace_timezone === 'string'
@@ -1497,6 +1524,10 @@ export async function POST(req: Request) {
     const metricSessionContext = coerceMetricSessionContextFromClient(
       parsedBody.data.metric_session_context
     );
+    if (process.env.NODE_ENV !== 'production') {
+      const nextExpected = deriveExpectedInvoiceField(draft);
+      console.debug(`[assistant-invoice] next_expected_field=${nextExpected ?? 'none'}`);
+    }
 
     if (workspaceHasNoCustomers) {
       const bootstrap = resolveCustomerBootstrapWhenNoCustomers({
@@ -1892,21 +1923,21 @@ export async function POST(req: Request) {
       );
     }
 
-    if (userText && shouldResetDraftForNewInvoiceIntent(userText)) {
+    if (routingUserText && shouldResetDraftForNewInvoiceIntent(routingUserText)) {
       draft = emptyInvoiceWizardDraft();
       customerMatch = null;
       customerNeedsDisambiguation = false;
       errorRecovery = { sessionId, draft };
     }
 
-    if (userText) {
+    if (routingUserText) {
       const routed = await routeBusinessAssistantUserTurn({
         supabase,
         user,
         businessId,
         sessionId,
         draft,
-        userText,
+        userText: routingUserText,
         pendingInvoiceLookup,
         customerMatch,
         customerNeedsDisambiguation: false,
@@ -2188,7 +2219,9 @@ export async function POST(req: Request) {
           Boolean(customerName);
 
         if (noDbHits) {
-          draft = { ...draft, isNewCustomer: true, customerId: null };
+          // Keep freeform customer name in draft and continue invoice collection.
+          // We only require customer details at create time, not immediate customer-link resolution.
+          draft = { ...draft, isNewCustomer: false, customerId: null };
           customerNeedsDisambiguation = false;
           customerMatch = null;
         } else {

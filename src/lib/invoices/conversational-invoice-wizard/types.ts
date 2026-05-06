@@ -447,6 +447,8 @@ export type InvoiceWizardResponse = {
   step: InvoiceWizardStep;
   /** Assistant collection phase for multi-turn draft capture. */
   assistant_state?: 'collecting_invoice_details' | null;
+  /** Next field the assistant expects from user input. */
+  expected_field?: 'customer' | 'line_item' | 'amount' | 'due_date' | 'confirm' | null;
   draft: InvoiceWizardDraft;
   missing_fields: WizardMissingField[];
   assistant_lines: string[];

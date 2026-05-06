@@ -24,7 +24,7 @@ export function mapZodIssuesToPrompt(issues: ZodIssue[], draft: InvoiceWizardDra
     const p = pathKey(issue.path);
     if (p === 'items' || p.startsWith('items.')) {
       if (issue.code === 'too_small' && issue.path[0] === 'items') {
-        return 'I still need at least one item before I can create the invoice.';
+        return 'What are you billing them for?';
       }
       if (issue.path.includes('quantity') || /items\.\d+\.quantity/.test(p)) {
         return WIZARD_COLLECT_QUANTITY_LINE;
@@ -34,7 +34,7 @@ export function mapZodIssuesToPrompt(issues: ZodIssue[], draft: InvoiceWizardDra
         issue.path.includes('price') ||
         /items\.\d+\.(unit_price|price)/.test(p)
       ) {
-        return WIZARD_COLLECT_PRICING_LINE;
+        return 'What amount should I charge?';
       }
       if (issue.path.includes('name') || /items\.\d+\.name/.test(p)) {
         return WIZARD_COLLECT_ITEMS_LINE;
